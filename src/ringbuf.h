@@ -54,6 +54,12 @@ int ringbuf_push(Ringbuffer *, unsigned char);
 /* Push each element of a bytearray into the buffer */
 int ringbuf_bulk_push(Ringbuffer *, unsigned char *, size_t);
 
+/* Peek on the front of the buffer without removing it */
+int ringbuf_peek(const Ringbuffer *, unsigned char *);
+
+/* Peek on the head of the buffer without removing it */
+int ringbuf_peek_head(const Ringbuffer *, unsigned char *);
+
 /* Pop out the front of the buffer */
 int ringbuf_pop(Ringbuffer *, unsigned char *);
 
@@ -77,6 +83,12 @@ size_t ringbuf_capacity(const Ringbuffer *);
  * inside
  */
 size_t ringbuf_size(const Ringbuffer *);
+
+/* Return the buffer contained in the ringbuf */
+unsigned char *ringbuf_buffer(const Ringbuffer *);
+
+/* Transfer all content of the ringbuffer into a char array */
+int ringbuf_dump(Ringbuffer *, unsigned char *);
 
 
 #endif

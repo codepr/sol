@@ -25,25 +25,27 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "pack.h"
+
 #ifndef MQTT_H
 #define MQTT_H
 
 /* Message types */
 enum message_type {
-    CONNECT     = 0x01,
-    CONNACK     = 0x02,
-    PUBLISH     = 0x03,
-    PUBACK      = 0x04,
-    PUBREC      = 0x05,
-    PUBREL      = 0x06,
-    PUBCOMP     = 0x07,
-    SUBSCRIBE   = 0x08,
-    SUBACK      = 0x09,
-    UNSUBSCRIBE = 0x0A,
-    UNSUBACK    = 0x0B,
-    PINGREQ     = 0x0C,
-    PINGRESP    = 0x0D,
-    DISCONNECT  = 0x0E
+    CONNECT     = 0x10,
+    CONNACK     = 0x20,
+    PUBLISH     = 0x30,
+    PUBACK      = 0x40,
+    PUBREC      = 0x50,
+    PUBREL      = 0x60,
+    PUBCOMP     = 0x70,
+    SUBSCRIBE   = 0x80,
+    SUBACK      = 0x90,
+    UNSUBSCRIBE = 0xA0,
+    UNSUBACK    = 0xB0,
+    PINGREQ     = 0xC0,
+    PINGRESP    = 0xD0,
+    DISCONNECT  = 0xE0
 };
 
 
@@ -55,9 +57,9 @@ union mqtt_header {
     unsigned char byte;
 
     struct {
-        int retain : 1;
+        unsigned retain : 1;
         unsigned qos : 2;
-        int dup : 1;
+        unsigned dup : 1;
         unsigned type : 4;
     } bits;
 
@@ -74,14 +76,24 @@ struct mqtt_connect {
 
         struct {
             int reserverd : 1;
-            int clean_session : 1;
-            int will : 1;
+            unsigned clean_session : 1;
+            unsigned will : 1;
             unsigned will_qos : 2;
-            int will_retain : 1;
-            int password : 1;
-            int username : 1;
+            unsigned will_retain : 1;
+            unsigned password : 1;
+            unsigned username : 1;
         } bits;
     };
+
+    struct {
+        unsigned short keepalive;
+        unsigned char *client_id;
+        unsigned char *username;
+        unsigned char *password;
+        unsigned char *will_topic;
+        unsigned char *will_message;
+    } payload;
+
 };
 
 
@@ -94,7 +106,7 @@ struct mqtt_connack {
         unsigned char byte;
 
         struct {
-            int session_present : 1;
+            unsigned session_present : 1;
             unsigned reserverd : 7;
         } bits;
     };
@@ -131,12 +143,10 @@ struct mqtt_publish {
 
     union mqtt_header header;
 
-    int message_id;
+    unsigned short pkt_id;
 
-    int topic_len;
-    char *topic;
-    int payload_len;
-    char *payload;
+    unsigned char *topic;
+    unsigned char *payload;
 };
 
 
@@ -148,6 +158,26 @@ struct mqtt_puback {
 
     unsigned char rc;
 };
+
+
+union mqtt_packet {
+
+    struct mqtt_connect connect;
+    struct mqtt_connack connack;
+    struct mqtt_publish publish;
+
+};
+
+
+int mqtt_encode_length(unsigned char *, size_t);
+
+unsigned long long mqtt_decode_length(const unsigned char *);
+
+int unpack_mqtt_packet(const unsigned char *, union mqtt_packet *);
+
+unsigned char *pack_mqtt_packet(const union mqtt_packet *, unsigned);
+
+struct mqtt_connack *mqtt_packet_connack(unsigned char , char *, size_t);
 
 
 #endif

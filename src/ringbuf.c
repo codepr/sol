@@ -27,6 +27,7 @@
 
 #include <assert.h>
 #include <stdlib.h>
+#include "pack.h"
 #include "ringbuf.h"
 #include "util.h"
 
@@ -188,14 +189,57 @@ int ringbuf_bulk_pop(Ringbuffer *rbuf, unsigned char *dest, size_t size) {
 
     assert(rbuf && dest && rbuf->buffer);
 
-    unsigned char *cur = dest;
     int r = 0;
 
     while (ringbuf_size(rbuf) > 0 && size > 0) {
-        r = ringbuf_pop(rbuf, cur++);
+        r = ringbuf_pop(rbuf, dest++);
         size--;
         if (r == -1) break;
     }
 
     return r;
+}
+
+
+int ringbuf_peek(const Ringbuffer *rbuf, unsigned char *dest) {
+
+    assert(rbuf && dest);
+
+    if (ringbuf_empty(rbuf))
+        return -1;
+
+    *dest = rbuf->buffer[rbuf->tail];
+
+    return 0;
+}
+
+
+int ringbuf_peek_head(const Ringbuffer *rbuf, unsigned char *dest) {
+
+    assert(rbuf && dest);
+
+    if (ringbuf_empty(rbuf))
+        return -1;
+
+    *dest = rbuf->buffer[rbuf->head-1];
+
+    return 0;
+}
+
+
+unsigned char *ringbuf_buffer(const Ringbuffer *rbuf) {
+
+    assert(rbuf);
+
+    return rbuf->buffer;
+}
+
+
+int ringbuf_dump(Ringbuffer *rbuf, unsigned char *buf) {
+
+    assert(rbuf && buf);
+
+    ringbuf_bulk_pop(rbuf, buf, ringbuf_size(rbuf));
+
+    return 0;
 }

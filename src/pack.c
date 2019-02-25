@@ -59,7 +59,7 @@ void bytestring_reset(struct bytestring *bstring) {
     if (!bstring)
         return;
     bstring->last = 0;
-    memset(bstring, 0, bstring->size);
+    memset(bstring->data, 0, bstring->size);
 }
 
 /* Host-to-network (native endian to big endian) */
@@ -83,114 +83,72 @@ uint_least64_t ntohll(const uint8_t *block) {
 }
 
 // Reading data
-uint8_t unpack_u8(struct bytestring *bstring) {
-
-    if ((bstring->last + sizeof(uint8_t)) > bstring->size)
-        return 0;
-
-    uint8_t val = *(bstring->data + bstring->last);
-    bstring->last += sizeof(uint8_t);
-
+uint8_t unpack_u8(const uint8_t **buf) {
+    uint8_t val = **buf;
+    (*buf)++;
     return val;
 }
 
 
-uint16_t unpack_u16(struct bytestring *bstring) {
-
-    if ((bstring->last + sizeof(uint16_t)) > bstring->size)
-        return 0;
-
-    uint16_t val = ntohs(*((uint16_t *) (bstring->data + bstring->last)));
-    bstring->last += sizeof(uint16_t);
-
+uint16_t unpack_u16(const uint8_t **buf) {
+    uint16_t val = ntohs(*((uint16_t *) (*buf)));
+    (*buf) += sizeof(uint16_t);
     return val;
 }
 
 
-uint32_t unpack_u32(struct bytestring *bstring) {
-
-    if ((bstring->last + sizeof(uint32_t)) > bstring->size)
-        return 0;
-
-    uint32_t val = ntohl(*((uint32_t *) (bstring->data + bstring->last)));
-    bstring->last += sizeof(uint32_t);
-
+uint32_t unpack_u32(const uint8_t **buf) {
+    uint32_t val = ntohl(*((uint32_t *) (*buf)));
+    (*buf) += sizeof(uint32_t);
     return val;
 }
 
 
-uint64_t unpack_u64(struct bytestring *bstring) {
-
-    if ((bstring->last + sizeof(uint64_t)) > bstring->size)
-        return 0;
-
-    uint64_t val = ntohll(bstring->data + bstring->last);
-    bstring->last += sizeof(uint64_t);
-
+uint64_t unpack_u64(const uint8_t **buf) {
+    uint64_t val = ntohll(*buf);
+    (*buf) += sizeof(uint64_t);
     return val;
 }
 
 
-uint8_t *unpack_bytes(struct bytestring *bstring, size_t len, uint8_t *str) {
+uint8_t *unpack_bytes(const uint8_t **buf, size_t len, uint8_t *str) {
 
-    if (bstring->last == bstring->size)
-        return NULL;
-
-    memcpy(str, bstring->data + bstring->last, len);
+    memcpy(str, *buf, len);
     str[len] = '\0';
-    bstring->last += len;
+    (*buf) += len;
 
     return str;
 }
 
-
 // Write data
-void pack_u8(struct bytestring *bstring, uint8_t val) {
-
-    if ((bstring->last + sizeof(uint8_t)) > bstring->size)
-        return;
-
-    *(bstring->data + bstring->last) = val;
-    bstring->last += sizeof(uint8_t);
+void pack_u8(uint8_t **buf, uint8_t val) {
+    **buf = val;
+    (*buf) += sizeof(uint8_t);
 }
 
 
-void pack_u16(struct bytestring *bstring, uint16_t val) {
-
-    if ((bstring->last + sizeof(uint16_t)) > bstring->size)
-        return;
-
-    *((uint16_t *) (bstring->data + bstring->last)) = htons(val);
-    bstring->last += sizeof(uint16_t);
+void pack_u16(uint8_t **buf, uint16_t val) {
+    *((uint16_t *) (*buf)) = htons(val);
+    (*buf) += sizeof(uint16_t);
 }
 
 
-void pack_u32(struct bytestring *bstring, uint32_t val) {
-
-    if ((bstring->last + sizeof(uint32_t)) > bstring->size)
-        return;
-
-    *((uint32_t *) (bstring->data + bstring->last)) = htonl(val);
-    bstring->last += sizeof(uint32_t);
+void pack_u32(uint8_t **buf, uint32_t val) {
+    *((uint32_t *) (*buf)) = htonl(val);
+    (*buf) += sizeof(uint32_t);
 }
 
 
-void pack_u64(struct bytestring *bstring, uint64_t val) {
-
-    if ((bstring->last + sizeof(uint64_t)) > bstring->size)
-        return;
-
-    htonll(bstring->data + bstring->last, val);
-    bstring->last += sizeof(uint64_t);
+void pack_u64(uint8_t **buf, uint64_t val) {
+    htonll(*buf, val);
+    (*buf) += sizeof(uint64_t);
 }
 
 
-void pack_bytes(struct bytestring *bstring, uint8_t *str) {
+void pack_bytes(uint8_t **buf, uint8_t *str) {
 
     size_t len = strlen((char *) str);
-    if ((bstring->last + len) > bstring->size)
-        return;
 
-    memcpy(bstring->data + bstring->last, str, len);
-    bstring->last += len;
+    memcpy(*buf, str, len);
+    (*buf) += len;
 }
