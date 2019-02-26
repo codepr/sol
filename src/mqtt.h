@@ -121,6 +121,8 @@ struct mqtt_subscribe {
 
     unsigned short pkt_id;
 
+    unsigned short tuples_len;
+
     struct {
         int topic_len;
         unsigned char *topic;
@@ -134,6 +136,8 @@ struct mqtt_unsubscribe {
     union mqtt_header header;
 
     unsigned short pkt_id;
+
+    unsigned short tuples_len;
 
     struct {
         int topic_len;

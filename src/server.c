@@ -45,14 +45,26 @@ static struct sol_info info;
 typedef void callback(struct cb *, union mqtt_packet *);
 
 
+static void on_read(struct evloop *, void *);
+
 static void on_connect(struct cb *, union mqtt_packet *);
 
+static void on_subscribe(struct cb *, union mqtt_packet *);
 
-static callback *callbacks[2] = {
+static void on_publish(struct cb *, union mqtt_packet *);
+
+
+static callback *callbacks[9] = {
     NULL,
-    on_connect
+    on_connect,
+    NULL,
+    on_publish,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    on_subscribe
 };
-
 
 /*
  * Connection structure for private use of the module, mainly for accepting
@@ -188,6 +200,40 @@ static void on_connect(struct cb *cb, union mqtt_packet *pkt) {
 }
 
 
+static void on_subscribe(struct cb *cb, union mqtt_packet *pkt) {
+    printf("Command %u retain: %i qos: %u dup: %i type: %u\n",
+           pkt->subscribe.header.byte,
+           pkt->subscribe.header.bits.retain,
+           pkt->subscribe.header.bits.qos,
+           pkt->subscribe.header.bits.dup,
+           pkt->subscribe.header.bits.type);
+
+    printf("Packet ID: %u\n", pkt->subscribe.pkt_id);
+
+    for (unsigned i = 0; i < pkt->subscribe.tuples_len; i++)
+        printf("Topic: %s qos %u\n",
+               pkt->subscribe.tuples[i].topic,
+               pkt->subscribe.tuples[i].qos);
+
+}
+
+
+static void on_publish(struct cb *cb, union mqtt_packet *pkt) {
+    printf("Command %u retain: %i qos: %u dup: %i type: %u\n",
+           pkt->publish.header.byte,
+           pkt->publish.header.bits.retain,
+           pkt->publish.header.bits.qos,
+           pkt->publish.header.bits.dup,
+           pkt->publish.header.bits.type);
+
+    printf("Packet ID: %u\n", pkt->publish.pkt_id);
+
+    printf("Topic %s Payload %s\n",
+           pkt->publish.topic,
+           pkt->publish.payload);
+}
+
+
 static void on_write(struct evloop *loop, void *arg) {
 
     struct cb *callback = arg;
@@ -199,6 +245,8 @@ static void on_write(struct evloop *loop, void *arg) {
 
     // Update information stats
     info.noutputbytes += sent;
+
+    callback->callback = on_read;
 
     /* Set up EPOLL event on EPOLLIN to read fds */
     mod_epoll(loop->epollfd, callback->fd, EPOLLIN, callback);
@@ -260,6 +308,8 @@ static void on_read(struct evloop *loop, void *arg) {
     unpack_mqtt_packet(buf, &packet);
 
     union mqtt_header hdr = { .byte = flags };
+
+    printf("Type %i\n", hdr.bits.type);
 
     /* Execute command callback */
     callbacks[hdr.bits.type](callback, &packet);

@@ -213,18 +213,23 @@ static size_t unpack_mqtt_publish(const unsigned char *raw,
 
     /* Read topic length and topic of the soon-to-be-published message */
     uint16_t topic_len = unpack_u16((const uint8_t **) &raw);
-    pkt->publish.topic = sol_malloc(topic_len);
+    pkt->publish.topic = sol_malloc(topic_len + 1);
     unpack_bytes((const uint8_t **) &raw, topic_len, pkt->publish.topic);
 
+    uint16_t message_len = len;
+
     /* Read packet id */
-    pkt->publish.pkt_id = unpack_u16((const uint8_t **) &raw);
+    if (publish.header.bits.qos > 0) {
+        pkt->publish.pkt_id = unpack_u16((const uint8_t **) &raw);
+        message_len -= sizeof(uint16_t);
+    }
 
     /*
      * Message len is calculated subtracting the length of the variable header
      * from the Remaining Length field that is in the Fixed Header
      */
-    uint16_t message_len = len - ((sizeof(uint16_t) * 2) + topic_len);
-    pkt->publish.payload = sol_malloc(message_len);
+    message_len -= (sizeof(uint16_t) + topic_len);
+    pkt->publish.payload = sol_malloc(message_len + 1);
     unpack_bytes((const uint8_t **) &raw, message_len, pkt->publish.payload);
 
     return len;
@@ -236,7 +241,6 @@ static size_t unpack_mqtt_subscribe(const unsigned char *raw,
                                     union mqtt_packet *pkt) {
 
     struct mqtt_subscribe subscribe = { .header = *hdr };
-    pkt->subscribe = subscribe;
 
     /*
      * Second byte of the fixed header, contains the length of remaining bytes
@@ -268,6 +272,7 @@ static size_t unpack_mqtt_subscribe(const unsigned char *raw,
         subscribe.tuples = sol_realloc(subscribe.tuples,
                                        (i+1) * sizeof(*subscribe.tuples));
         subscribe.tuples[i].topic_len = topic_len;
+        subscribe.tuples[i].topic = sol_malloc(topic_len + 1);
         unpack_bytes((const uint8_t **) &raw, topic_len,
                      subscribe.tuples[i].topic);
         remaining_bytes -= topic_len;
@@ -275,6 +280,10 @@ static size_t unpack_mqtt_subscribe(const unsigned char *raw,
         remaining_bytes -= sizeof(uint8_t);
         i++;
     }
+
+    subscribe.tuples_len = i;
+
+    pkt->subscribe = subscribe;
 
     return len;
 }
@@ -285,7 +294,6 @@ static size_t unpack_mqtt_unsubscribe(const unsigned char *raw,
                                       union mqtt_packet *pkt) {
 
     struct mqtt_unsubscribe unsubscribe = { .header = *hdr };
-    pkt->unsubscribe = unsubscribe;
 
     /*
      * Second byte of the fixed header, contains the length of remaining bytes
@@ -316,12 +324,17 @@ static size_t unpack_mqtt_unsubscribe(const unsigned char *raw,
         unsubscribe.tuples = sol_realloc(unsubscribe.tuples,
                                          (i+1) * sizeof(*unsubscribe.tuples));
         unsubscribe.tuples[i].topic_len = topic_len;
+        unsubscribe.tuples[i].topic = sol_malloc(topic_len + 1);
         unpack_bytes((const uint8_t **) &raw, topic_len,
                      unsubscribe.tuples[i].topic);
         remaining_bytes -= topic_len;
 
         i++;
     }
+
+    unsubscribe.tuples_len = i;
+
+    pkt->unsubscribe = unsubscribe;
 
     return len;
 }
