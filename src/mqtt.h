@@ -119,12 +119,25 @@ struct mqtt_subscribe {
 
     union mqtt_header header;
 
-    int message_id;
+    unsigned short pkt_id;
 
     struct {
         int topic_len;
-        char *topic;
+        unsigned char *topic;
         unsigned qos;
+    } *tuples;
+};
+
+
+struct mqtt_unsubscribe {
+
+    union mqtt_header header;
+
+    unsigned short pkt_id;
+
+    struct {
+        int topic_len;
+        unsigned char *topic;
     } *tuples;
 };
 
@@ -133,7 +146,7 @@ struct mqtt_suback {
 
     union mqtt_header header;
 
-    int message_id;
+    unsigned short pkt_id;
 
     int *qos_list;
 };
@@ -165,6 +178,8 @@ union mqtt_packet {
     struct mqtt_connect connect;
     struct mqtt_connack connack;
     struct mqtt_publish publish;
+    struct mqtt_subscribe subscribe;
+    struct mqtt_unsubscribe unsubscribe;
 
 };
 

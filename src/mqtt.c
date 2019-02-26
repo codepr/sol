@@ -40,9 +40,20 @@ typedef unsigned char *mqtt_pack_handler(const union mqtt_packet *);
 static size_t unpack_mqtt_connect(const unsigned char *,
                                   union mqtt_header *,
                                   union mqtt_packet *);
+
 static size_t unpack_mqtt_publish(const unsigned char *,
                                   union mqtt_header *,
                                   union mqtt_packet *);
+
+static size_t unpack_mqtt_subscribe(const unsigned char *,
+                                    union mqtt_header *,
+                                    union mqtt_packet *);
+
+static size_t unpack_mqtt_unsubscribe(const unsigned char *,
+                                      union mqtt_header *,
+                                      union mqtt_packet *);
+
+
 static unsigned char *pack_mqtt_connack(const union mqtt_packet *);
 
 
@@ -53,11 +64,18 @@ static const int MAX_LEN_BYTES = 4;
  * Unpack functions mapping unpacking_handlers positioned in the array based
  * on message type
  */
-static mqtt_unpack_handler *unpack_handlers[4] = {
+static mqtt_unpack_handler *unpack_handlers[11] = {
     NULL,
     unpack_mqtt_connect,
     NULL,
-    unpack_mqtt_publish
+    unpack_mqtt_publish,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    unpack_mqtt_subscribe,
+    NULL,
+    unpack_mqtt_unsubscribe
 };
 
 
@@ -208,6 +226,102 @@ static size_t unpack_mqtt_publish(const unsigned char *raw,
     uint16_t message_len = len - ((sizeof(uint16_t) * 2) + topic_len);
     pkt->publish.payload = sol_malloc(message_len);
     unpack_bytes((const uint8_t **) &raw, message_len, pkt->publish.payload);
+
+    return len;
+}
+
+
+static size_t unpack_mqtt_subscribe(const unsigned char *raw,
+                                    union mqtt_header *hdr,
+                                    union mqtt_packet *pkt) {
+
+    struct mqtt_subscribe subscribe = { .header = *hdr };
+    pkt->subscribe = subscribe;
+
+    /*
+     * Second byte of the fixed header, contains the length of remaining bytes
+     * of the connect packet
+     */
+    size_t len = mqtt_decode_length(raw);
+    size_t remaining_bytes = len;
+    raw++;
+
+    /* Read packet id */
+    subscribe.pkt_id = unpack_u16((const uint8_t **) &raw);
+    remaining_bytes -= sizeof(uint16_t);
+
+    /*
+     * Read in a loop all remaning bytes specified by len of the Fixed Header.
+     * From now on the payload consists of 3-tuples formed by:
+     *  - topic length
+     *  - topic filter (string)
+     *  - qos
+     */
+    int i = 0;
+    while (remaining_bytes > 0) {
+
+        /* Read length bytes of the first topic filter */
+        uint16_t topic_len = unpack_u16((const uint8_t **) &raw);
+        remaining_bytes -= sizeof(uint16_t);
+
+        /* We have to make room for additional incoming tuples */
+        subscribe.tuples = sol_realloc(subscribe.tuples,
+                                       (i+1) * sizeof(*subscribe.tuples));
+        subscribe.tuples[i].topic_len = topic_len;
+        unpack_bytes((const uint8_t **) &raw, topic_len,
+                     subscribe.tuples[i].topic);
+        remaining_bytes -= topic_len;
+        subscribe.tuples[i].qos = unpack_u8((const uint8_t **) &raw);
+        remaining_bytes -= sizeof(uint8_t);
+        i++;
+    }
+
+    return len;
+}
+
+
+static size_t unpack_mqtt_unsubscribe(const unsigned char *raw,
+                                      union mqtt_header *hdr,
+                                      union mqtt_packet *pkt) {
+
+    struct mqtt_unsubscribe unsubscribe = { .header = *hdr };
+    pkt->unsubscribe = unsubscribe;
+
+    /*
+     * Second byte of the fixed header, contains the length of remaining bytes
+     * of the connect packet
+     */
+    size_t len = mqtt_decode_length(raw);
+    size_t remaining_bytes = len;
+    raw++;
+
+    /* Read packet id */
+    unsubscribe.pkt_id = unpack_u16((const uint8_t **) &raw);
+    remaining_bytes -= sizeof(uint16_t);
+
+    /*
+     * Read in a loop all remaning bytes specified by len of the Fixed Header.
+     * From now on the payload consists of 2-tuples formed by:
+     *  - topic length
+     *  - topic filter (string)
+     */
+    int i = 0;
+    while (remaining_bytes > 0) {
+
+        /* Read length bytes of the first topic filter */
+        uint16_t topic_len = unpack_u16((const uint8_t **) &raw);
+        remaining_bytes -= sizeof(uint16_t);
+
+        /* We have to make room for additional incoming tuples */
+        unsubscribe.tuples = sol_realloc(unsubscribe.tuples,
+                                         (i+1) * sizeof(*unsubscribe.tuples));
+        unsubscribe.tuples[i].topic_len = topic_len;
+        unpack_bytes((const uint8_t **) &raw, topic_len,
+                     unsubscribe.tuples[i].topic);
+        remaining_bytes -= topic_len;
+
+        i++;
+    }
 
     return len;
 }
