@@ -213,6 +213,7 @@ static size_t unpack_mqtt_publish(const unsigned char *raw,
 
     /* Read topic length and topic of the soon-to-be-published message */
     uint16_t topic_len = unpack_u16((const uint8_t **) &raw);
+    pkt->publish.topiclen = topic_len;
     pkt->publish.topic = sol_malloc(topic_len + 1);
     unpack_bytes((const uint8_t **) &raw, topic_len, pkt->publish.topic);
 
@@ -229,6 +230,7 @@ static size_t unpack_mqtt_publish(const unsigned char *raw,
      * from the Remaining Length field that is in the Fixed Header
      */
     message_len -= (sizeof(uint16_t) + topic_len);
+    pkt->publish.payloadlen = message_len;
     pkt->publish.payload = sol_malloc(message_len + 1);
     unpack_bytes((const uint8_t **) &raw, message_len, pkt->publish.payload);
 

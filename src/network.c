@@ -268,38 +268,6 @@ int sendall(int sfd, const unsigned char *buf, size_t len, size_t *sent) {
 }
 
 /*
- * Receive all incoming bytes in the kernel buffer for the sfd descriptor,
- * storing them into a Ringbuffer instance of max size two Mb
- */
-ssize_t recvall(int sfd, Ringbuffer *ringbuf, size_t len) {
-    ssize_t n = 0;
-    ssize_t total = 0;
-    int bufsize = 256;
-    if (len > 0)
-        bufsize = len + 1;
-    unsigned char buf[bufsize]; // FIXME should be alloc'ed on HEAP
-    for (;;) {
-        if ((n = recv(sfd, buf, bufsize - 1, 0)) < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                break;
-            } else {
-                perror("recv(2): error reading data\n");
-                return -1;
-            }
-        }
-        if (n == 0) {
-            return 0;
-        }
-        /* Insert all read bytes in the ring buffer */
-        // FIXME check the full ring buffer scenario
-        ringbuf_bulk_push(ringbuf, buf, n);
-
-        total += n;
-    }
-    return total;
-}
-
-/*
  * Receive a given number of bytes on the descriptor sfd, storing the stream of
  * data into a 2 Mb capped ringbuffer
  */
@@ -367,13 +335,14 @@ void evloop_free(struct evloop *loop) {
 }
 
 
-void evloop_register_callback(struct evloop *loop, struct cb *cb) {
-    if (add_epoll(loop->epollfd, cb->fd, EPOLLIN, cb) < 0)
+void evloop_add_callback(struct evloop *loop, struct callback_obj *cb) {
+    if (epoll_add(loop->epollfd, cb->fd, EPOLLIN, cb) < 0)
         perror("Epoll register callback: ");
 }
 
 
-void evloop_register_periodic_task(struct evloop *loop, int ns, struct cb *cb) {
+void evloop_add_periodic_task(struct evloop *loop, int ns,
+                              struct callback_obj *cb) {
 
     struct itimerspec timervalue;
 
@@ -400,7 +369,7 @@ void evloop_register_periodic_task(struct evloop *loop, int ns, struct cb *cb) {
         return;
     }
 
-    evloop_register_callback(loop, cb);
+    evloop_add_callback(loop, cb);
 
 }
 
@@ -444,7 +413,7 @@ int evloop_wait(struct evloop *el) {
             }
 
             /* No error events, proeed to run callback */
-            struct cb *cb_obj = el->events[i].data.ptr;
+            struct callback_obj *cb_obj = el->events[i].data.ptr;
             cb_obj->callback(el, cb_obj->args);
         }
     }
@@ -453,7 +422,22 @@ int evloop_wait(struct evloop *el) {
 }
 
 
-int add_epoll(int efd, int fd, int evs, void *data) {
+int evloop_rearm_callback_read(struct evloop *el, struct callback_obj *cb) {
+    return epoll_mod(el->epollfd, cb->fd, EPOLLIN, cb);
+}
+
+
+int evloop_rearm_callback_write(struct evloop *el, struct callback_obj *cb) {
+    return epoll_mod(el->epollfd, cb->fd, EPOLLOUT, cb);
+}
+
+
+int evloop_del_callback(struct evloop *el, struct callback_obj *cb) {
+    return epoll_del(el->epollfd, cb->fd);
+}
+
+
+int epoll_add(int efd, int fd, int evs, void *data) {
 
     struct epoll_event ev;
     ev.data.fd = fd;
@@ -468,7 +452,7 @@ int add_epoll(int efd, int fd, int evs, void *data) {
 }
 
 
-int mod_epoll(int efd, int fd, int evs, void *data) {
+int epoll_mod(int efd, int fd, int evs, void *data) {
 
     struct epoll_event ev;
     ev.data.fd = fd;
@@ -483,6 +467,6 @@ int mod_epoll(int efd, int fd, int evs, void *data) {
 }
 
 
-int del_epoll(int efd, int fd) {
+int epoll_del(int efd, int fd) {
     return epoll_ctl(efd, EPOLL_CTL_DEL, fd, NULL);
 }

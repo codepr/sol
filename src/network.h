@@ -38,7 +38,10 @@
 #define UNIX    0
 #define INET    1
 
-
+/* Event loop wrapper structure, define an EPOLL loop and his status. The
+ * EPOLL instance use EPOLLONESHOT for each event and must be re-armed
+ * manually, in order to allow future uses on a multithreaded architecture.
+ */
 struct evloop {
     int epollfd;
     int max_events;
@@ -50,8 +53,15 @@ struct evloop {
 
 typedef void callback_fn(struct evloop *, void *);
 
-
-struct cb {
+/*
+ * Callback object, represents a callback function with an associated
+ * descriptor if needed, args is a void pointer which can be a structure
+ * pointing to callback parameters.
+ * The last two fields are payload, a serialized version of the result of
+ * a callback, ready to be sent through wire and a function pointer to the
+ * callback function to execute.
+ */
+struct callback_obj {
     int fd;
     void *args;
     struct bytestring *payload;
@@ -83,21 +93,76 @@ int accept_connection(int);
 /* Open a connection with a target host:port */
 int open_connection(const char *, int);
 
-/* Epoll management functions */
 struct evloop *evloop_create(int, int);
+
 void evloop_init(struct evloop *, int, int);
+
 void evloop_free(struct evloop *);
+
+/*
+ * Blocks in a while(1) loop awaiting for events to be raised on monitored
+ * file descriptors and executing the paired callback previously registered
+ */
 int evloop_wait(struct evloop *);
-void evloop_register_callback(struct evloop *, struct cb *);
-void evloop_register_periodic_task(struct evloop *, int, struct cb *);
-void evloop_unregister_callback(struct evloop *, int);
-int add_epoll(int, int, int, void *);
-int mod_epoll(int, int, int, void *);
-int del_epoll(int, int);
+
+/*
+ * Register a callback_obj with a function to be executed every time the
+ * paired descriptor is re-armed.
+ */
+void evloop_add_callback(struct evloop *, struct callback_obj *);
+
+/*
+ * Register a periodic callback_obj with a function to be executed every
+ * defined interval of time.
+ */
+void evloop_add_periodic_task(struct evloop *, int, struct callback_obj *);
+
+/*
+ * Unregister a callback_obj by removing the associated descriptor from the
+ * EPOLL loop
+ */
+int evloop_del_callback(struct evloop *, struct callback_obj *);
+
+/*
+ * Rearm the file descriptor associated with a callback_obj for read action,
+ * making the event loop to monitor the callback for reading events
+ */
+int evloop_rearm_callback_read(struct evloop *, struct callback_obj *);
+
+/*
+ * Rearm the file descriptor associated with a callback_obj for write action,
+ * making the event loop to monitor the callback for writing events
+ */
+int evloop_rearm_callback_write(struct evloop *, struct callback_obj *);
+
+/* Epoll management functions */
+int epoll_add(int, int, int, void *);
+
+/*
+ * Modify an epoll-monitored descriptor, automatically set EPOLLONESHOT in
+ * addition to the other flags, which can be EPOLLIN for read and EPOLLOUT for
+ * write
+ */
+int epoll_mod(int, int, int, void *);
+
+/*
+ * Remove a descriptor from an epoll descriptor, making it no-longer monitored
+ * for events
+ */
+int epoll_del(int, int);
 
 /* I/O management functions */
+
+/*
+ * Send all data in a loop, avoiding interruption based on the kernel buffer
+ * availability
+ */
 int sendall(int, const unsigned char *, size_t, size_t *);
-ssize_t recvall(int, Ringbuffer *, size_t);
+
+/*
+ * Receive (read) an arbitrary number of bytes from a file descriptor and
+ * store them in a ringbuffer
+ */
 ssize_t recvbytes(int, Ringbuffer *, size_t);
 
 

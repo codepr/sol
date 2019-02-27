@@ -152,7 +152,7 @@ struct mqtt_suback {
 
     unsigned short pkt_id;
 
-    int *qos_list;
+    int *rcs;
 };
 
 
@@ -162,19 +162,29 @@ struct mqtt_publish {
 
     unsigned short pkt_id;
 
+    unsigned short topiclen;
     unsigned char *topic;
+    unsigned short payloadlen;
     unsigned char *payload;
 };
 
 
-struct mqtt_puback {
+struct mqtt_ack {
 
     union mqtt_header header;
 
-    int message_id;
-
-    unsigned char rc;
+    unsigned short pkt_id;
 };
+
+
+typedef struct mqtt_ack mqtt_puback;
+typedef struct mqtt_ack mqtt_pubrec;
+typedef struct mqtt_ack mqtt_pubrel;
+typedef struct mqtt_ack mqtt_pubcomp;
+typedef struct mqtt_ack mqtt_unsuback;
+typedef union mqtt_header mqtt_pingreq;
+typedef union mqtt_header mqtt_pingresp;
+typedef union mqtt_header mqtt_disconnect;
 
 
 union mqtt_packet {

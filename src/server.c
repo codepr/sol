@@ -42,16 +42,16 @@
 static struct sol_info info;
 
 
-typedef void callback(struct cb *, union mqtt_packet *);
+typedef void callback(struct callback_obj *, union mqtt_packet *);
 
 
 static void on_read(struct evloop *, void *);
 
-static void on_connect(struct cb *, union mqtt_packet *);
+static void on_connect(struct callback_obj *, union mqtt_packet *);
 
-static void on_subscribe(struct cb *, union mqtt_packet *);
+static void on_subscribe(struct callback_obj *, union mqtt_packet *);
 
-static void on_publish(struct cb *, union mqtt_packet *);
+static void on_publish(struct callback_obj *, union mqtt_packet *);
 
 
 static callback *callbacks[9] = {
@@ -166,7 +166,7 @@ err:
 }
 
 
-static void on_connect(struct cb *cb, union mqtt_packet *pkt) {
+static void on_connect(struct callback_obj *cb, union mqtt_packet *pkt) {
     printf("Command %u retain: %i qos: %u dup: %i type: %u\n",
            pkt->connect.header.byte,
            pkt->connect.header.bits.retain,
@@ -200,7 +200,7 @@ static void on_connect(struct cb *cb, union mqtt_packet *pkt) {
 }
 
 
-static void on_subscribe(struct cb *cb, union mqtt_packet *pkt) {
+static void on_subscribe(struct callback_obj *cb, union mqtt_packet *pkt) {
     printf("Command %u retain: %i qos: %u dup: %i type: %u\n",
            pkt->subscribe.header.byte,
            pkt->subscribe.header.bits.retain,
@@ -218,7 +218,7 @@ static void on_subscribe(struct cb *cb, union mqtt_packet *pkt) {
 }
 
 
-static void on_publish(struct cb *cb, union mqtt_packet *pkt) {
+static void on_publish(struct callback_obj *cb, union mqtt_packet *pkt) {
     printf("Command %u retain: %i qos: %u dup: %i type: %u\n",
            pkt->publish.header.byte,
            pkt->publish.header.bits.retain,
@@ -236,7 +236,7 @@ static void on_publish(struct cb *cb, union mqtt_packet *pkt) {
 
 static void on_write(struct evloop *loop, void *arg) {
 
-    struct cb *callback = arg;
+    struct callback_obj *callback = arg;
 
     size_t sent;
     if (sendall(callback->fd, callback->payload->data,
@@ -249,7 +249,7 @@ static void on_write(struct evloop *loop, void *arg) {
     callback->callback = on_read;
 
     /* Set up EPOLL event on EPOLLIN to read fds */
-    mod_epoll(loop->epollfd, callback->fd, EPOLLIN, callback);
+    evloop_rearm_callback_read(loop, callback);
 
     printf("Sent %ldb\n", sent);
 }
@@ -257,7 +257,7 @@ static void on_write(struct evloop *loop, void *arg) {
 /* Handle incoming requests, after being accepted or after a reply */
 static void on_read(struct evloop *loop, void *arg) {
 
-    struct cb *callback = arg;
+    struct callback_obj *callback = arg;
 
     /*
      * Raw bytes buffer to initialize the ring buffer, used to handle input
@@ -301,14 +301,17 @@ static void on_read(struct evloop *loop, void *arg) {
     if (bytes == -ERRPACKETERR)
         goto errdc;
 
+    /* Transfer all data received to an auxiliary buffer */
     ringbuf_dump(rbuf, buf);
 
+    /*
+     * Unpack received bytes into a mqtt_packet structure and execute the
+     * correct handler based on the type of the operation.
+     */
     union mqtt_packet packet;
-
     unpack_mqtt_packet(buf, &packet);
 
     union mqtt_header hdr = { .byte = flags };
-
     printf("Type %i\n", hdr.bits.type);
 
     /* Execute command callback */
@@ -320,7 +323,7 @@ static void on_read(struct evloop *loop, void *arg) {
      * Reset handler to read_handler in order to read new incoming data and
      * EPOLL event for read fds
      */
-    mod_epoll(loop->epollfd, callback->fd, EPOLLOUT, callback);
+    evloop_rearm_callback_write(loop, callback);
 
 exit:
     /* Free ring buffer as we alredy have all needed informations in memory */
@@ -393,13 +396,14 @@ static int accept_new_client(int fd, struct connection *conn) {
  */
 static void on_accept(struct evloop *loop, void *arg) {
 
-    struct connection *server_conn = arg;
+    /* struct connection *server_conn = arg; */
+    struct callback_obj *server = arg;
     struct connection conn;
 
-    accept_new_client(server_conn->fd, &conn);
+    accept_new_client(server->fd, &conn);
 
     /* Create a client structure to handle his context connection */
-    struct cb *client_cb = sol_malloc(sizeof(*client_cb));
+    struct callback_obj *client_cb = sol_malloc(sizeof(*client_cb));
     if (!client_cb)
         return;
 
@@ -410,10 +414,10 @@ static void on_accept(struct evloop *loop, void *arg) {
     client_cb->callback = on_read;
 
     /* Add it to the epoll loop */
-    add_epoll(loop->epollfd, conn.fd, EPOLLIN, client_cb);
+    evloop_add_callback(loop, client_cb);
 
     /* Rearm server fd to accept new connections */
-    mod_epoll(loop->epollfd, server_conn->fd, EPOLLIN, server_conn);
+    evloop_rearm_callback_read(loop, server);
 
     /* Record the new client connected */
     info.nclients++;
@@ -433,18 +437,18 @@ static void run(struct evloop *loop) {
 
 int start_server(const char *addr, const char *port) {
 
-    struct cb server_cb;
+    struct callback_obj server_cb;
 
     /* Initialize the sockets, first the server one */
     server_cb.fd = make_listen(addr, port, conf->socket_family);
     server_cb.payload = NULL;
-    server_cb.args = &(struct connection) { .fd = server_cb.fd };
+    server_cb.args = &server_cb;
     server_cb.callback = on_accept;
 
     struct evloop *event_loop = evloop_create(EPOLL_MAX_EVENTS, EPOLL_TIMEOUT);
 
     /* Set socket in EPOLLIN flag mode, ready to read data */
-    add_epoll(event_loop->epollfd, server_cb.fd, EPOLLIN, &server_cb);
+    evloop_add_callback(event_loop, &server_cb);
 
     sol_info("Server start");
 
