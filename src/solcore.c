@@ -1,0 +1,76 @@
+/* BSD 2-Clause License
+ *
+ * Copyright (c) 2019, Andrea Giacomo Baldan
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice, this
+ *   list of conditions and the following disclaimer.
+ *
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <string.h>
+#include "util.h"
+#include "solcore.h"
+
+
+static int compare_cid(void *c1, void *c2) {
+    return strcmp(((struct sol_client *) c1)->client_id,
+                  ((struct sol_client *) c2)->client_id);
+}
+
+
+struct topic *topic_create(const char *name) {
+    struct topic *t = sol_malloc(sizeof(*t));
+    topic_init(t, name);
+    return t;
+}
+
+
+void topic_init(struct topic *t, const char *name) {
+    t->name = name;
+    t->subscribers = list_create(NULL);
+}
+
+
+void topic_add_subscriber(struct topic *t, struct sol_client *client) {
+    list_push(t->subscribers, client);
+}
+
+
+void topic_del_subscriber(struct topic *t, struct sol_client *client) {
+    list_remove_node(t->subscribers, client, compare_cid);
+}
+
+
+void sol_topic_add(struct sol *sol, struct topic *t) {
+    trie_insert(&sol->topics, t->name, t);
+}
+
+
+void sol_topic_del(struct sol *sol, const char *name) {
+    trie_delete(&sol->topics, name);
+}
+
+
+struct topic *sol_topic_select(struct sol *sol, const char *name) {
+    struct topic *ret_topic;
+    trie_find(&sol->topics, name, (void *) &ret_topic);
+    return ret_topic;
+}

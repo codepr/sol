@@ -31,7 +31,6 @@
 
 #include <stdio.h>
 #include <stdint.h>
-#include "ringbuf.h"
 
 
 // Socket families
@@ -157,13 +156,13 @@ int epoll_del(int, int);
  * Send all data in a loop, avoiding interruption based on the kernel buffer
  * availability
  */
-int sendall(int, const unsigned char *, size_t, size_t *);
+ssize_t send_bytes(int, const unsigned char *, size_t);
 
 /*
  * Receive (read) an arbitrary number of bytes from a file descriptor and
- * store them in a ringbuffer
+ * store them in a buffer
  */
-ssize_t recvbytes(int, Ringbuffer *, size_t);
+ssize_t recv_bytes(int, unsigned char *, size_t);
 
 
 #endif

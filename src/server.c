@@ -37,9 +37,13 @@
 #include "pack.h"
 #include "config.h"
 #include "server.h"
+#include "solcore.h"
 
 
 static struct sol_info info;
+
+
+static struct sol sol;
 
 
 typedef void callback(struct callback_obj *, union mqtt_packet *);
@@ -76,19 +80,11 @@ struct connection {
 };
 
 /*
- * Fixed size of the header of each packet, consists of essentially the first 2
- * bytes containing respectively the type of packet the total length in bytes
- * of the packet and the is_bulk flag which tell if the packet contains a
- * stream of commands or a single one
- */
-/* static const int HEADLEN = 2; */
-
-/*
  * Parse packet header, it is required at least the first 5 bytes in order to
  * read packet type and total length that we need to recv to complete the
  * packet.
  *
- * This function accept a socket fd, a ringbuffer to read incoming streams of
+ * This function accept a socket fd, a buffer to read incoming streams of
  * bytes and a structure formed by 3 fields:
  *
  * - opcode -> to set the OPCODE set in the incoming header, for simplicity
@@ -98,16 +94,16 @@ struct connection {
  * - flags -> flags pointer, copy the flag setting of the incoming packet,
  *            again for simplicity and convenience of the caller.
  */
-static ssize_t recv_packet(int clientfd, Ringbuffer *rbuf, unsigned *flags) {
+static ssize_t recv_packet(int clientfd, unsigned char *buf, unsigned *flags) {
 
     ssize_t nbytes = 0;
 
     /* Read the first byte, it should contain the message type code */
-    if ((nbytes = recvbytes(clientfd, rbuf, 1)) <= 0)
+    if ((nbytes = recv_bytes(clientfd, buf, 1)) <= 0)
         return -ERRCLIENTDC;
 
-    unsigned char byte;
-    ringbuf_peek(rbuf, &byte);
+    unsigned char byte = *buf;
+    buf++;
 
     if (DISCONNECT < byte || CONNECT > byte)
         return -ERRPACKETERR;
@@ -119,19 +115,19 @@ static ssize_t recv_packet(int clientfd, Ringbuffer *rbuf, unsigned *flags) {
      * bytes based on the size stored, so byte 2-5 is dedicated to the packet
      * length.
      */
-    unsigned char buf[4];
+    unsigned char buff[4];
     int count = 0;
     int n = 0;
     do {
-        if ((n = recvbytes(clientfd, rbuf, 1)) <= 0)
+        if ((n = recv_bytes(clientfd, buf+count, 1)) <= 0)
             return -ERRCLIENTDC;
-        ringbuf_peek_head(rbuf, &buf[count]);
-        continuation = buf[count] & (1 << 7);
+        buff[count] = buf[1];
+        continuation = buff[count] & (1 << 7);
         nbytes += n;
         count++;
     } while (continuation == 1);
 
-    unsigned char *pbuf = &buf[0];
+    unsigned char *pbuf = &buff[0];
     unsigned long long tlen = mqtt_decode_length(pbuf);
 
     /*
@@ -144,11 +140,9 @@ static ssize_t recv_packet(int clientfd, Ringbuffer *rbuf, unsigned *flags) {
     }
 
     /* Read remaining bytes to complete the packet */
-    while (ringbuf_size(rbuf) < tlen) {
-        if ((n = recvbytes(clientfd, rbuf, tlen)) < 0)
-            goto err;
-        nbytes += n;
-    }
+    if ((n = recv_bytes(clientfd, buf+1, tlen)) < 0)
+        goto err;
+    nbytes += n;
 
     *flags = byte;
 
@@ -238,17 +232,19 @@ static void on_write(struct evloop *loop, void *arg) {
 
     struct callback_obj *callback = arg;
 
-    size_t sent;
-    if (sendall(callback->fd, callback->payload->data,
-                callback->payload->size, &sent) < 0)
+    ssize_t sent;
+    if ((sent = send_bytes(callback->fd, callback->payload->data,
+                          callback->payload->size)) < 0)
         sol_error("server::write_handler %s", strerror(errno));
 
     // Update information stats
     info.noutputbytes += sent;
 
+    /*
+     * Re-arm callback by setting EPOLL event on EPOLLIN to read fds and
+     * re-assigning the callback `on_read` for the next event
+     */
     callback->callback = on_read;
-
-    /* Set up EPOLL event on EPOLLIN to read fds */
     evloop_rearm_callback_read(loop, callback);
 
     printf("Sent %ldb\n", sent);
@@ -259,18 +255,8 @@ static void on_read(struct evloop *loop, void *arg) {
 
     struct callback_obj *callback = arg;
 
-    /*
-     * Raw bytes buffer to initialize the ring buffer, used to handle input
-     * from client
-     */
+    /* Raw bytes buffer to handle input from client */
     unsigned char *buffer = sol_malloc(conf->max_request_size);
-
-    /*
-     * Ringbuffer pointer struct, helpful to handle different and unknown
-     * size of chunks of data which can result in partially formed packets or
-     * overlapping as well
-     */
-    Ringbuffer *rbuf = ringbuf_create(buffer, conf->max_request_size);
 
     ssize_t bytes = 0;
     unsigned flags;
@@ -281,9 +267,8 @@ static void on_read(struct evloop *loop, void *arg) {
      * complete packet as the first 4 bytes. By knowing it we know if the
      * packet is ready to be deserialized and used.
      */
-    bytes = recv_packet(callback->fd, rbuf, &flags);
+    bytes = recv_packet(callback->fd, buffer, &flags);
 
-    unsigned char buf[ringbuf_size(rbuf)];
     /*
      * Looks like we got a client disconnection.
      *
@@ -295,24 +280,20 @@ static void on_read(struct evloop *loop, void *arg) {
         goto exit;
 
     /*
-     * If a not correct packet received, we must free ringbuffer and reset the
+     * If a not correct packet received, we must free the buffer and reset the
      * handler to the request again, setting EPOLL to EPOLLIN
      */
     if (bytes == -ERRPACKETERR)
         goto errdc;
-
-    /* Transfer all data received to an auxiliary buffer */
-    ringbuf_dump(rbuf, buf);
 
     /*
      * Unpack received bytes into a mqtt_packet structure and execute the
      * correct handler based on the type of the operation.
      */
     union mqtt_packet packet;
-    unpack_mqtt_packet(buf, &packet);
+    unpack_mqtt_packet(buffer, &packet);
 
     union mqtt_header hdr = { .byte = flags };
-    printf("Type %i\n", hdr.bits.type);
 
     /* Execute command callback */
     callbacks[hdr.bits.type](callback, &packet);
@@ -326,17 +307,12 @@ static void on_read(struct evloop *loop, void *arg) {
     evloop_rearm_callback_write(loop, callback);
 
 exit:
-    /* Free ring buffer as we alredy have all needed informations in memory */
-    ringbuf_release(rbuf);
 
     sol_free(buffer);
 
     return;
 
 errdc:
-
-    /* Free ring buffer as we alredy have all needed informations in memory */
-    ringbuf_release(rbuf);
 
     sol_free(buffer);
 
@@ -436,6 +412,8 @@ static void run(struct evloop *loop) {
 
 
 int start_server(const char *addr, const char *port) {
+
+    trie_init(&sol.topics);
 
     struct callback_obj server_cb;
 

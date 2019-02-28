@@ -246,62 +246,63 @@ err:
 }
 
 /* Send all bytes contained in buf, updating sent bytes counter */
-int sendall(int sfd, const unsigned char *buf, size_t len, size_t *sent) {
+ssize_t send_bytes(int sfd, const unsigned char *buf, size_t len) {
+
     size_t total = 0;
     size_t bytesleft = len;
     ssize_t n = 0;
+
     while (total < len) {
         n = send(sfd, buf + total, bytesleft, MSG_NOSIGNAL);
         if (n == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
                 break;
-            else {
-                perror("send(2): error sending data\n");
-                break;
-            }
+            else
+                goto err;
         }
         total += n;
         bytesleft -= n;
     }
-    *sent = total;
-    return n == -1 ? -1 : 0;
+
+    return total;
+
+err:
+
+    fprintf(stderr, "send(2) - error sending data: %s", strerror(errno));
+    return -1;
 }
 
 /*
  * Receive a given number of bytes on the descriptor sfd, storing the stream of
- * data into a 2 Mb capped ringbuffer
+ * data into a 2 Mb capped buffer
  */
-ssize_t recvbytes(int sfd, Ringbuffer *ringbuf, size_t bufsize) {
+ssize_t recv_bytes(int fd, unsigned char *buf, size_t bufsize) {
+
     ssize_t n = 0;
     ssize_t total = 0;
-    unsigned char *buf = sol_malloc(bufsize);
+
     while (total < (ssize_t) bufsize) {
 
-        if ((n = recv(sfd, buf, bufsize - total, 0)) < 0) {
+        if ((n = recv(fd, buf, bufsize - total, 0)) < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 break;
-            } else {
-                perror("recv(2): error reading data\n");
-                sol_free(buf);
-                return -1;
-            }
+            } else
+                goto err;
         }
 
-        if (n == 0) {
-            sol_free(buf);
+        if (n == 0)
             return 0;
-        }
 
-        /* Insert all read bytes in the ring buffer */
-        // FIXME check the full ring buffer scenario
-        ringbuf_bulk_push(ringbuf, buf, n);
-
+        buf += n;
         total += n;
     }
 
-    sol_free(buf);
-
     return total;
+
+err:
+
+    fprintf(stderr, "recv(2) - error reading data: %s", strerror(errno));
+    return -1;
 }
 
 
