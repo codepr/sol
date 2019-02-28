@@ -30,6 +30,11 @@
 #ifndef MQTT_H
 #define MQTT_H
 
+
+#define MQTT_HEADER_LEN 2
+#define MQTT_ACK_LEN    4
+
+
 /* Message types */
 enum message_type {
     CONNECT     = 0x10,
@@ -152,7 +157,9 @@ struct mqtt_suback {
 
     unsigned short pkt_id;
 
-    int *rcs;
+    unsigned short rcslen;
+
+    unsigned char *rcs;
 };
 
 
@@ -189,8 +196,10 @@ typedef union mqtt_header mqtt_disconnect;
 
 union mqtt_packet {
 
+    struct mqtt_ack ack;
     struct mqtt_connect connect;
     struct mqtt_connack connack;
+    struct mqtt_suback suback;
     struct mqtt_publish publish;
     struct mqtt_subscribe subscribe;
     struct mqtt_unsubscribe unsubscribe;
@@ -198,15 +207,23 @@ union mqtt_packet {
 };
 
 
-int mqtt_encode_length(unsigned char *, size_t);
+int mqtt_encode_length(unsigned char **, size_t);
 
-unsigned long long mqtt_decode_length(const unsigned char *);
+unsigned long long mqtt_decode_length(const unsigned char **);
 
 int unpack_mqtt_packet(const unsigned char *, union mqtt_packet *);
 
 unsigned char *pack_mqtt_packet(const union mqtt_packet *, unsigned);
 
-struct mqtt_connack *mqtt_packet_connack(unsigned char , char *, size_t);
+union mqtt_header *mqtt_packet_header(unsigned char);
+
+struct mqtt_ack *mqtt_packet_ack(unsigned char , unsigned short);
+
+struct mqtt_connack *mqtt_packet_connack(unsigned char , char *);
+
+struct mqtt_publish *mqtt_packet_publish(unsigned char, unsigned short, size_t,
+                                         unsigned char *,
+                                         size_t, unsigned char *);
 
 
 #endif

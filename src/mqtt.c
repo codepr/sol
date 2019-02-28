@@ -54,7 +54,15 @@ static size_t unpack_mqtt_unsubscribe(const unsigned char *,
                                       union mqtt_packet *);
 
 
+static unsigned char *pack_mqtt_header(const union mqtt_header *);
+
+static unsigned char *pack_mqtt_ack(const union mqtt_packet *);
+
 static unsigned char *pack_mqtt_connack(const union mqtt_packet *);
+
+static unsigned char *pack_mqtt_suback(const union mqtt_packet *);
+
+static unsigned char *pack_mqtt_publish(const union mqtt_packet *);
 
 
 /* MQTT v3.1.1 standard */
@@ -79,14 +87,24 @@ static mqtt_unpack_handler *unpack_handlers[11] = {
 };
 
 
-static mqtt_pack_handler *pack_handlers[3] = {
+static mqtt_pack_handler *pack_handlers[13] = {
     NULL,
     NULL,
-    pack_mqtt_connack
+    pack_mqtt_connack,
+    pack_mqtt_publish,
+    pack_mqtt_ack,
+    pack_mqtt_ack,
+    pack_mqtt_ack,
+    pack_mqtt_ack,
+    NULL,
+    pack_mqtt_suback,
+    NULL,
+    pack_mqtt_ack,
+    NULL
 };
 
 
-int mqtt_encode_length(unsigned char *buf, size_t len) {
+int mqtt_encode_length(unsigned char **buf, size_t len) {
 
     int bytes = 0;
 
@@ -102,7 +120,7 @@ int mqtt_encode_length(unsigned char *buf, size_t len) {
 		if (len > 0)
 			d |= 0x80;
 
-		buf[bytes++] = d;
+		*buf[bytes++] = d;
 
     } while (len > 0);
 
@@ -110,17 +128,17 @@ int mqtt_encode_length(unsigned char *buf, size_t len) {
 }
 
 
-unsigned long long mqtt_decode_length(const unsigned char *buf) {
+unsigned long long mqtt_decode_length(const unsigned char **buf) {
 
     char c;
 	int multiplier = 1;
 	unsigned long long value = 0LL;
 
 	do {
-        c = *buf;
+        c = **buf;
 		value += (c & 127) * multiplier;
 		multiplier *= 128;
-        buf++;
+        (*buf)++;
     } while ((c & 128) != 0);
 
     return value;
@@ -134,18 +152,18 @@ static size_t unpack_mqtt_connect(const unsigned char *raw,
     struct mqtt_connect connect = { .header = *hdr };
     pkt->connect = connect;
 
-
+    const unsigned char *init = raw;
     /*
      * Second byte of the fixed header, contains the length of remaining bytes
      * of the connect packet
      */
-    size_t len = mqtt_decode_length(raw);
+    size_t len = mqtt_decode_length(&raw);
 
     /*
      * For now we ignore checks on protocol name and reserverd bits, just skip
      * to the 8th byte
      */
-    raw += 8;
+    raw = init + 8;
 
     /* Read variable header byte flags */
     pkt->connect.byte = unpack_u8((const uint8_t **) &raw);
@@ -208,8 +226,7 @@ static size_t unpack_mqtt_publish(const unsigned char *raw,
      * Second byte of the fixed header, contains the length of remaining bytes
      * of the connect packet
      */
-    size_t len = mqtt_decode_length(raw);
-    raw++;
+    size_t len = mqtt_decode_length(&raw);
 
     /* Read topic length and topic of the soon-to-be-published message */
     uint16_t topic_len = unpack_u16((const uint8_t **) &raw);
@@ -248,9 +265,8 @@ static size_t unpack_mqtt_subscribe(const unsigned char *raw,
      * Second byte of the fixed header, contains the length of remaining bytes
      * of the connect packet
      */
-    size_t len = mqtt_decode_length(raw);
+    size_t len = mqtt_decode_length(&raw);
     size_t remaining_bytes = len;
-    raw++;
 
     /* Read packet id */
     subscribe.pkt_id = unpack_u16((const uint8_t **) &raw);
@@ -301,9 +317,8 @@ static size_t unpack_mqtt_unsubscribe(const unsigned char *raw,
      * Second byte of the fixed header, contains the length of remaining bytes
      * of the connect packet
      */
-    size_t len = mqtt_decode_length(raw);
+    size_t len = mqtt_decode_length(&raw);
     size_t remaining_bytes = len;
-    raw++;
 
     /* Read packet id */
     unsubscribe.pkt_id = unpack_u16((const uint8_t **) &raw);
@@ -359,16 +374,90 @@ int unpack_mqtt_packet(const unsigned char *raw, union mqtt_packet *pkt) {
 }
 
 
+static unsigned char *pack_mqtt_header(const union mqtt_header *hdr) {
+
+    unsigned char *packed = sol_malloc(MQTT_HEADER_LEN);
+    unsigned char *ptr = packed;
+
+    pack_u8(&ptr, hdr->byte);
+    mqtt_encode_length(&ptr, 0);
+
+    return packed;
+}
+
+
+static unsigned char *pack_mqtt_ack(const union mqtt_packet *pkt) {
+
+    unsigned char *packed = sol_malloc(MQTT_ACK_LEN);
+    unsigned char *ptr = packed;
+
+    pack_u8(&ptr, pkt->ack.header.byte);
+    mqtt_encode_length(&ptr, 2);
+
+    pack_u16(&ptr, pkt->ack.pkt_id);
+
+    return packed;
+}
+
+
 static unsigned char *pack_mqtt_connack(const union mqtt_packet *pkt) {
 
-    unsigned char *packed = sol_malloc(4);
+    unsigned char *packed = sol_malloc(MQTT_ACK_LEN);
     unsigned char *ptr = packed;
 
     pack_u8(&ptr, pkt->connack.header.byte);
-    mqtt_encode_length(ptr++, 2);
+    mqtt_encode_length(&ptr, 2);
 
     pack_u8(&ptr, pkt->connack.byte);
     pack_u8(&ptr, pkt->connack.rc);
+
+    return packed;
+}
+
+
+static unsigned char *pack_mqtt_suback(const union mqtt_packet *pkt) {
+
+    size_t pktlen = MQTT_HEADER_LEN +
+        (2 * sizeof(uint16_t)) + pkt->suback.rcslen;
+    unsigned char *packed = sol_malloc(pktlen);
+    unsigned char *ptr = packed;
+
+    pack_u8(&ptr, pkt->suback.header.byte);
+    size_t len = sizeof(uint16_t) + pkt->suback.rcslen;
+    mqtt_encode_length(&ptr, len);
+
+    pack_u16(&ptr, pkt->suback.pkt_id);
+    for (int i = 0; i < pkt->suback.rcslen; i++)
+        pack_u8(&ptr, pkt->suback.rcs[i]);
+
+    return packed;
+}
+
+
+static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
+
+    /*
+     * We must calculate the total length of the packet including header and
+     * length field of the fixed header part
+     */
+    size_t pktlen = MQTT_HEADER_LEN + (2 * sizeof(uint16_t)) +
+        pkt->publish.topiclen + pkt->publish.payloadlen;
+
+    unsigned char *packed = sol_malloc(pktlen);
+    unsigned char *ptr = packed;
+
+    pack_u8(&ptr, pkt->publish.header.byte);
+
+    // Total len of the packet excluding fixed header len
+    size_t len = pkt->publish.topiclen +
+        pkt->publish.payloadlen + sizeof(uint16_t);
+    mqtt_encode_length(&ptr, len);
+
+    pack_u16(&ptr, pkt->publish.pkt_id);
+    pack_u16(&ptr, pkt->publish.topiclen);
+    pack_bytes(&ptr, pkt->publish.topic);
+    pack_u16(&ptr, pkt->publish.payloadlen);
+    pack_bytes(&ptr, pkt->publish.payload);
 
     return packed;
 }
@@ -380,14 +469,54 @@ unsigned char *pack_mqtt_packet(const union mqtt_packet *pkt, unsigned type) {
 }
 
 
-struct mqtt_connack *mqtt_packet_connack(unsigned char byte,
-                                         char *data, size_t len) {
+union mqtt_header *mqtt_packet_header(unsigned char byte) {
 
-    struct mqtt_connack *connack = sol_malloc(sizeof(*connack));
+    static union mqtt_header header;
 
-	connack->header.byte = byte;
-	connack->byte = unpack_u8((const uint8_t **) &data); /* connect flags */
-	connack->rc = unpack_u8((const uint8_t **) &data); /* reason code */
+    header.byte = byte;
 
-	return connack;
+    return &header;
+}
+
+
+struct mqtt_ack *mqtt_packet_ack(unsigned char byte, unsigned short pkt_id) {
+
+    static struct mqtt_ack ack;
+
+    ack.header.byte = byte;
+    ack.pkt_id = pkt_id;
+
+    return &ack;
+}
+
+
+struct mqtt_connack *mqtt_packet_connack(unsigned char byte, char *data) {
+
+    static struct mqtt_connack connack;
+
+	connack.header.byte = byte;
+	connack.byte = unpack_u8((const uint8_t **) &data); /* connect flags */
+	connack.rc = unpack_u8((const uint8_t **) &data); /* reason code */
+
+	return &connack;
+}
+
+
+struct mqtt_publish *mqtt_packet_publish(unsigned char byte,
+                                         unsigned short pkt_id,
+                                         size_t topiclen,
+                                         unsigned char *topic,
+                                         size_t payloadlen,
+                                         unsigned char *payload) {
+
+    struct mqtt_publish *publish = sol_malloc(sizeof(*publish));
+
+    publish->header.byte = byte;
+    publish->pkt_id = pkt_id;
+    publish->topiclen = topiclen;
+    publish->topic = topic;
+    publish->payloadlen = payloadlen;
+    publish->payload = payload;
+
+    return publish;
 }

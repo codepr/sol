@@ -127,8 +127,8 @@ static ssize_t recv_packet(int clientfd, unsigned char *buf, unsigned *flags) {
         count++;
     } while (continuation == 1);
 
-    unsigned char *pbuf = &buff[0];
-    unsigned long long tlen = mqtt_decode_length(pbuf);
+    const unsigned char *pbuf = &buff[0];
+    unsigned long long tlen = mqtt_decode_length(&pbuf);
 
     /*
      * Set return code to -ERRMAXREQSIZE in case the total packet len exceeds
@@ -182,15 +182,15 @@ static void on_connect(struct callback_obj *cb, union mqtt_packet *pkt) {
            pkt->connect.payload.password);
 
     union mqtt_packet *response = sol_malloc(sizeof(*response));
-    char data[2];
+    char data[MQTT_HEADER_LEN];
     unsigned char *pdata = (unsigned char *) &data[0];
     pack_u8(&pdata, 0);
     pack_u8(&pdata, 0);
-    response->connack = *mqtt_packet_connack(0, data, 2);
+    response->connack = *mqtt_packet_connack(0, data);
 
-    cb->payload = bytestring_create(4);
+    cb->payload = bytestring_create(MQTT_ACK_LEN);
     unsigned char *p = pack_mqtt_packet(response, 2);
-    memcpy(cb->payload->data, p, 4);
+    memcpy(cb->payload->data, p, MQTT_ACK_LEN);
 }
 
 
