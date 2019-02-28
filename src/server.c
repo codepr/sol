@@ -170,27 +170,10 @@ err:
 
 
 static void on_connect(struct callback_obj *cb, union mqtt_packet *pkt) {
-    printf("Command %u retain: %i qos: %u dup: %i type: %u\n",
-           pkt->connect.header.byte,
-           pkt->connect.header.bits.retain,
-           pkt->connect.header.bits.qos,
-           pkt->connect.header.bits.dup,
-           pkt->connect.header.bits.type);
-
-    printf("Flags: %u %u %u %u %u %u %u\n",
-           pkt->connect.byte,
-           pkt->connect.bits.clean_session,
-           pkt->connect.bits.password,
-           pkt->connect.bits.username,
-           pkt->connect.bits.will,
-           pkt->connect.bits.will_qos,
-           pkt->connect.bits.will_retain);
-
-    printf("Keepalive: %u\n", pkt->connect.payload.keepalive);
-
-    printf("Payload: %s %s\n",
-           pkt->connect.payload.username,
-           pkt->connect.payload.password);
+    sol_info("New client connected as %s (c%i, k%u)",
+             pkt->connect.payload.client_id,
+             pkt->connect.bits.clean_session,
+             pkt->connect.payload.keepalive);
 
     /*
      * Add the new connected client to the global map, if it is already
@@ -218,6 +201,8 @@ static void on_connect(struct callback_obj *cb, union mqtt_packet *pkt) {
     cb->payload = bytestring_create(MQTT_ACK_LEN);
     unsigned char *p = pack_mqtt_packet(response, 2);
     memcpy(cb->payload->data, p, MQTT_ACK_LEN);
+
+    sol_debug("Sending CONNACK to %s ()", pkt->connect.payload.client_id);
 }
 
 
@@ -255,30 +240,65 @@ static void on_subscribe(struct callback_obj *cb, union mqtt_packet *pkt) {
         // TODO check for callback correctly set to obj
 
         if (!t) {
-            struct topic *newt = topic_create(topic_name);
-            sol_topic_put(&sol, newt);
-            topic_add_subscriber(newt, cb->obj);
-        } else {
-            topic_add_subscriber(t, cb->obj);
+            t = topic_create(topic_name);
+            sol_topic_put(&sol, t);
         }
+
+        topic_add_subscriber(t, cb->obj);
     }
 
 }
 
 
 static void on_publish(struct callback_obj *cb, union mqtt_packet *pkt) {
-    printf("Command %u retain: %i qos: %u dup: %i type: %u\n",
-           pkt->publish.header.byte,
-           pkt->publish.header.bits.retain,
-           pkt->publish.header.bits.qos,
-           pkt->publish.header.bits.dup,
-           pkt->publish.header.bits.type);
+    struct sol_client *c = cb->obj;
+    sol_debug("Received PUBLISH from %s (d%i, q%u, r%i, m%u, ... (%i bytes))",
+              c->client_id,
+              pkt->publish.header.bits.dup,
+              pkt->publish.header.bits.qos,
+              pkt->publish.header.bits.retain,
+              pkt->publish.pkt_id,
+              pkt->publish.payloadlen);
 
-    printf("Packet ID: %u\n", pkt->publish.pkt_id);
+    struct topic *t = sol_topic_get(&sol, (const char *) pkt->publish.payload);
 
-    printf("Topic %s Payload %s\n",
-           pkt->publish.topic,
-           pkt->publish.payload);
+    if (!t) {
+        t = topic_create((const char *) pkt->publish.topic);
+        sol_topic_put(&sol, t);
+    }
+
+    struct list_node *cur = t->subscribers->head;
+    for (; cur; cur = cur->next) {
+        struct sol_client *sc = cur->data;
+        ssize_t sent;
+        if ((sent = send_bytes(sc->fd, pkt->publish.payload,
+                               pkt->publish.payloadlen)) < 0)
+            sol_error("server::on_publish %s", strerror(errno));
+
+        // Update information stats
+        info.noutputbytes += sent;
+
+    }
+
+    // TODO free publish
+
+    mqtt_puback *puback = mqtt_packet_ack(0, pkt->publish.pkt_id);
+
+    pkt->ack = *puback;
+
+    pack_mqtt_packet(pkt, PUBACK_TYPE);
+    /* printf("Command %u retain: %i qos: %u dup: %i type: %u\n", */
+    /*        pkt->publish.header.byte, */
+    /*        pkt->publish.header.bits.retain, */
+    /*        pkt->publish.header.bits.qos, */
+    /*        pkt->publish.header.bits.dup, */
+    /*        pkt->publish.header.bits.type); */
+    /*  */
+    /* printf("Packet ID: %u\n", pkt->publish.pkt_id); */
+    /*  */
+    /* printf("Topic %s Payload %s\n", */
+    /*        pkt->publish.topic, */
+    /*        pkt->publish.payload); */
 }
 
 
@@ -454,7 +474,7 @@ static void on_accept(struct evloop *loop, void *arg) {
     info.nclients++;
     info.nconnections++;
 
-    sol_debug("Client connection from %s", conn.ip);
+    sol_info("New connection from %s on port %s", conn.ip, conf->port);
 }
 
 
