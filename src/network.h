@@ -62,6 +62,7 @@ typedef void callback_fn(struct evloop *, void *);
  */
 struct callback_obj {
     int fd;
+    void *obj;
     void *args;
     struct bytestring *payload;
     callback_fn *callback;

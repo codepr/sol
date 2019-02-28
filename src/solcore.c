@@ -59,7 +59,7 @@ void topic_del_subscriber(struct topic *t, struct sol_client *client) {
 }
 
 
-void sol_topic_add(struct sol *sol, struct topic *t) {
+void sol_topic_put(struct sol *sol, struct topic *t) {
     trie_insert(&sol->topics, t->name, t);
 }
 
@@ -69,7 +69,7 @@ void sol_topic_del(struct sol *sol, const char *name) {
 }
 
 
-struct topic *sol_topic_select(struct sol *sol, const char *name) {
+struct topic *sol_topic_get(struct sol *sol, const char *name) {
     struct topic *ret_topic;
     trie_find(&sol->topics, name, (void *) &ret_topic);
     return ret_topic;

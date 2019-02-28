@@ -38,6 +38,7 @@
 #include "config.h"
 #include "server.h"
 #include "solcore.h"
+#include "hashtable.h"
 
 
 static struct sol_info info;
@@ -53,12 +54,14 @@ static void on_read(struct evloop *, void *);
 
 static void on_connect(struct callback_obj *, union mqtt_packet *);
 
+static void on_disconnect(struct callback_obj *, union mqtt_packet *);
+
 static void on_subscribe(struct callback_obj *, union mqtt_packet *);
 
 static void on_publish(struct callback_obj *, union mqtt_packet *);
 
 
-static callback *callbacks[9] = {
+static callback *callbacks[15] = {
     NULL,
     on_connect,
     NULL,
@@ -67,7 +70,13 @@ static callback *callbacks[9] = {
     NULL,
     NULL,
     NULL,
-    on_subscribe
+    on_subscribe,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    on_disconnect
 };
 
 /*
@@ -177,10 +186,28 @@ static void on_connect(struct callback_obj *cb, union mqtt_packet *pkt) {
            pkt->connect.bits.will_qos,
            pkt->connect.bits.will_retain);
 
+    printf("Keepalive: %u\n", pkt->connect.payload.keepalive);
+
     printf("Payload: %s %s\n",
            pkt->connect.payload.username,
            pkt->connect.payload.password);
 
+    /*
+     * Add the new connected client to the global map, if it is already
+     * connected, kick him out accordingly to the MQTT v3.1.1 specs.
+     */
+    struct sol_client *new_client = sol_malloc(sizeof(*new_client));
+    new_client->fd = cb->fd;
+    const char *cid = (const char *) pkt->connect.payload.client_id;
+    new_client->client_id = sol_strdup(cid);
+    hashtable_put(sol.clients, cid, new_client);
+
+    /* Substitute fd on callback with callback obj */
+    cb->obj = new_client;
+
+    //TODO kick already connected clients
+
+    /* Respond with a connack */
     union mqtt_packet *response = sol_malloc(sizeof(*response));
     char data[MQTT_HEADER_LEN];
     unsigned char *pdata = (unsigned char *) &data[0];
@@ -194,6 +221,15 @@ static void on_connect(struct callback_obj *cb, union mqtt_packet *pkt) {
 }
 
 
+static void on_disconnect(struct callback_obj *cb, union mqtt_packet *pkt) {
+  /* Handle disconnection request from client */
+    struct sol_client *c = cb->obj;
+    close(c->fd);
+    hashtable_del(sol.clients, c->client_id);
+    // TODO remove from all topic where it subscribed
+}
+
+
 static void on_subscribe(struct callback_obj *cb, union mqtt_packet *pkt) {
     printf("Command %u retain: %i qos: %u dup: %i type: %u\n",
            pkt->subscribe.header.byte,
@@ -204,10 +240,28 @@ static void on_subscribe(struct callback_obj *cb, union mqtt_packet *pkt) {
 
     printf("Packet ID: %u\n", pkt->subscribe.pkt_id);
 
-    for (unsigned i = 0; i < pkt->subscribe.tuples_len; i++)
+    for (unsigned i = 0; i < pkt->subscribe.tuples_len; i++) {
         printf("Topic: %s qos %u\n",
                pkt->subscribe.tuples[i].topic,
                pkt->subscribe.tuples[i].qos);
+
+        /*
+         * Check if the topic exists already or in case create it and store in
+         * the global map
+         */
+        const char *topic_name = (const char *) pkt->subscribe.tuples[i].topic;
+        struct topic *t = sol_topic_get(&sol, topic_name);
+
+        // TODO check for callback correctly set to obj
+
+        if (!t) {
+            struct topic *newt = topic_create(topic_name);
+            sol_topic_put(&sol, newt);
+            topic_add_subscriber(newt, cb->obj);
+        } else {
+            topic_add_subscriber(t, cb->obj);
+        }
+    }
 
 }
 
@@ -385,6 +439,7 @@ static void on_accept(struct evloop *loop, void *arg) {
 
     /* Populate client structure */
     client_cb->fd = conn.fd;
+    client_cb->obj = NULL;
     client_cb->payload = NULL;
     client_cb->args = client_cb;
     client_cb->callback = on_read;
@@ -410,10 +465,30 @@ static void run(struct evloop *loop) {
     }
 }
 
+/*
+ * Cleanup function to be passed in as destructor to the Hashtable for
+ * connecting clients
+ */
+static int client_destructor(struct hashtable_entry *entry) {
+
+    if (!entry)
+        return -1;
+
+    struct sol_client *client = entry->val;
+
+    if (client->client_id)
+        sol_free(client->client_id);
+
+    sol_free(client);
+
+    return 0;
+}
+
 
 int start_server(const char *addr, const char *port) {
 
     trie_init(&sol.topics);
+    sol.clients = hashtable_create(client_destructor);
 
     struct callback_obj server_cb;
 
@@ -431,6 +506,8 @@ int start_server(const char *addr, const char *port) {
     sol_info("Server start");
 
     run(event_loop);
+
+    hashtable_release(sol.clients);
 
     return 0;
 }

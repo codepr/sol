@@ -104,7 +104,7 @@ static mqtt_pack_handler *pack_handlers[13] = {
 };
 
 
-int mqtt_encode_length(unsigned char **buf, size_t len) {
+int mqtt_encode_length(unsigned char *buf, size_t len) {
 
     int bytes = 0;
 
@@ -120,7 +120,7 @@ int mqtt_encode_length(unsigned char **buf, size_t len) {
 		if (len > 0)
 			d |= 0x80;
 
-		*buf[bytes++] = d;
+		buf[bytes++] = d;
 
     } while (len > 0);
 
@@ -203,7 +203,7 @@ static size_t unpack_mqtt_connect(const unsigned char *raw,
                      pkt->connect.payload.username);
     }
 
-    /* Read the password if username flag is set */
+    /* Read the password if password flag is set */
     if (pkt->connect.bits.password == 1) {
         uint16_t password_len = unpack_u16((const uint8_t **) &raw);
         pkt->connect.payload.password = sol_malloc(password_len + 1);
@@ -368,7 +368,11 @@ int unpack_mqtt_packet(const unsigned char *raw, union mqtt_packet *pkt) {
         .byte = type
     };
 
-    rc = unpack_handlers[header.bits.type](++raw, &header, pkt);
+    if (header.bits.type == DISCONNECT_TYPE)
+        pkt->header = header;
+    else
+        /* Call the appropriate unpack handler based on the message type */
+        rc = unpack_handlers[header.bits.type](++raw, &header, pkt);
 
     return rc;
 }
@@ -380,7 +384,9 @@ static unsigned char *pack_mqtt_header(const union mqtt_header *hdr) {
     unsigned char *ptr = packed;
 
     pack_u8(&ptr, hdr->byte);
-    mqtt_encode_length(&ptr, 0);
+
+    /* Encode 0 length bytes, message like this have only a fixed header */
+    mqtt_encode_length(ptr, 0);
 
     return packed;
 }
@@ -392,7 +398,8 @@ static unsigned char *pack_mqtt_ack(const union mqtt_packet *pkt) {
     unsigned char *ptr = packed;
 
     pack_u8(&ptr, pkt->ack.header.byte);
-    mqtt_encode_length(&ptr, 2);
+    mqtt_encode_length(ptr, MQTT_HEADER_LEN);
+    ptr++;
 
     pack_u16(&ptr, pkt->ack.pkt_id);
 
@@ -406,7 +413,8 @@ static unsigned char *pack_mqtt_connack(const union mqtt_packet *pkt) {
     unsigned char *ptr = packed;
 
     pack_u8(&ptr, pkt->connack.header.byte);
-    mqtt_encode_length(&ptr, 2);
+    mqtt_encode_length(ptr, MQTT_HEADER_LEN);
+    ptr++;
 
     pack_u8(&ptr, pkt->connack.byte);
     pack_u8(&ptr, pkt->connack.rc);
@@ -424,11 +432,19 @@ static unsigned char *pack_mqtt_suback(const union mqtt_packet *pkt) {
 
     pack_u8(&ptr, pkt->suback.header.byte);
     size_t len = sizeof(uint16_t) + pkt->suback.rcslen;
-    mqtt_encode_length(&ptr, len);
+    int step = mqtt_encode_length(ptr, len);
+    ptr += step;
 
     pack_u16(&ptr, pkt->suback.pkt_id);
     for (int i = 0; i < pkt->suback.rcslen; i++)
         pack_u8(&ptr, pkt->suback.rcs[i]);
+
+    /*
+     * Add a NUL character, this way it is possible to call strlen on the
+     * buffer without the need to use additional data structure to store
+     * the size of the buffer. A viable basic solution for now.
+     */
+    *(++ptr) = '\0';
 
     return packed;
 }
@@ -451,19 +467,35 @@ static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
     // Total len of the packet excluding fixed header len
     size_t len = pkt->publish.topiclen +
         pkt->publish.payloadlen + sizeof(uint16_t);
-    mqtt_encode_length(&ptr, len);
+    int step = mqtt_encode_length(ptr, len);
+    ptr += step;
 
+    // Packet id
     pack_u16(&ptr, pkt->publish.pkt_id);
+
+    // Topic len followed by topic name in bytes
     pack_u16(&ptr, pkt->publish.topiclen);
     pack_bytes(&ptr, pkt->publish.topic);
+
+    // Finally the payload, same way of topic, payload len -> payload
     pack_u16(&ptr, pkt->publish.payloadlen);
     pack_bytes(&ptr, pkt->publish.payload);
+
+    /*
+     * Add a NUL character, this way it is possible to call strlen on the
+     * buffer without the need to use additional data structure to store
+     * the size of the buffer. A viable basic solution for now.
+     */
+    *(++ptr) = '\0';
 
     return packed;
 }
 
 
 unsigned char *pack_mqtt_packet(const union mqtt_packet *pkt, unsigned type) {
+
+    if (type == PINGREQ_TYPE || type == PINGRESP_TYPE)
+        return pack_mqtt_header(&pkt->header);
 
     return pack_handlers[type](pkt);
 }

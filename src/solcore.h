@@ -30,6 +30,7 @@
 
 #include "trie.h"
 #include "list.h"
+#include "hashtable.h"
 
 
 struct topic {
@@ -39,6 +40,7 @@ struct topic {
 
 
 struct sol {
+    HashTable *clients;
     Trie topics;
 };
 
@@ -57,11 +59,12 @@ void topic_add_subscriber(struct topic *, struct sol_client *);
 
 void topic_del_subscriber(struct topic *, struct sol_client *);
 
-void sol_topic_add(struct sol *, struct topic *);
+void sol_topic_put(struct sol *, struct topic *);
 
 void sol_topic_del(struct sol *, const char *);
 
-struct topic *sol_topic_select(struct sol *, const char *);
+/* Find a topic by name and return it */
+struct topic *sol_topic_get(struct sol *, const char *);
 
 
 #endif

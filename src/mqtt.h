@@ -36,7 +36,7 @@
 
 
 /* Message types */
-enum message_type {
+enum message_opcode {
     CONNECT     = 0x10,
     CONNACK     = 0x20,
     PUBLISH     = 0x30,
@@ -51,6 +51,24 @@ enum message_type {
     PINGREQ     = 0xC0,
     PINGRESP    = 0xD0,
     DISCONNECT  = 0xE0
+};
+
+
+enum message_type {
+    CONNECT_TYPE     = 1,
+    CONNACK_TYPE     = 2,
+    PUBLISH_TYPE     = 3,
+    PUBACK_TYPE      = 4,
+    PUBREC_TYPE      = 5,
+    PUBREL_TYPE      = 6,
+    PUBCOMP_TYPE     = 7,
+    SUBSCRIBE_TYPE   = 8,
+    SUBACK_TYPE      = 9,
+    UNSUBSCRIBE_TYPE = 10,
+    UNSUBACK_TYPE    = 11,
+    PINGREQ_TYPE     = 12,
+    PINGRESP_TYPE    = 13,
+    DISCONNECT_TYPE  = 14
 };
 
 
@@ -129,7 +147,7 @@ struct mqtt_subscribe {
     unsigned short tuples_len;
 
     struct {
-        int topic_len;
+        unsigned short topic_len;
         unsigned char *topic;
         unsigned qos;
     } *tuples;
@@ -145,7 +163,7 @@ struct mqtt_unsubscribe {
     unsigned short tuples_len;
 
     struct {
-        int topic_len;
+        unsigned short topic_len;
         unsigned char *topic;
     } *tuples;
 };
@@ -197,6 +215,7 @@ typedef union mqtt_header mqtt_disconnect;
 union mqtt_packet {
 
     struct mqtt_ack ack;
+    union mqtt_header header;
     struct mqtt_connect connect;
     struct mqtt_connack connack;
     struct mqtt_suback suback;
@@ -207,7 +226,7 @@ union mqtt_packet {
 };
 
 
-int mqtt_encode_length(unsigned char **, size_t);
+int mqtt_encode_length(unsigned char *, size_t);
 
 unsigned long long mqtt_decode_length(const unsigned char **);
 

@@ -246,14 +246,14 @@ err:
 }
 
 /* Send all bytes contained in buf, updating sent bytes counter */
-ssize_t send_bytes(int sfd, const unsigned char *buf, size_t len) {
+ssize_t send_bytes(int fd, const unsigned char *buf, size_t len) {
 
     size_t total = 0;
     size_t bytesleft = len;
     ssize_t n = 0;
 
     while (total < len) {
-        n = send(sfd, buf + total, bytesleft, MSG_NOSIGNAL);
+        n = send(fd, buf + total, bytesleft, MSG_NOSIGNAL);
         if (n == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
                 break;
@@ -273,7 +273,7 @@ err:
 }
 
 /*
- * Receive a given number of bytes on the descriptor sfd, storing the stream of
+ * Receive a given number of bytes on the descriptor fd, storing the stream of
  * data into a 2 Mb capped buffer
  */
 ssize_t recv_bytes(int fd, unsigned char *buf, size_t bufsize) {
