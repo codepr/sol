@@ -456,10 +456,13 @@ static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
      * We must calculate the total length of the packet including header and
      * length field of the fixed header part
      */
-    size_t pktlen = MQTT_HEADER_LEN + (2 * sizeof(uint16_t)) +
+    size_t pktlen = MQTT_HEADER_LEN + sizeof(uint16_t) +
         pkt->publish.topiclen + pkt->publish.payloadlen;
 
-    unsigned char *packed = sol_malloc(pktlen);
+    if (pkt->header.bits.qos > 0)
+        pktlen += sizeof(uint16_t);
+
+    unsigned char *packed = sol_malloc(pktlen + 2);
     unsigned char *ptr = packed;
 
     pack_u8(&ptr, pkt->publish.header.byte);
@@ -471,14 +474,14 @@ static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
     ptr += step;
 
     // Packet id
-    pack_u16(&ptr, pkt->publish.pkt_id);
+    if (pkt->header.bits.qos > 0)
+        pack_u16(&ptr, pkt->publish.pkt_id);
 
     // Topic len followed by topic name in bytes
     pack_u16(&ptr, pkt->publish.topiclen);
     pack_bytes(&ptr, pkt->publish.topic);
 
     // Finally the payload, same way of topic, payload len -> payload
-    pack_u16(&ptr, pkt->publish.payloadlen);
     pack_bytes(&ptr, pkt->publish.payload);
 
     /*
@@ -527,11 +530,33 @@ struct mqtt_connack *mqtt_packet_connack(unsigned char byte, char *data) {
     static struct mqtt_connack connack;
 
 	connack.header.byte = byte;
+    connack.header.bits.type = CONNACK_TYPE;
+    connack.header.bits.dup = 0;
+    connack.header.bits.qos = 0;
+    connack.header.bits.retain = 0;
 	connack.byte = unpack_u8((const uint8_t **) &data); /* connect flags */
 	connack.rc = unpack_u8((const uint8_t **) &data); /* reason code */
 
 	return &connack;
 }
+
+
+struct mqtt_suback *mqtt_packet_suback(unsigned char byte,
+                                       unsigned short pkt_id,
+                                       unsigned char *rcs,
+                                       unsigned short rcslen) {
+
+    struct mqtt_suback *suback = sol_malloc(sizeof(*suback));
+
+    suback->header.byte = byte;
+    suback->header.bits.type = SUBACK_TYPE;
+    suback->pkt_id = pkt_id;
+    suback->rcslen = rcslen;
+    suback->rcs = (unsigned char *) sol_strdup((const char *) rcs);
+
+    return suback;
+}
+
 
 
 struct mqtt_publish *mqtt_packet_publish(unsigned char byte,

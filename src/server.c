@@ -47,18 +47,18 @@ static struct sol_info info;
 static struct sol sol;
 
 
-typedef void callback(struct callback_obj *, union mqtt_packet *);
+typedef int callback(struct callback_obj *, union mqtt_packet *);
 
 
 static void on_read(struct evloop *, void *);
 
-static void on_connect(struct callback_obj *, union mqtt_packet *);
+static int on_connect(struct callback_obj *, union mqtt_packet *);
 
-static void on_disconnect(struct callback_obj *, union mqtt_packet *);
+static int on_disconnect(struct callback_obj *, union mqtt_packet *);
 
-static void on_subscribe(struct callback_obj *, union mqtt_packet *);
+static int on_subscribe(struct callback_obj *, union mqtt_packet *);
 
-static void on_publish(struct callback_obj *, union mqtt_packet *);
+static int on_publish(struct callback_obj *, union mqtt_packet *);
 
 
 static callback *callbacks[15] = {
@@ -169,7 +169,7 @@ err:
 }
 
 
-static void on_connect(struct callback_obj *cb, union mqtt_packet *pkt) {
+static int on_connect(struct callback_obj *cb, union mqtt_packet *pkt) {
     sol_info("New client connected as %s (c%i, k%u)",
              pkt->connect.payload.client_id,
              pkt->connect.bits.clean_session,
@@ -203,19 +203,23 @@ static void on_connect(struct callback_obj *cb, union mqtt_packet *pkt) {
     memcpy(cb->payload->data, p, MQTT_ACK_LEN);
 
     sol_debug("Sending CONNACK to %s (0, 0)", pkt->connect.payload.client_id);
+
+    return 0;
 }
 
 
-static void on_disconnect(struct callback_obj *cb, union mqtt_packet *pkt) {
+static int on_disconnect(struct callback_obj *cb, union mqtt_packet *pkt) {
   /* Handle disconnection request from client */
     struct sol_client *c = cb->obj;
     close(c->fd);
     hashtable_del(sol.clients, c->client_id);
+
     // TODO remove from all topic where it subscribed
+    return 0;
 }
 
 
-static void on_subscribe(struct callback_obj *cb, union mqtt_packet *pkt) {
+static int on_subscribe(struct callback_obj *cb, union mqtt_packet *pkt) {
 
     struct sol_client *c = cb->obj;
 
@@ -230,7 +234,7 @@ static void on_subscribe(struct callback_obj *cb, union mqtt_packet *pkt) {
         const char *topic_name = (const char *) pkt->subscribe.tuples[i].topic;
         struct topic *t = sol_topic_get(&sol, topic_name);
 
-        sol_debug("\t%s QoS %i", topic_name, pkt->subscribe.tuples[i].qos);
+        sol_debug("\t%s (QoS %i)", topic_name, pkt->subscribe.tuples[i].qos);
 
         // TODO check for callback correctly set to obj
 
@@ -242,10 +246,29 @@ static void on_subscribe(struct callback_obj *cb, union mqtt_packet *pkt) {
         topic_add_subscriber(t, cb->obj);
     }
 
+    unsigned char rcs[pkt->subscribe.tuples_len];
+
+    // For now we just make all 0s as return codes
+    for (unsigned i = 0; i < pkt->subscribe.tuples_len; i++)
+        rcs[i] = 0;
+
+    struct mqtt_suback *suback = mqtt_packet_suback(0, pkt->subscribe.pkt_id,
+                                                    rcs,
+                                                    pkt->subscribe.tuples_len);
+
+    pkt->suback = *suback;
+    unsigned char *packed = pack_mqtt_packet(pkt, SUBACK_TYPE);
+    size_t len = strlen((char *) packed);
+    cb->payload = bytestring_create(len);
+    memcpy(cb->payload->data, packed, len);
+
+    sol_debug("Sending SUBACK to %s", c->client_id);
+
+    return 0;
 }
 
 
-static void on_publish(struct callback_obj *cb, union mqtt_packet *pkt) {
+static int on_publish(struct callback_obj *cb, union mqtt_packet *pkt) {
 
     struct sol_client *c = cb->obj;
 
@@ -265,12 +288,16 @@ static void on_publish(struct callback_obj *cb, union mqtt_packet *pkt) {
         sol_topic_put(&sol, t);
     }
 
+    unsigned char *pub = pack_mqtt_packet(pkt, PUBLISH_TYPE);
+    size_t publen = strlen((char *) pub);
+    struct bytestring *payload = bytestring_create(publen);
+    memcpy(payload->data, pub, publen);
+
     struct list_node *cur = t->subscribers->head;
     for (; cur; cur = cur->next) {
         struct sol_client *sc = cur->data;
         ssize_t sent;
-        if ((sent = send_bytes(sc->fd, pkt->publish.payload,
-                               pkt->publish.payloadlen)) < 0)
+        if ((sent = send_bytes(sc->fd, payload->data, payload->size)) < 0)
             sol_error("server::on_publish %s", strerror(errno));
 
         // Update information stats
@@ -288,12 +315,22 @@ static void on_publish(struct callback_obj *cb, union mqtt_packet *pkt) {
 
     // TODO free publish
 
-    mqtt_puback *puback = mqtt_packet_ack(0, pkt->publish.pkt_id);
+    if (pkt->publish.header.bits.qos == 1) {
+        mqtt_puback *puback = mqtt_packet_ack(0, pkt->publish.pkt_id);
 
-    pkt->ack = *puback;
+        pkt->ack = *puback;
 
-    pack_mqtt_packet(pkt, PUBACK_TYPE);
+        unsigned char *packed = pack_mqtt_packet(pkt, PUBACK_TYPE);
+        size_t len = strlen((char *) packed);
+        cb->payload = bytestring_create(len);
+        memcpy(cb->payload->data, packed, len);
 
+        sol_debug("Sending PUBACK to %s", c->client_id);
+
+        return 0;
+    }
+
+    return 1;
 }
 
 
@@ -303,7 +340,7 @@ static void on_write(struct evloop *loop, void *arg) {
 
     ssize_t sent;
     if ((sent = send_bytes(callback->fd, callback->payload->data,
-                          callback->payload->size)) < 0)
+                           callback->payload->size)) < 0)
         sol_error("server::write_handler %s", strerror(errno));
 
     // Update information stats
@@ -315,8 +352,6 @@ static void on_write(struct evloop *loop, void *arg) {
      */
     callback->callback = on_read;
     evloop_rearm_callback_read(loop, callback);
-
-    sol_debug("Sent %ldb", sent);
 }
 
 /* Handle incoming requests, after being accepted or after a reply */
@@ -332,9 +367,9 @@ static void on_read(struct evloop *loop, void *arg) {
 
     /*
      * We must read all incoming bytes till an entire packet is received. This
-     * is achieved by using a custom protocol, which send the size of the
-     * complete packet as the first 4 bytes. By knowing it we know if the
-     * packet is ready to be deserialized and used.
+     * is achieved by following the MQTT v3.1.1 protocol specifications, which
+     * send the size of the remaining packet as the second byte. By knowing it
+     * we know if the packet is ready to be deserialized and used.
      */
     bytes = recv_packet(callback->fd, buffer, &flags);
 
@@ -365,15 +400,20 @@ static void on_read(struct evloop *loop, void *arg) {
     union mqtt_header hdr = { .byte = flags };
 
     /* Execute command callback */
-    callbacks[hdr.bits.type](callback, &packet);
+    int rc = callbacks[hdr.bits.type](callback, &packet);
 
-    callback->callback = on_write;
+    if (rc == 0) {
+        callback->callback = on_write;
 
-    /*
-     * Reset handler to read_handler in order to read new incoming data and
-     * EPOLL event for read fds
-     */
-    evloop_rearm_callback_write(loop, callback);
+        /*
+         * Reset handler to read_handler in order to read new incoming data and
+         * EPOLL event for read fds
+         */
+        evloop_rearm_callback_write(loop, callback);
+    } else {
+        callback->callback = on_read;
+        evloop_rearm_callback_read(loop, callback);
+    }
 
 exit:
 
