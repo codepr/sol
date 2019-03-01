@@ -410,6 +410,7 @@ int evloop_wait(struct evloop *el) {
                 perror ("epoll_wait(2)");
                 shutdown(el->events[i].data.fd, 0);
                 close(el->events[i].data.fd);
+                el->status = errno;
                 continue;
             }
 

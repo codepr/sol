@@ -235,12 +235,10 @@ static void *trie_node_insert(struct trie_node *root, const char *key,
      * change the trie size, otherwise 1 means that we added a new node,
      * effectively changing the size
      */
-    if (cursor->data) {
-        sol_free(cursor->data);
-    } else {
+    if (!cursor->data)
         (*size)++;
-        cursor->data = sol_strdup(data);
-    }
+
+    cursor->data = (void *) data;
 
     return cursor->data;
 }

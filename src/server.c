@@ -202,7 +202,7 @@ static void on_connect(struct callback_obj *cb, union mqtt_packet *pkt) {
     unsigned char *p = pack_mqtt_packet(response, 2);
     memcpy(cb->payload->data, p, MQTT_ACK_LEN);
 
-    sol_debug("Sending CONNACK to %s ()", pkt->connect.payload.client_id);
+    sol_debug("Sending CONNACK to %s (0, 0)", pkt->connect.payload.client_id);
 }
 
 
@@ -216,19 +216,12 @@ static void on_disconnect(struct callback_obj *cb, union mqtt_packet *pkt) {
 
 
 static void on_subscribe(struct callback_obj *cb, union mqtt_packet *pkt) {
-    printf("Command %u retain: %i qos: %u dup: %i type: %u\n",
-           pkt->subscribe.header.byte,
-           pkt->subscribe.header.bits.retain,
-           pkt->subscribe.header.bits.qos,
-           pkt->subscribe.header.bits.dup,
-           pkt->subscribe.header.bits.type);
 
-    printf("Packet ID: %u\n", pkt->subscribe.pkt_id);
+    struct sol_client *c = cb->obj;
 
     for (unsigned i = 0; i < pkt->subscribe.tuples_len; i++) {
-        printf("Topic: %s qos %u\n",
-               pkt->subscribe.tuples[i].topic,
-               pkt->subscribe.tuples[i].qos);
+
+        sol_debug("Received SUBSCRIBE from %s", c->client_id);
 
         /*
          * Check if the topic exists already or in case create it and store in
@@ -236,6 +229,8 @@ static void on_subscribe(struct callback_obj *cb, union mqtt_packet *pkt) {
          */
         const char *topic_name = (const char *) pkt->subscribe.tuples[i].topic;
         struct topic *t = sol_topic_get(&sol, topic_name);
+
+        sol_debug("\t%s QoS %i", topic_name, pkt->subscribe.tuples[i].qos);
 
         // TODO check for callback correctly set to obj
 
@@ -251,16 +246,19 @@ static void on_subscribe(struct callback_obj *cb, union mqtt_packet *pkt) {
 
 
 static void on_publish(struct callback_obj *cb, union mqtt_packet *pkt) {
+
     struct sol_client *c = cb->obj;
-    sol_debug("Received PUBLISH from %s (d%i, q%u, r%i, m%u, ... (%i bytes))",
+
+    sol_debug("Received PUBLISH from %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
               c->client_id,
               pkt->publish.header.bits.dup,
               pkt->publish.header.bits.qos,
               pkt->publish.header.bits.retain,
               pkt->publish.pkt_id,
+              pkt->publish.topic,
               pkt->publish.payloadlen);
 
-    struct topic *t = sol_topic_get(&sol, (const char *) pkt->publish.payload);
+    struct topic *t = sol_topic_get(&sol, (const char *) pkt->publish.topic);
 
     if (!t) {
         t = topic_create((const char *) pkt->publish.topic);
@@ -278,6 +276,14 @@ static void on_publish(struct callback_obj *cb, union mqtt_packet *pkt) {
         // Update information stats
         info.noutputbytes += sent;
 
+        sol_debug("Sending PUBLISH to %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
+              sc->client_id,
+              pkt->publish.header.bits.dup,
+              pkt->publish.header.bits.qos,
+              pkt->publish.header.bits.retain,
+              pkt->publish.pkt_id,
+              pkt->publish.topic,
+              pkt->publish.payloadlen);
     }
 
     // TODO free publish
@@ -287,18 +293,7 @@ static void on_publish(struct callback_obj *cb, union mqtt_packet *pkt) {
     pkt->ack = *puback;
 
     pack_mqtt_packet(pkt, PUBACK_TYPE);
-    /* printf("Command %u retain: %i qos: %u dup: %i type: %u\n", */
-    /*        pkt->publish.header.byte, */
-    /*        pkt->publish.header.bits.retain, */
-    /*        pkt->publish.header.bits.qos, */
-    /*        pkt->publish.header.bits.dup, */
-    /*        pkt->publish.header.bits.type); */
-    /*  */
-    /* printf("Packet ID: %u\n", pkt->publish.pkt_id); */
-    /*  */
-    /* printf("Topic %s Payload %s\n", */
-    /*        pkt->publish.topic, */
-    /*        pkt->publish.payload); */
+
 }
 
 
@@ -321,7 +316,7 @@ static void on_write(struct evloop *loop, void *arg) {
     callback->callback = on_read;
     evloop_rearm_callback_read(loop, callback);
 
-    printf("Sent %ldb\n", sent);
+    sol_debug("Sent %ldb", sent);
 }
 
 /* Handle incoming requests, after being accepted or after a reply */

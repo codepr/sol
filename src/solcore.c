@@ -50,7 +50,7 @@ void topic_init(struct topic *t, const char *name) {
 
 
 void topic_add_subscriber(struct topic *t, struct sol_client *client) {
-    list_push(t->subscribers, client);
+    t->subscribers = list_push(t->subscribers, client);
 }
 
 
