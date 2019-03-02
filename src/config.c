@@ -205,6 +205,8 @@ static void add_config_value(const char *key, const char *value) {
     } else if (STREQ("tcp_backlog", key, klen) == true) {
         int tcp_backlog = parse_int(value);
         config.tcp_backlog = tcp_backlog <= SOMAXCONN ? tcp_backlog : SOMAXCONN;
+    } else if (STREQ("stats_publish_interval", key, klen) == true) {
+        config.stats_pub_interval = read_time_with_mul(value);
     }
 }
 
@@ -310,7 +312,7 @@ void config_print(void) {
             if (lmap[i].loglevel == config.loglevel)
                 llevel = lmap[i].lname;
         }
-        sol_info("Sol is starting");
+        sol_info("Sol v%s is starting", VERSION);
         sol_info("Network settings:");
         sol_info("\tSocket family: %s", sfamily);
         if (config.socket_family == UNIX) {

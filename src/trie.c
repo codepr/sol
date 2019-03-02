@@ -451,7 +451,7 @@ List *trie_prefix_find(const Trie *trie, const char *prefix) {
     // Check all possible sub-paths and add the resulting key to the result
     size_t plen = strlen(prefix);
     char str[plen + 1];
-    strncpy(str, prefix, plen);
+    memcpy(str, prefix, plen);
     str[plen] = '\0';
 
     // Recursive function call

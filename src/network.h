@@ -50,7 +50,7 @@ struct evloop {
 } evloop;
 
 
-typedef void callback_fn(struct evloop *, void *);
+typedef void callback(struct evloop *, void *);
 
 /*
  * Callback object, represents a callback function with an associated
@@ -60,12 +60,12 @@ typedef void callback_fn(struct evloop *, void *);
  * a callback, ready to be sent through wire and a function pointer to the
  * callback function to execute.
  */
-struct callback_obj {
+struct closure {
     int fd;
     void *obj;
     void *args;
     struct bytestring *payload;
-    callback_fn *callback;
+    callback *call;
 };
 
 
@@ -106,34 +106,34 @@ void evloop_free(struct evloop *);
 int evloop_wait(struct evloop *);
 
 /*
- * Register a callback_obj with a function to be executed every time the
+ * Register a closure with a function to be executed every time the
  * paired descriptor is re-armed.
  */
-void evloop_add_callback(struct evloop *, struct callback_obj *);
+void evloop_add_callback(struct evloop *, struct closure *);
 
 /*
- * Register a periodic callback_obj with a function to be executed every
+ * Register a periodic closure with a function to be executed every
  * defined interval of time.
  */
-void evloop_add_periodic_task(struct evloop *, int, struct callback_obj *);
+void evloop_add_periodic_task(struct evloop *, int, struct closure *);
 
 /*
- * Unregister a callback_obj by removing the associated descriptor from the
+ * Unregister a closure by removing the associated descriptor from the
  * EPOLL loop
  */
-int evloop_del_callback(struct evloop *, struct callback_obj *);
+int evloop_del_callback(struct evloop *, struct closure *);
 
 /*
- * Rearm the file descriptor associated with a callback_obj for read action,
+ * Rearm the file descriptor associated with a closure for read action,
  * making the event loop to monitor the callback for reading events
  */
-int evloop_rearm_callback_read(struct evloop *, struct callback_obj *);
+int evloop_rearm_callback_read(struct evloop *, struct closure *);
 
 /*
- * Rearm the file descriptor associated with a callback_obj for write action,
+ * Rearm the file descriptor associated with a closure for write action,
  * making the event loop to monitor the callback for writing events
  */
-int evloop_rearm_callback_write(struct evloop *, struct callback_obj *);
+int evloop_rearm_callback_write(struct evloop *, struct closure *);
 
 /* Epoll management functions */
 int epoll_add(int, int, int, void *);

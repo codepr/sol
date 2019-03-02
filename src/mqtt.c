@@ -237,7 +237,7 @@ static size_t unpack_mqtt_publish(const unsigned char *raw,
     uint16_t message_len = len;
 
     /* Read packet id */
-    if (publish.header.bits.qos > 0) {
+    if (publish.header.bits.qos > AT_MOST_ONCE) {
         pkt->publish.pkt_id = unpack_u16((const uint8_t **) &raw);
         message_len -= sizeof(uint16_t);
     }
@@ -451,8 +451,13 @@ static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
     size_t pktlen = MQTT_HEADER_LEN + sizeof(uint16_t) +
         pkt->publish.topiclen + pkt->publish.payloadlen;
 
-    if (pkt->header.bits.qos > 0)
+    // Total len of the packet excluding fixed header len
+    size_t len = 0L;
+
+    if (pkt->header.bits.qos > AT_MOST_ONCE) {
         pktlen += sizeof(uint16_t);
+        len += sizeof(uint16_t);
+    }
 
     unsigned char *packed = sol_malloc(pktlen);
     unsigned char *ptr = packed;
@@ -460,11 +465,7 @@ static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
     pack_u8(&ptr, pkt->publish.header.byte);
 
     // Total len of the packet excluding fixed header len
-    size_t len = pkt->publish.topiclen +
-        pkt->publish.payloadlen + sizeof(uint16_t);
-
-    if (pkt->header.bits.qos > 0)
-        len += sizeof(uint16_t);
+    len += pkt->publish.topiclen + pkt->publish.payloadlen + sizeof(uint16_t);
 
     /*
      * TODO handle case where step is > 1, e.g. when a message longer than 128
@@ -474,7 +475,7 @@ static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
     ptr += step;
 
     // Packet id
-    if (pkt->header.bits.qos > 0)
+    if (pkt->header.bits.qos > AT_MOST_ONCE)
         pack_u16(&ptr, pkt->publish.pkt_id);
 
     // Topic len followed by topic name in bytes

@@ -336,14 +336,14 @@ void evloop_free(struct evloop *loop) {
 }
 
 
-void evloop_add_callback(struct evloop *loop, struct callback_obj *cb) {
+void evloop_add_callback(struct evloop *loop, struct closure *cb) {
     if (epoll_add(loop->epollfd, cb->fd, EPOLLIN, cb) < 0)
         perror("Epoll register callback: ");
 }
 
 
 void evloop_add_periodic_task(struct evloop *loop, int ns,
-                              struct callback_obj *cb) {
+                              struct closure *cb) {
 
     struct itimerspec timervalue;
 
@@ -415,8 +415,8 @@ int evloop_wait(struct evloop *el) {
             }
 
             /* No error events, proeed to run callback */
-            struct callback_obj *cb_obj = el->events[i].data.ptr;
-            cb_obj->callback(el, cb_obj->args);
+            struct closure *cb_obj = el->events[i].data.ptr;
+            cb_obj->call(el, cb_obj->args);
         }
     }
 
@@ -424,17 +424,17 @@ int evloop_wait(struct evloop *el) {
 }
 
 
-int evloop_rearm_callback_read(struct evloop *el, struct callback_obj *cb) {
+int evloop_rearm_callback_read(struct evloop *el, struct closure *cb) {
     return epoll_mod(el->epollfd, cb->fd, EPOLLIN, cb);
 }
 
 
-int evloop_rearm_callback_write(struct evloop *el, struct callback_obj *cb) {
+int evloop_rearm_callback_write(struct evloop *el, struct closure *cb) {
     return epoll_mod(el->epollfd, cb->fd, EPOLLOUT, cb);
 }
 
 
-int evloop_del_callback(struct evloop *el, struct callback_obj *cb) {
+int evloop_del_callback(struct evloop *el, struct closure *cb) {
     return epoll_del(el->epollfd, cb->fd);
 }
 
