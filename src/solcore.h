@@ -41,6 +41,7 @@ struct topic {
 
 struct sol {
     HashTable *clients;
+    HashTable *closures;
     Trie topics;
 };
 
@@ -51,11 +52,17 @@ struct sol_client {
 };
 
 
+struct subscriber {
+    unsigned qos;
+    struct sol_client *client;
+};
+
+
 struct topic *topic_create(const char *);
 
 void topic_init(struct topic *, const char *);
 
-void topic_add_subscriber(struct topic *, struct sol_client *);
+void topic_add_subscriber(struct topic *, struct sol_client *, unsigned);
 
 void topic_del_subscriber(struct topic *, struct sol_client *);
 

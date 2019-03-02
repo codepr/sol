@@ -31,6 +31,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include "util.h"
 
 
 // Socket families
@@ -64,6 +65,7 @@ struct closure {
     int fd;
     void *obj;
     void *args;
+    char closure_id[UUID_LEN];
     struct bytestring *payload;
     callback *call;
 };

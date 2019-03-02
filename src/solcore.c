@@ -31,8 +31,8 @@
 
 
 static int compare_cid(void *c1, void *c2) {
-    return strcmp(((struct sol_client *) c1)->client_id,
-                  ((struct sol_client *) c2)->client_id);
+    return strcmp(((struct subscriber *) c1)->client->client_id,
+                  ((struct subscriber *) c2)->client->client_id);
 }
 
 
@@ -49,8 +49,13 @@ void topic_init(struct topic *t, const char *name) {
 }
 
 
-void topic_add_subscriber(struct topic *t, struct sol_client *client) {
-    t->subscribers = list_push(t->subscribers, client);
+void topic_add_subscriber(struct topic *t,
+                          struct sol_client *client,
+                          unsigned qos) {
+    struct subscriber *sub = sol_malloc(sizeof(*sub));
+    sub->client = client;
+    sub->qos = qos;
+    t->subscribers = list_push(t->subscribers, sub);
 }
 
 

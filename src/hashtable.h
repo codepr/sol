@@ -78,6 +78,9 @@ void hashtable_release(HashTable *);
 /* Return hashtable size */
 size_t hashtable_size(const HashTable *);
 
+/* Check if a key is already stored in the hashtable */
+int hashtable_exists(HashTable *, const char *);
+
 /*
  * Insert a new key-value pair into the hashtable, accept a const char * as
  * key and a void * for value

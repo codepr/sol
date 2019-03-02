@@ -192,6 +192,12 @@ size_t hashtable_size(const HashTable *table) {
     return table->size;
 }
 
+
+int hashtable_exists(HashTable *table, const char *key) {
+    void *ret = hashtable_get(table, key);
+    return !ret ? 0 : 1;
+}
+
 /* Add a new key-value pair into the hashtable entries array, use chaining in
    case of collision. */
 int hashtable_put(HashTable *table, const char *key, void *val) {

@@ -249,5 +249,7 @@ struct mqtt_publish *mqtt_packet_publish(unsigned char, unsigned short, size_t,
                                          unsigned char *,
                                          size_t, unsigned char *);
 
+void mqtt_packet_release(union mqtt_packet *, unsigned);
+
 
 #endif

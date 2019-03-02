@@ -53,6 +53,10 @@ static size_t unpack_mqtt_unsubscribe(const unsigned char *,
                                       union mqtt_header *,
                                       union mqtt_packet *);
 
+static size_t unpack_mqtt_ack(const unsigned char *,
+                              union mqtt_header *,
+                              union mqtt_packet *);
+
 
 static unsigned char *pack_mqtt_header(const union mqtt_header *);
 
@@ -77,10 +81,10 @@ static mqtt_unpack_handler *unpack_handlers[11] = {
     unpack_mqtt_connect,
     NULL,
     unpack_mqtt_publish,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
+    unpack_mqtt_ack,
+    unpack_mqtt_ack,
+    unpack_mqtt_ack,
+    unpack_mqtt_ack,
     unpack_mqtt_subscribe,
     NULL,
     unpack_mqtt_unsubscribe
@@ -127,7 +131,13 @@ int mqtt_encode_length(unsigned char *buf, size_t len) {
     return bytes;
 }
 
-
+/*
+ * Decode Remaining Length comprised of Variable Header and Payload if
+ * present. It does not take into account the bytes for storing length. Refer
+ * to MQTT v3.1.1 algorithm for the implementation suggestion.
+ *
+ * TODO Handle case where multiplier > 128 * 128 * 128
+ */
 unsigned long long mqtt_decode_length(const unsigned char **buf) {
 
     char c;
@@ -357,6 +367,25 @@ static size_t unpack_mqtt_unsubscribe(const unsigned char *raw,
 }
 
 
+static size_t unpack_mqtt_ack(const unsigned char *raw,
+                              union mqtt_header *hdr,
+                              union mqtt_packet *pkt) {
+
+    struct mqtt_ack ack = { .header = *hdr };
+
+    /*
+     * Second byte of the fixed header, contains the length of remaining bytes
+     * of the connect packet
+     */
+    size_t len = mqtt_decode_length(&raw);
+
+    ack.pkt_id = unpack_u16((const uint8_t **) &raw);
+    pkt->ack = ack;
+
+    return len;
+}
+
+
 int unpack_mqtt_packet(const unsigned char *raw, union mqtt_packet *pkt) {
 
     int rc = 0;
@@ -454,10 +483,8 @@ static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
     // Total len of the packet excluding fixed header len
     size_t len = 0L;
 
-    if (pkt->header.bits.qos > AT_MOST_ONCE) {
+    if (pkt->header.bits.qos > AT_MOST_ONCE)
         pktlen += sizeof(uint16_t);
-        len += sizeof(uint16_t);
-    }
 
     unsigned char *packed = sol_malloc(pktlen);
     unsigned char *ptr = packed;
@@ -465,7 +492,7 @@ static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
     pack_u8(&ptr, pkt->publish.header.byte);
 
     // Total len of the packet excluding fixed header len
-    len += pkt->publish.topiclen + pkt->publish.payloadlen + sizeof(uint16_t);
+    len += (pktlen - MQTT_HEADER_LEN);
 
     /*
      * TODO handle case where step is > 1, e.g. when a message longer than 128
@@ -474,13 +501,13 @@ static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
     int step = mqtt_encode_length(ptr, len);
     ptr += step;
 
-    // Packet id
-    if (pkt->header.bits.qos > AT_MOST_ONCE)
-        pack_u16(&ptr, pkt->publish.pkt_id);
-
     // Topic len followed by topic name in bytes
     pack_u16(&ptr, pkt->publish.topiclen);
     pack_bytes(&ptr, pkt->publish.topic);
+
+    // Packet id
+    if (pkt->header.bits.qos > AT_MOST_ONCE)
+        pack_u16(&ptr, pkt->publish.pkt_id);
 
     // Finally the payload, same way of topic, payload len -> payload
     pack_bytes(&ptr, pkt->publish.payload);
@@ -567,4 +594,37 @@ struct mqtt_publish *mqtt_packet_publish(unsigned char byte,
     publish->payload = payload;
 
     return publish;
+}
+
+
+void mqtt_packet_release(union mqtt_packet *pkt, unsigned type) {
+
+    switch (type) {
+        case CONNECT_TYPE:
+            sol_free(pkt->connect.payload.client_id);
+            if (pkt->connect.bits.username == 1)
+                sol_free(pkt->connect.payload.username);
+            if (pkt->connect.bits.password == 1)
+                sol_free(pkt->connect.payload.password);
+            if (pkt->connect.bits.will == 1) {
+                sol_free(pkt->connect.payload.will_message);
+                sol_free(pkt->connect.payload.will_topic);
+            }
+            break;
+        case SUBSCRIBE_TYPE:
+        case UNSUBSCRIBE_TYPE:
+            for (unsigned i = 0; i < pkt->subscribe.tuples_len; i++)
+                sol_free(pkt->subscribe.tuples[i].topic);
+            sol_free(pkt->subscribe.tuples);
+            break;
+        case SUBACK_TYPE:
+            sol_free(pkt->suback.rcs);
+            break;
+        case PUBLISH_TYPE:
+            sol_free(pkt->publish.topic);
+            sol_free(pkt->publish.payload);
+            break;
+        default:
+            break;
+    }
 }

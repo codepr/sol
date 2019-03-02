@@ -72,7 +72,7 @@ int set_tcp_nodelay(int fd) {
 }
 
 
-static int create_and_bind_unix(const char *sockpath, const char *port) {
+static int create_and_bind_unix(const char *sockpath) {
 
     struct sockaddr_un addr;
     int fd;
@@ -145,7 +145,7 @@ int create_and_bind(const char *host, const char *port, int socket_family) {
     int fd;
 
     if (socket_family == UNIX) {
-        fd = create_and_bind_unix(host, port);
+        fd = create_and_bind_unix(host);
     } else {
         fd = create_and_bind_tcp(host, port);
     }
