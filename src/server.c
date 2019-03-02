@@ -170,6 +170,7 @@ err:
 
 
 static int on_connect(struct callback_obj *cb, union mqtt_packet *pkt) {
+
     sol_info("New client connected as %s (c%i, k%u)",
              pkt->connect.payload.client_id,
              pkt->connect.bits.clean_session,
@@ -192,17 +193,20 @@ static int on_connect(struct callback_obj *cb, union mqtt_packet *pkt) {
 
     /* Respond with a connack */
     union mqtt_packet *response = sol_malloc(sizeof(*response));
-    char data[MQTT_HEADER_LEN];
-    unsigned char *pdata = (unsigned char *) &data[0];
-    pack_u8(&pdata, 0);
-    pack_u8(&pdata, 0);
-    response->connack = *mqtt_packet_connack(0, data);
+    unsigned char byte = CONNACK;
+    // TODO check for session already present
+    unsigned char session_present = 0;
+    unsigned char connect_flags = 0 | (session_present & 0x1) << 0;
+    unsigned char rc = 0;  // 0 means connection accepted
+    response->connack = *mqtt_packet_connack(byte, connect_flags, rc);
 
     cb->payload = bytestring_create(MQTT_ACK_LEN);
     unsigned char *p = pack_mqtt_packet(response, 2);
     memcpy(cb->payload->data, p, MQTT_ACK_LEN);
 
-    sol_debug("Sending CONNACK to %s (0, 0)", pkt->connect.payload.client_id);
+    sol_debug("Sending CONNACK to %s (%u, %u)",
+              pkt->connect.payload.client_id,
+              session_present, rc);
 
     return 0;
 }
@@ -250,7 +254,7 @@ static int on_subscribe(struct callback_obj *cb, union mqtt_packet *pkt) {
 
     // For now we just make all 0s as return codes
     for (unsigned i = 0; i < pkt->subscribe.tuples_len; i++)
-        rcs[i] = 0;
+        rcs[i] = pkt->subscribe.tuples[i].qos;
 
     struct mqtt_suback *suback = mqtt_packet_suback(0, pkt->subscribe.pkt_id,
                                                     rcs,
@@ -258,7 +262,7 @@ static int on_subscribe(struct callback_obj *cb, union mqtt_packet *pkt) {
 
     pkt->suback = *suback;
     unsigned char *packed = pack_mqtt_packet(pkt, SUBACK_TYPE);
-    size_t len = strlen((char *) packed);
+    size_t len = MQTT_HEADER_LEN + sizeof(uint16_t) + pkt->subscribe.tuples_len;
     cb->payload = bytestring_create(len);
     memcpy(cb->payload->data, packed, len);
 
@@ -289,7 +293,13 @@ static int on_publish(struct callback_obj *cb, union mqtt_packet *pkt) {
     }
 
     unsigned char *pub = pack_mqtt_packet(pkt, PUBLISH_TYPE);
-    size_t publen = strlen((char *) pub);
+
+    size_t publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
+        pkt->publish.topiclen + pkt->publish.payloadlen;
+
+    if (pkt->publish.header.bits.qos > 0)
+        publen += sizeof(uint16_t);
+
     struct bytestring *payload = bytestring_create(publen);
     memcpy(payload->data, pub, publen);
 
@@ -321,9 +331,8 @@ static int on_publish(struct callback_obj *cb, union mqtt_packet *pkt) {
         pkt->ack = *puback;
 
         unsigned char *packed = pack_mqtt_packet(pkt, PUBACK_TYPE);
-        size_t len = strlen((char *) packed);
-        cb->payload = bytestring_create(len);
-        memcpy(cb->payload->data, packed, len);
+        cb->payload = bytestring_create(MQTT_ACK_LEN);
+        memcpy(cb->payload->data, packed, MQTT_ACK_LEN);
 
         sol_debug("Sending PUBACK to %s", c->client_id);
 

@@ -425,9 +425,8 @@ static unsigned char *pack_mqtt_connack(const union mqtt_packet *pkt) {
 
 static unsigned char *pack_mqtt_suback(const union mqtt_packet *pkt) {
 
-    size_t pktlen = MQTT_HEADER_LEN +
-        (2 * sizeof(uint16_t)) + pkt->suback.rcslen;
-    unsigned char *packed = sol_malloc(pktlen);
+    size_t pktlen = MQTT_HEADER_LEN + sizeof(uint16_t) + pkt->suback.rcslen;
+    unsigned char *packed = sol_malloc(pktlen + 0);
     unsigned char *ptr = packed;
 
     pack_u8(&ptr, pkt->suback.header.byte);
@@ -438,13 +437,6 @@ static unsigned char *pack_mqtt_suback(const union mqtt_packet *pkt) {
     pack_u16(&ptr, pkt->suback.pkt_id);
     for (int i = 0; i < pkt->suback.rcslen; i++)
         pack_u8(&ptr, pkt->suback.rcs[i]);
-
-    /*
-     * Add a NUL character, this way it is possible to call strlen on the
-     * buffer without the need to use additional data structure to store
-     * the size of the buffer. A viable basic solution for now.
-     */
-    *(++ptr) = '\0';
 
     return packed;
 }
@@ -462,7 +454,7 @@ static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
     if (pkt->header.bits.qos > 0)
         pktlen += sizeof(uint16_t);
 
-    unsigned char *packed = sol_malloc(pktlen + 2);
+    unsigned char *packed = sol_malloc(pktlen);
     unsigned char *ptr = packed;
 
     pack_u8(&ptr, pkt->publish.header.byte);
@@ -470,6 +462,14 @@ static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
     // Total len of the packet excluding fixed header len
     size_t len = pkt->publish.topiclen +
         pkt->publish.payloadlen + sizeof(uint16_t);
+
+    if (pkt->header.bits.qos > 0)
+        len += sizeof(uint16_t);
+
+    /*
+     * TODO handle case where step is > 1, e.g. when a message longer than 128
+     * bytes is published
+     */
     int step = mqtt_encode_length(ptr, len);
     ptr += step;
 
@@ -483,13 +483,6 @@ static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
 
     // Finally the payload, same way of topic, payload len -> payload
     pack_bytes(&ptr, pkt->publish.payload);
-
-    /*
-     * Add a NUL character, this way it is possible to call strlen on the
-     * buffer without the need to use additional data structure to store
-     * the size of the buffer. A viable basic solution for now.
-     */
-    *(++ptr) = '\0';
 
     return packed;
 }
@@ -525,17 +518,15 @@ struct mqtt_ack *mqtt_packet_ack(unsigned char byte, unsigned short pkt_id) {
 }
 
 
-struct mqtt_connack *mqtt_packet_connack(unsigned char byte, char *data) {
+struct mqtt_connack *mqtt_packet_connack(unsigned char byte,
+                                         unsigned char cflags,
+                                         unsigned char rc) {
 
     static struct mqtt_connack connack;
 
 	connack.header.byte = byte;
-    connack.header.bits.type = CONNACK_TYPE;
-    connack.header.bits.dup = 0;
-    connack.header.bits.qos = 0;
-    connack.header.bits.retain = 0;
-	connack.byte = unpack_u8((const uint8_t **) &data); /* connect flags */
-	connack.rc = unpack_u8((const uint8_t **) &data); /* reason code */
+    connack.byte = cflags;
+    connack.rc = rc;
 
 	return &connack;
 }
@@ -549,7 +540,6 @@ struct mqtt_suback *mqtt_packet_suback(unsigned char byte,
     struct mqtt_suback *suback = sol_malloc(sizeof(*suback));
 
     suback->header.byte = byte;
-    suback->header.bits.type = SUBACK_TYPE;
     suback->pkt_id = pkt_id;
     suback->rcslen = rcslen;
     suback->rcs = (unsigned char *) sol_strdup((const char *) rcs);
