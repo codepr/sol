@@ -82,6 +82,8 @@ static int pubrel_handler(struct closure *, union mqtt_packet *);
 
 static int pubcomp_handler(struct closure *, union mqtt_packet *);
 
+static int pingreq_handler(struct closure *, union mqtt_packet *);
+
 /* Command handler mapped usign their position paired with their type */
 static handler *handlers[15] = {
     NULL,
@@ -96,7 +98,7 @@ static handler *handlers[15] = {
     NULL,
     unsubscribe_handler,
     NULL,
-    NULL,
+    pingreq_handler,
     NULL,
     disconnect_handler
 };
@@ -365,6 +367,8 @@ static int publish_handler(struct closure *cb, union mqtt_packet *pkt) {
         sol_topic_put(&sol, t);
     }
 
+    // TODO Check for QoS of subscriber, it should override the PUBLISH one
+
     unsigned char *pub = pack_mqtt_packet(pkt, PUBLISH_TYPE);
 
     size_t publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
@@ -510,6 +514,21 @@ static int pubcomp_handler(struct closure *cb, union mqtt_packet *pkt) {
     // TODO Remove from pending PUBACK clients map
 
     return REARM_R;
+}
+
+
+static int pingreq_handler(struct closure *cb, union mqtt_packet *pkt) {
+
+    sol_debug("Received PINGREQ from %s",
+              ((struct sol_client *) cb->obj)->client_id);
+
+    pkt->header = *mqtt_packet_header(PINGREQ);
+    unsigned char *packed = pack_mqtt_packet(pkt, PINGRESP_TYPE);
+    cb->payload = bytestring_create(MQTT_ACK_LEN);
+    memcpy(cb->payload->data, packed, MQTT_ACK_LEN);
+    sol_free(packed);
+
+    return REARM_W;
 }
 
 /*
