@@ -60,8 +60,6 @@ struct sol_info {
     int nconnections;
     /* Timestamp of the start time */
     long long start_time;
-    /* Seconds passed since the start */
-    long long uptime;
     /* Total number of requests served */
     int nrequests;
     /* Total number of bytes received */

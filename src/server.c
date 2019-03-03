@@ -25,6 +25,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <time.h>
 #include <errno.h>
 #include <unistd.h>
 #include <string.h>
@@ -610,6 +611,8 @@ static void on_read(struct evloop *loop, void *arg) {
     if (bytes == -ERRPACKETERR)
         goto errdc;
 
+    info.bytes_recv++;
+
     /*
      * Unpack received bytes into a mqtt_packet structure and execute the
      * correct handler based on the type of the operation.
@@ -809,11 +812,18 @@ static void publish_stats(struct evloop *loop, void *args) {
     char mrecv[number_len(info.messages_recv) + 1];
     sprintf(mrecv, "%lld", info.messages_recv);
 
+    long long uptime = time(NULL) - info.start_time;
+    char utime[number_len(uptime) + 1];
+    sprintf(utime, "%lld", uptime);
+
     unsigned char *pcclients = (unsigned char *) &cclients[0];
     unsigned char *pbsent = (unsigned char *) &bsent[0];
     unsigned char *pmsent = (unsigned char *) &msent[0];
     unsigned char *pmrecv = (unsigned char *) &mrecv[0];
+    unsigned char *putime = (unsigned char *) &utime[0];
 
+    publish_message(0, strlen(sys_topics[0]),
+                    sys_topics[0], strlen(utime), putime);
     publish_message(0, strlen(sys_topics[1]),
                     sys_topics[1], strlen(cclients), pcclients);
     publish_message(0, strlen(sys_topics[3]),
@@ -910,6 +920,8 @@ int start_server(const char *addr, const char *port) {
 
     hashtable_release(sol.clients);
     hashtable_release(sol.closures);
+
+    info.start_time = time(NULL);
 
     sol_info("Sol v%s exiting", VERSION);
 
