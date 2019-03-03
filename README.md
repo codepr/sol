@@ -50,3 +50,7 @@ features expected from a MQTT broker.
 
 It apparently not leak memory as of now, there's probably some corner cases,
 not deeply investigated yet.
+
+## Contributing
+
+Pull requests are welcome, just create an issue and fork it.
