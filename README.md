@@ -1,10 +1,10 @@
 Sol
 ===
 
-Oversimplified MQTT broker which mimick mosquitto features. Implemented for
-learning how the protocol works, for now it supports almost all MQTT v3.1.1
-commands on linux platform; it relies on EPOLL interface introduced on kernel
-2.5.44.
+Oversimplified MQTT broker written from scratch, which mimick mosquitto
+features. Implemented for learning how the protocol works, for now it supports
+almost all MQTT v3.1.1 commands on linux platform; it relies on EPOLL interface
+introduced on kernel 2.5.44.
 
 ## Build
 
@@ -30,7 +30,7 @@ A simple configuration can be passed in with `-c` flag:
 $ ./sol -c path/to/sol.conf
 ```
 
-## Features
+## Features roadmap
 
 It's still a work in progress but it already handle the most of the basic
 features expected from a MQTT broker.
@@ -39,8 +39,13 @@ features expected from a MQTT broker.
 - [X] All main commands are handled correctly
 - [X] QoS 0, 1, 2 are handled
 - [X] Trie as underlying structure to handle topic hierarchies
+- [X] Periodic tasks like stats publishing
 - [ ] Wildcards on subscriptions (though simple to implement, will be added soon)
 - [ ] QoS 1 and 2 tracking of pending clients and re-send
+- [ ] Session present check and handling
+- [ ] Authentication
+- [ ] SSL/TLS connections
+- [ ] Last will & Testament
 - [ ] Check on max memory used
 
 It apparently not leak memory as of now, there's probably some corner cases,
