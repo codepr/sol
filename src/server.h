@@ -65,9 +65,13 @@ struct sol_info {
     /* Total number of requests served */
     int nrequests;
     /* Total number of bytes received */
-    long long ninputbytes;
+    long long bytes_recv;
     /* Total number of bytes sent out */
-    long long noutputbytes;
+    long long bytes_sent;
+    /* Total number of sent messages */
+    long long messages_sent;
+    /* Total number of received messages */
+    long long messages_recv;
 };
 
 

@@ -49,6 +49,21 @@ static struct sol_info info;
 /* Broker global instance, contains the topic trie and the clients hashtable */
 static struct sol sol;
 
+/*
+ * Statistics topics, published every N seconds defined by configuration
+ * interval
+ */
+static const char *sys_topics[7] = {
+    "$SOL/broker/uptime",
+    "$SOL/broker/clients/connected",
+    "$SOL/broker/clients/disconnected",
+    "$SOL/broker/bytes/sent",
+    "$SOL/broker/bytes/received",
+    "$SOL/broker/messages/sent",
+    "$SOL/broker/messages/received"
+};
+
+
 /* Prototype for a command handler */
 typedef int handler(struct closure *, union mqtt_packet *);
 
@@ -356,6 +371,8 @@ static int publish_handler(struct closure *cb, union mqtt_packet *pkt) {
               pkt->publish.topic,
               pkt->publish.payloadlen);
 
+    info.messages_recv++;
+
     /*
      * Retrieve the topic from the global map, if it wasn't created before,
      * create a new one with the name selected
@@ -377,19 +394,15 @@ static int publish_handler(struct closure *cb, union mqtt_packet *pkt) {
     if (pkt->publish.header.bits.qos > AT_MOST_ONCE)
         publen += sizeof(uint16_t);
 
-    struct bytestring *payload = bytestring_create(publen);
-    memcpy(payload->data, pub, publen);
-    sol_free(pub);
-
     struct list_node *cur = t->subscribers->head;
     for (; cur; cur = cur->next) {
         struct sol_client *sc = ((struct subscriber *) cur->data)->client;
         ssize_t sent;
-        if ((sent = send_bytes(sc->fd, payload->data, payload->size)) < 0)
+        if ((sent = send_bytes(sc->fd, pub, publen)) < 0)
             sol_error("server::publish_handler %s", strerror(errno));
 
         // Update information stats
-        info.noutputbytes += sent;
+        info.bytes_sent += sent;
 
         sol_debug("Sending PUBLISH to %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
                   sc->client_id,
@@ -399,9 +412,11 @@ static int publish_handler(struct closure *cb, union mqtt_packet *pkt) {
                   pkt->publish.pkt_id,
                   pkt->publish.topic,
                   pkt->publish.payloadlen);
+
+        info.messages_sent++;
     }
 
-    bytestring_release(payload);
+    sol_free(pub);
 
     // TODO free publish
 
@@ -522,11 +537,14 @@ static int pingreq_handler(struct closure *cb, union mqtt_packet *pkt) {
     sol_debug("Received PINGREQ from %s",
               ((struct sol_client *) cb->obj)->client_id);
 
-    pkt->header = *mqtt_packet_header(PINGREQ);
+    pkt->header = *mqtt_packet_header(PINGRESP);
     unsigned char *packed = pack_mqtt_packet(pkt, PINGRESP_TYPE);
-    cb->payload = bytestring_create(MQTT_ACK_LEN);
-    memcpy(cb->payload->data, packed, MQTT_ACK_LEN);
+    cb->payload = bytestring_create(MQTT_HEADER_LEN);
+    memcpy(cb->payload->data, packed, MQTT_HEADER_LEN);
     sol_free(packed);
+
+    sol_debug("Sending PINGRESP to %s",
+              ((struct sol_client *) cb->obj)->client_id);
 
     return REARM_W;
 }
@@ -544,7 +562,7 @@ static void on_write(struct evloop *loop, void *arg) {
         sol_error("server::write_handler %s", strerror(errno));
 
     // Update information stats
-    info.noutputbytes += sent;
+    info.bytes_sent += sent;
     bytestring_release(cb->payload);
     cb->payload = NULL;
 
@@ -729,6 +747,84 @@ static void run(struct evloop *loop) {
     }
 }
 
+
+static void publish_message(unsigned short pkt_id,
+                            unsigned short topiclen,
+                            const char *topic,
+                            unsigned short payloadlen,
+                            unsigned char *payload) {
+
+    /* Retrieve the Topic structure from the global map, exit if not found */
+    struct topic *t = sol_topic_get(&sol, topic);
+
+    if (!t)
+        return;
+
+    /* Build MQTT packet with command PUBLISH */
+    union mqtt_packet pkt;
+    struct mqtt_publish *p = mqtt_packet_publish(PUBLISH, pkt_id,
+                                                 topiclen,
+                                                 (unsigned char *) topic,
+                                                 payloadlen,
+                                                 payload);
+
+    pkt.publish = *p;
+
+    size_t len = MQTT_HEADER_LEN + sizeof(uint16_t) +
+        pkt.publish.topiclen + pkt.publish.payloadlen;
+
+    unsigned char *packed = pack_mqtt_packet(&pkt, PUBLISH_TYPE);
+
+    /* Send payload through TCP to all subscribed clients of the topic */
+    struct list_node *cur = t->subscribers->head;
+    size_t sent = 0L;
+    for (; cur; cur = cur->next) {
+
+        struct sol_client *sc = ((struct subscriber *) cur->data)->client;
+
+        if ((sent = send_bytes(sc->fd, packed, len)) < 0)
+            sol_error("server::publish_handler %s", strerror(errno));
+
+        // Update information stats
+        info.bytes_sent += sent;
+        info.messages_sent++;
+    }
+
+    sol_free(packed);
+    sol_free(p);
+}
+
+
+static void publish_stats(struct evloop *loop, void *args) {
+
+    char cclients[number_len(info.nclients) + 1];
+    sprintf(cclients, "%d", info.nclients);
+
+    char bsent[number_len(info.bytes_sent) + 1];
+    sprintf(bsent, "%lld", info.bytes_sent);
+
+    char msent[number_len(info.messages_sent) + 1];
+    sprintf(msent, "%lld", info.messages_sent);
+
+    char mrecv[number_len(info.messages_recv) + 1];
+    sprintf(mrecv, "%lld", info.messages_recv);
+
+    unsigned char *pcclients = (unsigned char *) &cclients[0];
+    unsigned char *pbsent = (unsigned char *) &bsent[0];
+    unsigned char *pmsent = (unsigned char *) &msent[0];
+    unsigned char *pmrecv = (unsigned char *) &mrecv[0];
+
+    publish_message(0, strlen(sys_topics[1]),
+                    sys_topics[1], strlen(cclients), pcclients);
+    publish_message(0, strlen(sys_topics[3]),
+                    sys_topics[3], strlen(bsent), pbsent);
+    publish_message(0, strlen(sys_topics[5]),
+                    sys_topics[5], strlen(msent), pmsent);
+    publish_message(0, strlen(sys_topics[6]),
+                    sys_topics[6], strlen(mrecv), pmrecv);
+
+}
+
 /*
  * Cleanup function to be passed in as destructor to the Hashtable for
  * connecting clients
@@ -748,7 +844,10 @@ static int client_destructor(struct hashtable_entry *entry) {
     return 0;
 }
 
-
+/*
+ * Cleanup function to be passed in as destructor to the Hashtable for
+ * registered closures.
+ */
 static int closure_destructor(struct hashtable_entry *entry) {
 
     if (!entry)
@@ -767,23 +866,43 @@ static int closure_destructor(struct hashtable_entry *entry) {
 
 int start_server(const char *addr, const char *port) {
 
+    /* Initialize global Sol instance */
     trie_init(&sol.topics);
     sol.clients = hashtable_create(client_destructor);
     sol.closures = hashtable_create(closure_destructor);
 
-    struct closure server_cb;
+    struct closure server_closure;
 
     /* Initialize the sockets, first the server one */
-    server_cb.fd = make_listen(addr, port, conf->socket_family);
-    server_cb.payload = NULL;
-    server_cb.args = &server_cb;
-    server_cb.call = on_accept;
-    generate_uuid(server_cb.closure_id);
+    server_closure.fd = make_listen(addr, port, conf->socket_family);
+    server_closure.payload = NULL;
+    server_closure.args = &server_closure;
+    server_closure.call = on_accept;
+    generate_uuid(server_closure.closure_id);
+
+    /* Generate stats topics */
+    for (int i = 0; i < 7; i++)
+        sol_topic_put(&sol, topic_create(sol_strdup(sys_topics[i])));
 
     struct evloop *event_loop = evloop_create(EPOLL_MAX_EVENTS, EPOLL_TIMEOUT);
 
     /* Set socket in EPOLLIN flag mode, ready to read data */
-    evloop_add_callback(event_loop, &server_cb);
+    evloop_add_callback(event_loop, &server_closure);
+
+    /* Add periodic task for publishing stats on SYS topics */
+    // TODO Implement
+    struct closure sys_closure = {
+        .fd = 0,
+        .payload = NULL,
+        .args = &sys_closure,
+        .call = publish_stats
+    };
+
+    generate_uuid(sys_closure.closure_id);
+
+    /* Schedule as periodic task to be executed every 5 seconds */
+    evloop_add_periodic_task(event_loop, conf->stats_pub_interval,
+                             0, &sys_closure);
 
     sol_info("Server start");
 

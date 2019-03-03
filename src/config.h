@@ -41,6 +41,7 @@
 #define DEFAULT_PORT                "1883"
 #define DEFAULT_MAX_MEMORY          "2GB"
 #define DEFAULT_MAX_REQUEST_SIZE    "2MB"
+#define DEFAULT_STATS_INTERVAL      "10s"
 
 
 struct config {

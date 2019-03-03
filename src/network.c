@@ -46,6 +46,9 @@
 #include "network.h"
 
 
+#define EVLOOP_INITIAL_SIZE 4
+
+
 /* Set non-blocking socket */
 int set_nonblocking(int fd) {
     int flags, result;
@@ -326,12 +329,19 @@ void evloop_init(struct evloop *loop, int max_events, int timeout) {
     loop->events = sol_malloc(sizeof(struct epoll_event) * max_events);
     loop->epollfd = epoll_create1(0);
     loop->timeout = timeout;
+    loop->periodic_maxsize = EVLOOP_INITIAL_SIZE;
+    loop->periodic_nr = 0;
+    loop->periodic_tasks =
+        sol_malloc(EVLOOP_INITIAL_SIZE * sizeof(*loop->periodic_tasks));
     loop->status = 0;
 }
 
 
 void evloop_free(struct evloop *loop) {
     sol_free(loop->events);
+    for (int i = 0; i < loop->periodic_nr; i++)
+        sol_free(loop->periodic_tasks[i]);
+    sol_free(loop->periodic_tasks);
     sol_free(loop);
 }
 
@@ -342,7 +352,9 @@ void evloop_add_callback(struct evloop *loop, struct closure *cb) {
 }
 
 
-void evloop_add_periodic_task(struct evloop *loop, int ns,
+void evloop_add_periodic_task(struct evloop *loop,
+                              int seconds,
+                              unsigned long long ns,
                               struct closure *cb) {
 
     struct itimerspec timervalue;
@@ -352,7 +364,9 @@ void evloop_add_periodic_task(struct evloop *loop, int ns,
     memset(&timervalue, 0x00, sizeof(timervalue));
 
     // Set initial expire time and periodic interval
+    timervalue.it_value.tv_sec = seconds;
     timervalue.it_value.tv_nsec = ns;
+    timervalue.it_interval.tv_sec = seconds;
     timervalue.it_interval.tv_nsec = ns;
 
     if (timerfd_settime(timerfd, 0, &timervalue, NULL) < 0) {
@@ -370,7 +384,20 @@ void evloop_add_periodic_task(struct evloop *loop, int ns,
         return;
     }
 
-    evloop_add_callback(loop, cb);
+    /* Store it into the event loop */
+    if (loop->periodic_nr + 1 > loop->periodic_maxsize) {
+        loop->periodic_maxsize *= 2;
+        loop->periodic_tasks =
+            sol_realloc(loop->periodic_tasks,
+                        loop->periodic_maxsize * sizeof(*loop->periodic_tasks));
+    }
+
+    loop->periodic_tasks[loop->periodic_nr] =
+        sol_malloc(sizeof(*loop->periodic_tasks[loop->periodic_nr]));
+
+    loop->periodic_tasks[loop->periodic_nr]->closure = cb;
+    loop->periodic_tasks[loop->periodic_nr]->timerfd = timerfd;
+    loop->periodic_nr++;
 
 }
 
@@ -379,6 +406,8 @@ int evloop_wait(struct evloop *el) {
 
     int rc = 0;
     int events = 0;
+    long int timer = 0L;
+    int periodic_done = 0;
 
     while (1) {
 
@@ -414,9 +443,23 @@ int evloop_wait(struct evloop *el) {
                 continue;
             }
 
-            /* No error events, proeed to run callback */
-            struct closure *cb_obj = el->events[i].data.ptr;
-            cb_obj->call(el, cb_obj->args);
+            struct closure *closure = el->events[i].data.ptr;
+            periodic_done = 0;
+
+            for (int i = 0; i < el->periodic_nr && periodic_done == 0; i++) {
+                if (el->events[i].data.fd == el->periodic_tasks[i]->timerfd) {
+                    struct closure *c = el->periodic_tasks[i]->closure;
+                    (void) read(el->events[i].data.fd, &timer, 8);
+                    c->call(el, c->args);
+                    periodic_done = 1;
+                }
+            }
+
+            if (periodic_done == 1)
+                continue;
+
+            /* No error events, proceed to run callback */
+            closure->call(el, closure->args);
         }
     }
 

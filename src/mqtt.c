@@ -107,7 +107,12 @@ static mqtt_pack_handler *pack_handlers[13] = {
     NULL
 };
 
-
+/*
+ * Encode Remaining Length on a MQTT packet header, comprised of Variable
+ * Header and Payload if present. It does not take into account the bytes
+ * required to store itself. Refer to MQTT v3.1.1 algorithm for the
+ * implementation.
+ */
 int mqtt_encode_length(unsigned char *buf, size_t len) {
 
     int bytes = 0;
@@ -154,6 +159,9 @@ unsigned long long mqtt_decode_length(const unsigned char **buf) {
     return value;
 }
 
+/*
+ * MQTT unpacking functions
+ */
 
 static size_t unpack_mqtt_connect(const unsigned char *raw,
                                   union mqtt_header *hdr,
@@ -397,7 +405,9 @@ int unpack_mqtt_packet(const unsigned char *raw, union mqtt_packet *pkt) {
         .byte = type
     };
 
-    if (header.bits.type == DISCONNECT_TYPE)
+    if (header.bits.type == DISCONNECT_TYPE
+        || header.bits.type == PINGREQ_TYPE
+        || header.bits.type == PINGRESP_TYPE)
         pkt->header = header;
     else
         /* Call the appropriate unpack handler based on the message type */
@@ -406,6 +416,9 @@ int unpack_mqtt_packet(const unsigned char *raw, union mqtt_packet *pkt) {
     return rc;
 }
 
+/*
+ * MQTT packets packing functions
+ */
 
 static unsigned char *pack_mqtt_header(const union mqtt_header *hdr) {
 
@@ -524,6 +537,9 @@ unsigned char *pack_mqtt_packet(const union mqtt_packet *pkt, unsigned type) {
     return pack_handlers[type](pkt);
 }
 
+/*
+ * MQTT packets building functions
+ */
 
 union mqtt_header *mqtt_packet_header(unsigned char byte) {
 

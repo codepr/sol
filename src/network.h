@@ -48,6 +48,13 @@ struct evloop {
     int timeout;
     int status;
     struct epoll_event *events;
+    /* Dynamic array of periodic tasks, a pair descriptor - closure */
+    int periodic_maxsize;
+    int periodic_nr;
+    struct {
+        int timerfd;
+        struct closure *closure;
+    } **periodic_tasks;
 } evloop;
 
 
@@ -56,7 +63,8 @@ typedef void callback(struct evloop *, void *);
 /*
  * Callback object, represents a callback function with an associated
  * descriptor if needed, args is a void pointer which can be a structure
- * pointing to callback parameters.
+ * pointing to callback parameters and closure_id is a UUID for the closure
+ * itself.
  * The last two fields are payload, a serialized version of the result of
  * a callback, ready to be sent through wire and a function pointer to the
  * callback function to execute.
@@ -117,7 +125,10 @@ void evloop_add_callback(struct evloop *, struct closure *);
  * Register a periodic closure with a function to be executed every
  * defined interval of time.
  */
-void evloop_add_periodic_task(struct evloop *, int, struct closure *);
+void evloop_add_periodic_task(struct evloop *,
+                              int,
+                              unsigned long long,
+                              struct closure *);
 
 /*
  * Unregister a closure by removing the associated descriptor from the

@@ -38,7 +38,10 @@ struct topic {
     List *subscribers;
 };
 
-
+/*
+ * Main structure, a global instance will be instantiated at start, tracking
+ * topics, connected clients and registered closures.
+ */
 struct sol {
     HashTable *clients;
     HashTable *closures;
