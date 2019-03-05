@@ -480,6 +480,24 @@ static void trie_prefix_map_func(struct trie_node *node,
 
 }
 
+/* Iterate through children of each node starting from a given node, applying
+   a defined function which take a struct trie_node as argument */
+static void trie_prefix_map_func2(struct trie_node *node,
+                                  void (*mapfunc)(struct trie_node *, void *), void *arg) {
+
+    if (trie_is_free_node(node)) {
+        mapfunc(node, arg);
+        return;
+    }
+
+    struct list_node *child = node->children->head;
+    for (; child; child = child->next)
+        trie_prefix_map_func2(child->data, mapfunc, arg);
+
+    mapfunc(node, arg);
+
+}
+
 /*
  * Apply a function to every key below a given prefix, if prefix is null the
  * function will be applied to all the trie
@@ -504,6 +522,30 @@ void trie_prefix_map(Trie *trie, const char *prefix,
         trie_prefix_map_func(node, mapfunc);
     }
 }
+
+/* Apply a function to every key below a given prefix, if prefix is null the
+   function will be applied to all the trie */
+void trie_prefix_map_tuple(Trie *trie, const char *prefix,
+                           void (*mapfunc)(struct trie_node *, void *), void *arg) {
+
+    assert(trie);
+
+    if (!prefix) {
+        trie_prefix_map_func2(trie->root, mapfunc, arg);
+    } else {
+
+        // Walk the trie till the end of the key
+        struct trie_node *node = trie_node_find(trie->root, prefix);
+
+        // No complete key found
+        if (!node)
+            return;
+
+        // Check all possible sub-paths and add to count where there is a leaf
+        trie_prefix_map_func2(node, mapfunc, arg);
+    }
+}
+
 
 /* Release memory of a node while updating size of the trie */
 void trie_node_free(struct trie_node *node, size_t *size) {

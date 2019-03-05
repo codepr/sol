@@ -100,9 +100,6 @@ int make_listen(const char *, const char *, int);
 /* Accept a connection and add it to the right epollfd */
 int accept_connection(int);
 
-/* Open a connection with a target host:port */
-int open_connection(const char *, int);
-
 struct evloop *evloop_create(int, int);
 
 void evloop_init(struct evloop *, int, int);

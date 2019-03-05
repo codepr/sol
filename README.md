@@ -40,7 +40,7 @@ features expected from a MQTT broker.
 - [X] QoS 0, 1, 2 are handled
 - [X] Trie as underlying structure to handle topic hierarchies
 - [X] Periodic tasks like stats publishing
-- [ ] Wildcards on subscriptions (though simple to implement, will be added soon)
+- [X] Wildcards on subscriptions (though simple to implement, will be added soon)
 - [ ] QoS 1 and 2 tracking of pending clients and re-send
 - [ ] Session present check and handling
 - [ ] Authentication

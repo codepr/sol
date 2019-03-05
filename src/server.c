@@ -54,14 +54,19 @@ static struct sol sol;
  * Statistics topics, published every N seconds defined by configuration
  * interval
  */
-static const char *sys_topics[7] = {
-    "$SOL/broker/uptime",
-    "$SOL/broker/clients/connected",
-    "$SOL/broker/clients/disconnected",
-    "$SOL/broker/bytes/sent",
-    "$SOL/broker/bytes/received",
-    "$SOL/broker/messages/sent",
-    "$SOL/broker/messages/received"
+static const char *sys_topics[12] = {
+    "$SOL/",
+    "$SOL/broker/",
+    "$SOL/broker/clients/",
+    "$SOL/broker/bytes/",
+    "$SOL/broker/messages/",
+    "$SOL/broker/uptime/",
+    "$SOL/broker/clients/connected/",
+    "$SOL/broker/clients/disconnected/",
+    "$SOL/broker/bytes/sent/",
+    "$SOL/broker/bytes/received/",
+    "$SOL/broker/messages/sent/",
+    "$SOL/broker/messages/received/"
 };
 
 
@@ -280,9 +285,28 @@ static int disconnect_handler(struct closure *cb, union mqtt_packet *pkt) {
 }
 
 
+static void recursive_subscription(struct trie_node *node, void *arg) {
+
+    if (!node || !node->data)
+        return;
+
+    struct list_node *child = node->children->head;
+    for (; child; child = child->next)
+        recursive_subscription(child->data, arg);
+
+    struct topic *t = node->data;
+
+    struct subscriber *s = arg;
+
+    t->subscribers = list_push(t->subscribers, s);
+}
+
+
 static int subscribe_handler(struct closure *cb, union mqtt_packet *pkt) {
 
     struct sol_client *c = cb->obj;
+    bool wildcard = false;
+    bool alloced = false;
 
     /* Subscribe packets contains a list of topics and QoS tuples */
     for (unsigned i = 0; i < pkt->subscribe.tuples_len; i++) {
@@ -293,19 +317,43 @@ static int subscribe_handler(struct closure *cb, union mqtt_packet *pkt) {
          * Check if the topic exists already or in case create it and store in
          * the global map
          */
-        const char *topic_name = (const char *) pkt->subscribe.tuples[i].topic;
-        struct topic *t = sol_topic_get(&sol, topic_name);
+        char *topic = (char *) pkt->subscribe.tuples[i].topic;
 
-        sol_debug("\t%s (QoS %i)", topic_name, pkt->subscribe.tuples[i].qos);
+        sol_debug("\t%s (QoS %i)", topic, pkt->subscribe.tuples[i].qos);
+
+        /* Recursive subscribe to all children topics if the topic ends with "/#" */
+        if (topic[pkt->subscribe.tuples[i].topic_len - 1] == '#' &&
+            topic[pkt->subscribe.tuples[i].topic_len - 2] == '/') {
+            topic = remove_occur(topic, '#');
+            wildcard = true;
+        } else if (topic[pkt->subscribe.tuples[i].topic_len - 1] != '/') {
+            topic = sol_malloc(pkt->subscribe.tuples[i].topic_len + 2);
+            memcpy(topic, pkt->subscribe.tuples[i].topic,
+                   pkt->subscribe.tuples[i].topic_len);
+            topic[pkt->subscribe.tuples[i].topic_len] = '/';
+            topic[pkt->subscribe.tuples[i].topic_len + 1] = '\0';
+            alloced = true;
+        }
+
+        struct topic *t = sol_topic_get(&sol, topic);
 
         // TODO check for callback correctly set to obj
 
         if (!t) {
-            t = topic_create(sol_strdup(topic_name));
+            t = topic_create(sol_strdup(topic));
             sol_topic_put(&sol, t);
+        } else if (wildcard == true) {
+            struct subscriber *sub = sol_malloc(sizeof(*sub));
+            sub->client = cb->obj;
+            sub->qos = pkt->subscribe.tuples[i].qos;
+            trie_prefix_map_tuple(&sol.topics, topic,
+                                  recursive_subscription, sub);
         }
 
         topic_add_subscriber(t, cb->obj, pkt->subscribe.tuples[i].qos);
+
+        if (alloced)
+            sol_free(topic);
     }
 
     /*
@@ -374,16 +422,30 @@ static int publish_handler(struct closure *cb, union mqtt_packet *pkt) {
 
     info.messages_recv++;
 
+    char *topic = (char *) pkt->publish.topic;
+    bool alloced = false;
+
+    if (topic[pkt->publish.topiclen - 1] != '/') {
+        topic = sol_malloc(pkt->publish.topiclen + 2);
+        memcpy(topic, pkt->publish.topic, pkt->publish.topiclen);
+        topic[pkt->publish.topiclen] = '/';
+        topic[pkt->publish.topiclen + 1] = '\0';
+        alloced = true;
+    }
+
     /*
      * Retrieve the topic from the global map, if it wasn't created before,
      * create a new one with the name selected
      */
-    struct topic *t = sol_topic_get(&sol, (const char *) pkt->publish.topic);
+    struct topic *t = sol_topic_get(&sol, topic);
 
     if (!t) {
-        t = topic_create(sol_strdup((const char *) pkt->publish.topic));
+        t = topic_create(sol_strdup(topic));
         sol_topic_put(&sol, t);
     }
+
+    if (alloced == true)
+        sol_free(topic);
 
     // TODO Check for QoS of subscriber, it should override the PUBLISH one
 
@@ -822,16 +884,16 @@ static void publish_stats(struct evloop *loop, void *args) {
     unsigned char *pmrecv = (unsigned char *) &mrecv[0];
     unsigned char *putime = (unsigned char *) &utime[0];
 
-    publish_message(0, strlen(sys_topics[0]),
-                    sys_topics[0], strlen(utime), putime);
-    publish_message(0, strlen(sys_topics[1]),
-                    sys_topics[1], strlen(cclients), pcclients);
-    publish_message(0, strlen(sys_topics[3]),
-                    sys_topics[3], strlen(bsent), pbsent);
     publish_message(0, strlen(sys_topics[5]),
-                    sys_topics[5], strlen(msent), pmsent);
+                    sys_topics[5], strlen(utime), putime);
     publish_message(0, strlen(sys_topics[6]),
-                    sys_topics[6], strlen(mrecv), pmrecv);
+                    sys_topics[6], strlen(cclients), pcclients);
+    publish_message(0, strlen(sys_topics[8]),
+                    sys_topics[8], strlen(bsent), pbsent);
+    publish_message(0, strlen(sys_topics[10]),
+                    sys_topics[10], strlen(msent), pmsent);
+    publish_message(0, strlen(sys_topics[11]),
+                    sys_topics[11], strlen(mrecv), pmrecv);
 
 }
 
@@ -891,7 +953,7 @@ int start_server(const char *addr, const char *port) {
     generate_uuid(server_closure.closure_id);
 
     /* Generate stats topics */
-    for (int i = 0; i < 7; i++)
+    for (int i = 0; i < 12; i++)
         sol_topic_put(&sol, topic_create(sol_strdup(sys_topics[i])));
 
     struct evloop *event_loop = evloop_create(EPOLL_MAX_EVENTS, EPOLL_TIMEOUT);

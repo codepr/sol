@@ -59,7 +59,7 @@ void *sol_realloc(void *, size_t);
 size_t malloc_size(void *);
 void sol_free(void *);
 char *sol_strdup(const char *);
-char *update_integer_string(char *, int);
+char *remove_occur(char *str, char c);
 
 size_t memory_used(void);
 

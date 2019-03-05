@@ -210,44 +210,6 @@ int accept_connection(int serversock) {
     return clientsock;
 }
 
-/*
- * Create a socket and use it to connect to the specified host and port
- */
-int open_connection(const char *host, int port) {
-
-    struct sockaddr_in serveraddr;
-    struct hostent *server;
-
-    /* socket: create the socket */
-    int sfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sfd < 0)
-        goto err;
-
-    /* gethostbyname: get the server's DNS entry */
-    server = gethostbyname(host);
-    if (server == NULL)
-        goto err;
-
-    /* build the server's address */
-    bzero((char *) &serveraddr, sizeof(serveraddr));
-    serveraddr.sin_family = AF_INET;
-    bcopy((char *) server->h_addr,
-          (char *) &serveraddr.sin_addr.s_addr, server->h_length);
-    serveraddr.sin_port = htons(port);
-
-    /* connect: create a connection with the server */
-    if (connect(sfd, (const struct sockaddr *) &serveraddr,
-                sizeof(serveraddr)) < 0)
-        goto err;
-
-    return sfd;
-
-err:
-
-    perror("open_connection");
-    return -1;
-}
-
 /* Send all bytes contained in buf, updating sent bytes counter */
 ssize_t send_bytes(int fd, const unsigned char *buf, size_t len) {
 

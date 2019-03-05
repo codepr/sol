@@ -117,19 +117,16 @@ int parse_int(const char *string) {
 }
 
 
-char *update_integer_string(char *str, int num) {
+char *remove_occur(char *str, char c) {
+    char *p = str;
+    char *pp = str;
 
-    int n = parse_int(str);
-    n += num;
-    /*
-     * Check for realloc if the new value is "larger" then
-     * previous
-     */
-    char tmp[number_len(n) + 1];  // max size in bytes
-    sprintf(tmp, "%d", n);  // XXX Unsafe
-    size_t len = strlen(tmp);
-    str = sol_realloc(str, len + 1);
-    strncpy(str, tmp, len + 1);
+    while (*p) {
+        *pp = *p++;
+        pp += (*pp != c);
+    }
+
+    *pp = '\0';
 
     return str;
 }

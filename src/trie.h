@@ -109,4 +109,7 @@ List *trie_prefix_find(const Trie *, const char *);
 void trie_prefix_map(Trie *, const char *, void (*mapfunc)(struct trie_node *));
 
 
+void trie_prefix_map_tuple(Trie *, const char *,
+                           void (*mapfunc)(struct trie_node *, void *), void *);
+
 #endif
