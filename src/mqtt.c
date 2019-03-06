@@ -25,6 +25,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <string.h>
 #include <arpa/inet.h>
 #include "util.h"
 #include "mqtt.h"
@@ -496,7 +497,7 @@ static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
     // Total len of the packet excluding fixed header len
     size_t len = 0L;
 
-    if (pkt->header.bits.qos > AT_MOST_ONCE)
+    if (pkt->publish.header.bits.qos > AT_MOST_ONCE)
         pktlen += sizeof(uint16_t);
 
     unsigned char *packed = sol_malloc(pktlen);
@@ -519,7 +520,7 @@ static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
     pack_bytes(&ptr, pkt->publish.topic);
 
     // Packet id
-    if (pkt->header.bits.qos > AT_MOST_ONCE)
+    if (pkt->publish.header.bits.qos > AT_MOST_ONCE)
         pack_u16(&ptr, pkt->publish.pkt_id);
 
     // Finally the payload, same way of topic, payload len -> payload
@@ -586,7 +587,8 @@ struct mqtt_suback *mqtt_packet_suback(unsigned char byte,
     suback->header.byte = byte;
     suback->pkt_id = pkt_id;
     suback->rcslen = rcslen;
-    suback->rcs = (unsigned char *) sol_strdup((const char *) rcs);
+    suback->rcs = sol_malloc(rcslen);
+    memcpy(suback->rcs, rcs, rcslen);
 
     return suback;
 }

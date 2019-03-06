@@ -214,8 +214,12 @@ typedef union mqtt_header mqtt_disconnect;
 
 union mqtt_packet {
 
+    // This will cover PUBACK, PUBREC, PUBREL, PUBCOMP and UNSUBACK
     struct mqtt_ack ack;
+
+    // This will cover PINGREQ, PINGRESP and DISCONNECT
     union mqtt_header header;
+
     struct mqtt_connect connect;
     struct mqtt_connack connack;
     struct mqtt_suback suback;

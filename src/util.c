@@ -132,6 +132,21 @@ char *remove_occur(char *str, char c) {
 }
 
 /*
+ * Append a string to another, the destination string must be NUL-terminated
+ * and long enough to contain the resulting string, for the chunk part that
+ * will be appended the function require the length, the resulting string will
+ * be heap alloced and nul-terminated.
+ */
+char *append_string(char *src, char *chunk, size_t chunklen) {
+    size_t srclen = strlen(src);
+    char *ret = sol_malloc(srclen + chunklen + 1);
+    memcpy(ret, src, srclen);
+    memcpy(ret + srclen, chunk, chunklen);
+    ret[srclen + chunklen] = '\0';
+    return ret;
+}
+
+/*
  * Return the 'length' of a positive number, as the number of chars it would
  * take in a string
  */

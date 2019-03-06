@@ -91,16 +91,18 @@ uint8_t unpack_u8(const uint8_t **buf) {
 
 
 uint16_t unpack_u16(const uint8_t **buf) {
-    uint16_t val = ntohs(*((uint16_t *) (*buf)));
+    uint16_t val;
+    memcpy(&val, *buf, sizeof(uint16_t));
     (*buf) += sizeof(uint16_t);
-    return val;
+    return ntohs(val);
 }
 
 
 uint32_t unpack_u32(const uint8_t **buf) {
-    uint32_t val = ntohl(*((uint32_t *) (*buf)));
+    uint32_t val;
+    memcpy(&val, *buf, sizeof(uint32_t));
     (*buf) += sizeof(uint32_t);
-    return val;
+    return ntohl(val);
 }
 
 
@@ -128,13 +130,15 @@ void pack_u8(uint8_t **buf, uint8_t val) {
 
 
 void pack_u16(uint8_t **buf, uint16_t val) {
-    *((uint16_t *) (*buf)) = htons(val);
+    uint16_t htonsval = htons(val);
+    memcpy(*buf, &htonsval, sizeof(uint16_t));
     (*buf) += sizeof(uint16_t);
 }
 
 
 void pack_u32(uint8_t **buf, uint32_t val) {
-    *((uint32_t *) (*buf)) = htonl(val);
+    uint32_t htonlval = htonl(val);
+    memcpy(*buf, &htonlval, sizeof(uint32_t));
     (*buf) += sizeof(uint32_t);
 }
 

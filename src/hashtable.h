@@ -48,18 +48,11 @@ struct hashtable_entry {
     bool taken;
 };
 
-
 /*
  * An HashTable has some maximum size and current size, as well as the data to
  * hold.
  */
-typedef struct {
-    size_t table_size;
-    size_t size;
-    int (*destructor)(struct hashtable_entry *);
-    struct hashtable_entry *entries;
-} HashTable;
-
+typedef struct hashtable HashTable;
 
 /*
  * HashTable API to create a new `HashTable`, it require a function pointer to
@@ -69,8 +62,8 @@ typedef struct {
 HashTable *hashtable_create(int (*destructor)(struct hashtable_entry *));
 
 /* Destroy the hashtable by calling functor `destructor` on every
- * `struct hashtable_entry`, thus it needs to have a defined destructor function for
- * each different data-type inserted. In case of a NULL destructor, it' ll call
+ * `struct hashtable_entry`, thus it needs to have a defined destructor function
+ * for each different data-type inserted. In case of a NULL destructor, it' ll call
  * normal free.
  */
 void hashtable_release(HashTable *);
@@ -105,9 +98,6 @@ int hashtable_map(HashTable *, int (*func)(struct hashtable_entry *));
  */
 int hashtable_map2(HashTable *,
         int (*func)(struct hashtable_entry *, void *), void *);
-
-
-uint64_t crc32(const uint8_t *, const uint32_t);
 
 
 #endif

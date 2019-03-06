@@ -523,8 +523,11 @@ void trie_prefix_map(Trie *trie, const char *prefix,
     }
 }
 
-/* Apply a function to every key below a given prefix, if prefix is null the
-   function will be applied to all the trie */
+/*
+ * Apply a function to every key below a given prefix, if prefix is null the
+ * function will be applied to all the trie. The function applied accepts an
+ * additional arguments for optional extra data.
+ */
 void trie_prefix_map_tuple(Trie *trie, const char *prefix,
                            void (*mapfunc)(struct trie_node *, void *), void *arg) {
 

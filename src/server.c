@@ -36,10 +36,13 @@
 #include "mqtt.h"
 #include "util.h"
 #include "pack.h"
+#include "core.h"
 #include "config.h"
 #include "server.h"
-#include "solcore.h"
 #include "hashtable.h"
+
+/* Seconds in a Sol, easter egg */
+static const double SOL_SECONDS = 88775.24;
 
 /*
  * General informations of the broker, all fields will be published
@@ -54,19 +57,22 @@ static struct sol sol;
  * Statistics topics, published every N seconds defined by configuration
  * interval
  */
-static const char *sys_topics[12] = {
+static const int SYS_TOPICS = 14;
+static const char *sys_topics[SYS_TOPICS] = {
     "$SOL/",
     "$SOL/broker/",
     "$SOL/broker/clients/",
     "$SOL/broker/bytes/",
     "$SOL/broker/messages/",
     "$SOL/broker/uptime/",
+    "$SOL/broker/uptime/sol",
     "$SOL/broker/clients/connected/",
     "$SOL/broker/clients/disconnected/",
     "$SOL/broker/bytes/sent/",
     "$SOL/broker/bytes/received/",
     "$SOL/broker/messages/sent/",
-    "$SOL/broker/messages/received/"
+    "$SOL/broker/messages/received/",
+    "$SOL/broker/memory/used"
 };
 
 
@@ -215,6 +221,7 @@ err:
 
 static int connect_handler(struct closure *cb, union mqtt_packet *pkt) {
 
+    // TODO just return error_code and handle it on `on_read`
     if (hashtable_exists(sol.clients,
                          (const char *) pkt->connect.payload.client_id)) {
 
@@ -228,7 +235,11 @@ static int connect_handler(struct closure *cb, union mqtt_packet *pkt) {
         hashtable_del(sol.clients, (const char *) pkt->connect.payload.client_id);
         hashtable_del(sol.closures, cb->closure_id);
 
-        return REARM_R;
+        // Update stats
+        info.nclients--;
+        info.nconnections--;
+
+        return -REARM_W;
     }
 
     sol_info("New client connected as %s (c%i, k%u)",
@@ -252,10 +263,16 @@ static int connect_handler(struct closure *cb, union mqtt_packet *pkt) {
     /* Respond with a connack */
     union mqtt_packet *response = sol_malloc(sizeof(*response));
     unsigned char byte = CONNACK;
+
     // TODO check for session already present
+
+    if (pkt->connect.bits.clean_session == false)
+        new_client->session.subscriptions = list_create(NULL);
+
     unsigned char session_present = 0;
     unsigned char connect_flags = 0 | (session_present & 0x1) << 0;
     unsigned char rc = 0;  // 0 means connection accepted
+
     response->connack = *mqtt_packet_connack(byte, connect_flags, rc);
 
     cb->payload = bytestring_create(MQTT_ACK_LEN);
@@ -274,14 +291,24 @@ static int connect_handler(struct closure *cb, union mqtt_packet *pkt) {
 
 
 static int disconnect_handler(struct closure *cb, union mqtt_packet *pkt) {
+
+    // TODO just return error_code and handle it on `on_read`
+
     /* Handle disconnection request from client */
     struct sol_client *c = cb->obj;
+
+    sol_debug("Received DISCONNECT from %s", c->client_id);
+
     close(c->fd);
     hashtable_del(sol.clients, c->client_id);
     hashtable_del(sol.closures, cb->closure_id);
 
+    // Update stats
+    info.nclients--;
+    info.nconnections--;
+
     // TODO remove from all topic where it subscribed
-    return REARM_R;
+    return -REARM_W;
 }
 
 
@@ -308,6 +335,12 @@ static int subscribe_handler(struct closure *cb, union mqtt_packet *pkt) {
     bool wildcard = false;
     bool alloced = false;
 
+    /*
+     * We respond to the subscription request with SUBACK and a list of QoS in
+     * the same exact order of reception
+     */
+    unsigned char rcs[pkt->subscribe.tuples_len];
+
     /* Subscribe packets contains a list of topics and QoS tuples */
     for (unsigned i = 0; i < pkt->subscribe.tuples_len; i++) {
 
@@ -327,11 +360,7 @@ static int subscribe_handler(struct closure *cb, union mqtt_packet *pkt) {
             topic = remove_occur(topic, '#');
             wildcard = true;
         } else if (topic[pkt->subscribe.tuples[i].topic_len - 1] != '/') {
-            topic = sol_malloc(pkt->subscribe.tuples[i].topic_len + 2);
-            memcpy(topic, pkt->subscribe.tuples[i].topic,
-                   pkt->subscribe.tuples[i].topic_len);
-            topic[pkt->subscribe.tuples[i].topic_len] = '/';
-            topic[pkt->subscribe.tuples[i].topic_len + 1] = '\0';
+            topic = append_string((char *) pkt->subscribe.tuples[i].topic, "/", 1);
             alloced = true;
         }
 
@@ -350,21 +379,14 @@ static int subscribe_handler(struct closure *cb, union mqtt_packet *pkt) {
                                   recursive_subscription, sub);
         }
 
-        topic_add_subscriber(t, cb->obj, pkt->subscribe.tuples[i].qos);
+        // Clean session true for now
+        topic_add_subscriber(t, cb->obj, pkt->subscribe.tuples[i].qos, true);
 
         if (alloced)
             sol_free(topic);
-    }
 
-    /*
-     * We respond to the subscription request with SUBACK and a list of QoS in
-     * the same exact order of reception
-     */
-    unsigned char rcs[pkt->subscribe.tuples_len];
-
-    // For now we just make all 0s as return codes
-    for (unsigned i = 0; i < pkt->subscribe.tuples_len; i++)
         rcs[i] = pkt->subscribe.tuples[i].qos;
+    }
 
     struct mqtt_suback *suback = mqtt_packet_suback(SUBACK,
                                                     pkt->subscribe.pkt_id,
@@ -424,12 +446,14 @@ static int publish_handler(struct closure *cb, union mqtt_packet *pkt) {
 
     char *topic = (char *) pkt->publish.topic;
     bool alloced = false;
+    unsigned char qos = pkt->publish.header.bits.qos;
 
+    /*
+     * For convenience we assure that all topics ends with a '/', indicating a
+     * hierarchical level
+     */
     if (topic[pkt->publish.topiclen - 1] != '/') {
-        topic = sol_malloc(pkt->publish.topiclen + 2);
-        memcpy(topic, pkt->publish.topic, pkt->publish.topiclen);
-        topic[pkt->publish.topiclen] = '/';
-        topic[pkt->publish.topiclen + 1] = '\0';
+        topic = append_string((char *) pkt->publish.topic, "/", 1);
         alloced = true;
     }
 
@@ -444,25 +468,34 @@ static int publish_handler(struct closure *cb, union mqtt_packet *pkt) {
         sol_topic_put(&sol, t);
     }
 
+    // Not the best way to handle this
     if (alloced == true)
         sol_free(topic);
 
-    // TODO Check for QoS of subscriber, it should override the PUBLISH one
-
-    unsigned char *pub = pack_mqtt_packet(pkt, PUBLISH_TYPE);
-
-    size_t publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
-        pkt->publish.topiclen + pkt->publish.payloadlen;
-
-    if (pkt->publish.header.bits.qos > AT_MOST_ONCE)
-        publen += sizeof(uint16_t);
+    size_t publen;
+    unsigned char *pub;
 
     struct list_node *cur = t->subscribers->head;
     for (; cur; cur = cur->next) {
-        struct sol_client *sc = ((struct subscriber *) cur->data)->client;
+
+        publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
+            pkt->publish.topiclen + pkt->publish.payloadlen;
+
+        struct subscriber *sub = cur->data;
+        struct sol_client *sc = sub->client;
+
+        /* Update QoS according to subscriber's one */
+        pkt->publish.header.bits.qos = sub->qos;
+
+        if (pkt->publish.header.bits.qos > AT_MOST_ONCE)
+            publen += sizeof(uint16_t);
+
+        pub = pack_mqtt_packet(pkt, PUBLISH_TYPE);
+
         ssize_t sent;
         if ((sent = send_bytes(sc->fd, pub, publen)) < 0)
-            sol_error("server::publish_handler %s", strerror(errno));
+            sol_error("Error publishing to %s: %s",
+                      sc->client_id, strerror(errno));
 
         // Update information stats
         info.bytes_sent += sent;
@@ -477,13 +510,13 @@ static int publish_handler(struct closure *cb, union mqtt_packet *pkt) {
                   pkt->publish.payloadlen);
 
         info.messages_sent++;
-    }
 
-    sol_free(pub);
+        sol_free(pub);
+    }
 
     // TODO free publish
 
-    if (pkt->publish.header.bits.qos == AT_LEAST_ONCE) {
+    if (qos == AT_LEAST_ONCE) {
 
         mqtt_puback *puback = mqtt_packet_ack(PUBACK, pkt->publish.pkt_id);
 
@@ -500,7 +533,7 @@ static int publish_handler(struct closure *cb, union mqtt_packet *pkt) {
 
         return REARM_W;
 
-    } else if (pkt->publish.header.bits.qos == EXACTLY_ONCE) {
+    } else if (qos == EXACTLY_ONCE) {
 
         // TODO add to a hashtable to track PUBREC clients last
 
@@ -622,7 +655,8 @@ static void on_write(struct evloop *loop, void *arg) {
 
     ssize_t sent;
     if ((sent = send_bytes(cb->fd, cb->payload->data, cb->payload->size)) < 0)
-        sol_error("server::write_handler %s", strerror(errno));
+        sol_error("Error writing on socket to client %s: %s",
+                  ((struct sol_client *) cb->obj)->client_id, strerror(errno));
 
     // Update information stats
     info.bytes_sent += sent;
@@ -696,10 +730,12 @@ static void on_read(struct evloop *loop, void *arg) {
          * EPOLL event for read fds
          */
         evloop_rearm_callback_write(loop, cb);
-    } else {
+    } else if (rc == REARM_R) {
         cb->call = on_read;
         evloop_rearm_callback_read(loop, cb);
     }
+
+    // Disconnect packet received
 
 exit:
 
@@ -835,31 +871,54 @@ static void publish_message(unsigned short pkt_id,
 
     pkt.publish = *p;
 
-    size_t len = MQTT_HEADER_LEN + sizeof(uint16_t) +
-        pkt.publish.topiclen + pkt.publish.payloadlen;
-
-    unsigned char *packed = pack_mqtt_packet(&pkt, PUBLISH_TYPE);
+    size_t len;
+    unsigned char *packed;
 
     /* Send payload through TCP to all subscribed clients of the topic */
     struct list_node *cur = t->subscribers->head;
     size_t sent = 0L;
     for (; cur; cur = cur->next) {
 
-        struct sol_client *sc = ((struct subscriber *) cur->data)->client;
+        sol_debug("Sending PUBLISH (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
+                  pkt.publish.header.bits.dup,
+                  pkt.publish.header.bits.qos,
+                  pkt.publish.header.bits.retain,
+                  pkt.publish.pkt_id,
+                  pkt.publish.topic,
+                  pkt.publish.payloadlen);
+
+        len = MQTT_HEADER_LEN + sizeof(uint16_t) +
+            pkt.publish.topiclen + pkt.publish.payloadlen;
+
+        struct subscriber *sub = cur->data;
+        struct sol_client *sc = sub->client;
+
+        /* Update QoS according to subscriber's one */
+        pkt.publish.header.bits.qos = sub->qos;
+
+        if (pkt.publish.header.bits.qos > AT_MOST_ONCE)
+            len += sizeof(uint16_t);
+
+        packed = pack_mqtt_packet(&pkt, PUBLISH_TYPE);
 
         if ((sent = send_bytes(sc->fd, packed, len)) < 0)
-            sol_error("server::publish_handler %s", strerror(errno));
+            sol_error("Error publishing to %s: %s",
+                      sc->client_id, strerror(errno));
 
         // Update information stats
         info.bytes_sent += sent;
         info.messages_sent++;
+
+        sol_free(packed);
     }
 
-    sol_free(packed);
     sol_free(p);
 }
 
-
+/*
+ * Publish statistics periodic task, it will be called once every N config
+ * defined seconds, it publish some informations on predefined topics
+ */
 static void publish_stats(struct evloop *loop, void *args) {
 
     char cclients[number_len(info.nclients) + 1];
@@ -878,22 +937,28 @@ static void publish_stats(struct evloop *loop, void *args) {
     char utime[number_len(uptime) + 1];
     sprintf(utime, "%lld", uptime);
 
-    unsigned char *pcclients = (unsigned char *) &cclients[0];
-    unsigned char *pbsent = (unsigned char *) &bsent[0];
-    unsigned char *pmsent = (unsigned char *) &msent[0];
-    unsigned char *pmrecv = (unsigned char *) &mrecv[0];
-    unsigned char *putime = (unsigned char *) &utime[0];
+    double sol_uptime = (double)(time(NULL) - info.start_time) / SOL_SECONDS;
+    char sutime[16];
+    sprintf(sutime, "%.4f", sol_uptime);
 
-    publish_message(0, strlen(sys_topics[5]),
-                    sys_topics[5], strlen(utime), putime);
-    publish_message(0, strlen(sys_topics[6]),
-                    sys_topics[6], strlen(cclients), pcclients);
-    publish_message(0, strlen(sys_topics[8]),
-                    sys_topics[8], strlen(bsent), pbsent);
-    publish_message(0, strlen(sys_topics[10]),
-                    sys_topics[10], strlen(msent), pmsent);
-    publish_message(0, strlen(sys_topics[11]),
-                    sys_topics[11], strlen(mrecv), pmrecv);
+    long long memory = memory_used();
+    char mem[number_len(memory)];
+    sprintf(mem, "%lld", memory);
+
+    publish_message(0, strlen(sys_topics[5]), sys_topics[5],
+                    strlen(utime), (unsigned char *) &utime);
+    publish_message(0, strlen(sys_topics[6]), sys_topics[6],
+                    strlen(sutime), (unsigned char *) &sutime);
+    publish_message(0, strlen(sys_topics[7]), sys_topics[7],
+                    strlen(cclients), (unsigned char *) &cclients);
+    publish_message(0, strlen(sys_topics[9]), sys_topics[9],
+                    strlen(bsent), (unsigned char *) &bsent);
+    publish_message(0, strlen(sys_topics[11]), sys_topics[11],
+                    strlen(msent), (unsigned char *) &msent);
+    publish_message(0, strlen(sys_topics[12]), sys_topics[12],
+                    strlen(mrecv), (unsigned char *) &mrecv);
+    publish_message(0, strlen(sys_topics[13]), sys_topics[13],
+                    strlen(mem), (unsigned char *) &mem);
 
 }
 
@@ -953,7 +1018,7 @@ int start_server(const char *addr, const char *port) {
     generate_uuid(server_closure.closure_id);
 
     /* Generate stats topics */
-    for (int i = 0; i < 12; i++)
+    for (int i = 0; i < SYS_TOPICS; i++)
         sol_topic_put(&sol, topic_create(sol_strdup(sys_topics[i])));
 
     struct evloop *event_loop = evloop_create(EPOLL_MAX_EVENTS, EPOLL_TIMEOUT);
@@ -977,13 +1042,12 @@ int start_server(const char *addr, const char *port) {
                              0, &sys_closure);
 
     sol_info("Server start");
+    info.start_time = time(NULL);
 
     run(event_loop);
 
     hashtable_release(sol.clients);
     hashtable_release(sol.closures);
-
-    info.start_time = time(NULL);
 
     sol_info("Sol v%s exiting", VERSION);
 

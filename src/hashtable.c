@@ -34,12 +34,22 @@
 #include "util.h"
 #include "hashtable.h"
 
+/* Hashtable definition */
+struct hashtable {
+    size_t table_size;
+    size_t size;
+    int (*destructor)(struct hashtable_entry *);
+    struct hashtable_entry *entries;
+};
+
 
 const int INITIAL_SIZE = 4;
 
 const int MAX_CHAIN_LENGTH = 8;
 
 const unsigned long KNUTH_PRIME = 2654435761;
+
+static unsigned long crc32(const uint8_t *, unsigned int);
 
 /*
  * Hashing function for a string
@@ -497,7 +507,7 @@ static unsigned long crc32_tab[] = {
 };
 
 /* Return a 32-bit CRC of the contents of the buffer. */
-unsigned long crc32(const uint8_t *s, unsigned int len) {
+static unsigned long crc32(const uint8_t *s, unsigned int len) {
     unsigned int i;
     uint64_t crc32val;
 

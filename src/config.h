@@ -32,7 +32,7 @@
 
 // Default parameters
 
-#define VERSION                     "0.1.9"
+#define VERSION                     "0.3.5"
 #define DEFAULT_SOCKET_FAMILY       INET
 #define DEFAULT_LOG_LEVEL           DEBUG
 #define DEFAULT_LOG_PATH            "/tmp/sol.log"
@@ -73,6 +73,7 @@ struct config {
     /* Delay between every automatic publish of broker stats on topic */
     size_t stats_pub_interval;
 };
+
 
 extern struct config *conf;
 

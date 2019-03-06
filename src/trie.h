@@ -108,7 +108,12 @@ List *trie_prefix_find(const Trie *, const char *);
 /* Apply a given function to all nodes which keys match a given prefix */
 void trie_prefix_map(Trie *, const char *, void (*mapfunc)(struct trie_node *));
 
-
+/*
+ * Apply a given function to all ndoes which keys match a given prefix. The
+ * function accepts two arguments, a struct trie_node pointer which correspond
+ * to each node on the trie after the prefix node and a void pointer, used for
+ * additional data which can be useful to the execution of `mapfunc`.
+ */
 void trie_prefix_map_tuple(Trie *, const char *,
                            void (*mapfunc)(struct trie_node *, void *), void *);
 

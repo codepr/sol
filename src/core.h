@@ -25,57 +25,66 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <string.h>
-#include "util.h"
-#include "solcore.h"
+#ifndef CORE_H
+#define CORE_H
+
+#include "trie.h"
+#include "list.h"
+#include "hashtable.h"
 
 
-static int compare_cid(void *c1, void *c2) {
-    return strcmp(((struct subscriber *) c1)->client->client_id,
-                  ((struct subscriber *) c2)->client->client_id);
-}
+struct topic {
+    const char *name;
+    List *subscribers;
+};
+
+/*
+ * Main structure, a global instance will be instantiated at start, tracking
+ * topics, connected clients and registered closures.
+ */
+struct sol {
+    HashTable *clients;
+    HashTable *closures;
+    Trie topics;
+};
 
 
-struct topic *topic_create(const char *name) {
-    struct topic *t = sol_malloc(sizeof(*t));
-    topic_init(t, name);
-    return t;
-}
+struct session {
+    List *subscriptions;
+    // TODO add pending confirmed messages
+};
+
+/*
+ * Wrapper structure around a connected client, each client can be a publisher
+ * or a subscriber, it can be used to track sessions too.
+ */
+struct sol_client {
+    char *client_id;
+    int fd;
+    struct session session;
+};
 
 
-void topic_init(struct topic *t, const char *name) {
-    t->name = name;
-    t->subscribers = list_create(NULL);
-}
+struct subscriber {
+    unsigned qos;
+    struct sol_client *client;
+};
 
 
-void topic_add_subscriber(struct topic *t,
-                          struct sol_client *client,
-                          unsigned qos) {
-    struct subscriber *sub = sol_malloc(sizeof(*sub));
-    sub->client = client;
-    sub->qos = qos;
-    t->subscribers = list_push(t->subscribers, sub);
-}
+struct topic *topic_create(const char *);
+
+void topic_init(struct topic *, const char *);
+
+void topic_add_subscriber(struct topic *, struct sol_client *, unsigned, bool);
+
+void topic_del_subscriber(struct topic *, struct sol_client *, bool);
+
+void sol_topic_put(struct sol *, struct topic *);
+
+void sol_topic_del(struct sol *, const char *);
+
+/* Find a topic by name and return it */
+struct topic *sol_topic_get(struct sol *, const char *);
 
 
-void topic_del_subscriber(struct topic *t, struct sol_client *client) {
-    list_remove_node(t->subscribers, client, compare_cid);
-}
-
-
-void sol_topic_put(struct sol *sol, struct topic *t) {
-    trie_insert(&sol->topics, t->name, t);
-}
-
-
-void sol_topic_del(struct sol *sol, const char *name) {
-    trie_delete(&sol->topics, name);
-}
-
-
-struct topic *sol_topic_get(struct sol *sol, const char *name) {
-    struct topic *ret_topic;
-    trie_find(&sol->topics, name, (void *) &ret_topic);
-    return ret_topic;
-}
+#endif

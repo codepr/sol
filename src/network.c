@@ -233,7 +233,7 @@ ssize_t send_bytes(int fd, const unsigned char *buf, size_t len) {
 
 err:
 
-    fprintf(stderr, "send(2) - error sending data: %s", strerror(errno));
+    fprintf(stderr, "send(2) - error sending data: %s\n", strerror(errno));
     return -1;
 }
 
