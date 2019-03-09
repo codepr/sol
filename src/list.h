@@ -96,8 +96,8 @@ struct list_node *list_merge_sort(struct list_node *, cmp);
 struct list_node *bisect_list(struct list_node *);
 
 /* Insert a new node into a list while maintaining the order of the elements */
-struct list_node *list_sort_inset(struct list_node **,
-                                  struct list_node *, compare_func);
+struct list_node *list_sort_insert(struct list_node **,
+                                   struct list_node *, compare_func);
 
 
 #endif

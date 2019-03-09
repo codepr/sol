@@ -4,7 +4,7 @@ Sol
 Oversimplified MQTT broker written from scratch, which mimick mosquitto
 features. Implemented for learning how the protocol works, for now it supports
 almost all MQTT v3.1.1 commands on linux platform; it relies on EPOLL interface
-introduced on kernel 2.5.44.
+for multiplexing I/O. Development process is documented in this (series of posts)[https://codepr.github.io/posts/sol-mqtt-broker].
 
 ## Build
 

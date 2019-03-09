@@ -329,8 +329,8 @@ struct list_node *list_merge_sort(struct list_node *head, cmp cmp_func) {
 }
 
 /* Insert a new list node in a list maintaining the order of the list */
-struct list_node *list_sort_inset(struct list_node **head,
-                                  struct list_node *new, cmp cmp_func) {
+struct list_node *list_sort_insert(struct list_node **head,
+                                   struct list_node *new, cmp cmp_func) {
 
     if (!*head || cmp_func(*head, new) >= 0) {
         new->next = *head;

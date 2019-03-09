@@ -57,7 +57,8 @@ static struct sol sol;
  * Statistics topics, published every N seconds defined by configuration
  * interval
  */
-static const int SYS_TOPICS = 14;
+#define SYS_TOPICS 14
+
 static const char *sys_topics[SYS_TOPICS] = {
     "$SOL/",
     "$SOL/broker/",

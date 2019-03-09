@@ -25,10 +25,10 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "pack.h"
-
 #ifndef MQTT_H
 #define MQTT_H
+
+#include <stdio.h>
 
 
 #define MQTT_HEADER_LEN 2
