@@ -256,6 +256,7 @@ static int connect_handler(struct closure *cb, union mqtt_packet *pkt) {
     new_client->fd = cb->fd;
     const char *cid = (const char *) pkt->connect.payload.client_id;
     new_client->client_id = sol_strdup(cid);
+    buffer_create(&new_client->buf);
     hashtable_put(sol.clients, cid, new_client);
 
     /* Substitute fd on callback with closure */
@@ -653,11 +654,30 @@ static int pingreq_handler(struct closure *cb, union mqtt_packet *pkt) {
 static void on_write(struct evloop *loop, void *arg) {
 
     struct closure *cb = arg;
+    struct sol_client *c = cb->obj;
 
     ssize_t sent;
+
+    if (buffer_empty(&c->buf) == 0) {
+
+        /* Check if there's still some remaning bytes to send out */
+        if ((sent = send_bytes(cb->fd, c->buf.bytes + c->buf.start, c->buf.end)) < 0)
+            sol_error("Error writing on socket to client %s: %s",
+                      ((struct sol_client *) cb->obj)->client_id, strerror(errno));
+
+        /* Update buffer pointers */
+        c->buf.start += sent;
+
+    }
+
     if ((sent = send_bytes(cb->fd, cb->payload->data, cb->payload->size)) < 0)
         sol_error("Error writing on socket to client %s: %s",
                   ((struct sol_client *) cb->obj)->client_id, strerror(errno));
+
+    /* Update client buffer for remaining bytes to send */
+    if (sent < cb->payload->size)
+        buffer_push_back(&c->buf, cb->payload->data + sent,
+                         cb->payload->size - sent);
 
     // Update information stats
     info.bytes_sent += sent;
@@ -976,6 +996,8 @@ static int client_destructor(struct hashtable_entry *entry) {
 
     if (client->client_id)
         sol_free(client->client_id);
+
+    buffer_release(&client->buf);
 
     sol_free(client);
 

@@ -30,6 +30,7 @@
 
 #include "trie.h"
 #include "list.h"
+#include "network.h"
 #include "hashtable.h"
 
 
@@ -62,6 +63,7 @@ struct sol_client {
     char *client_id;
     int fd;
     struct session session;
+    struct buffer buf;
 };
 
 
