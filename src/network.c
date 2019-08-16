@@ -26,7 +26,6 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#define _DEFAULT_SOURCE
 #include <stdlib.h>
 #include <errno.h>
 #include <netdb.h>

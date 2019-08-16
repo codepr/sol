@@ -58,8 +58,50 @@ static struct sol sol;
 
 #define IOPOOLSIZE 1
 #define WORKERPOOLSIZE 1
-#define REPLY 0
-#define NOREPLY 1
+
+/*
+ * TCP server, based on I/O multiplexing but sharing I/O and work loads between
+ * thread pools. The main thread have the exclusive responsibility of accepting
+ * connections and pass them to IO threads.
+ * From now on read and write operations for the connection will be handled by
+ * a dedicated thread pool, which after every read will decode the bytearray
+ * according to the protocol definition of each packet and finally pass the
+ * resulting packet to the worker thread pool, where, according to the OPCODE
+ * of the packet, the operation will be executed and the result will be
+ * returned back to the IO thread that will write back to the client the
+ * response packed into a bytestream.
+ *
+ *      MAIN              1...N              1...N
+ *
+ *     [EPOLL]         [IO EPOLL]         [WORK EPOLL]
+ *  ACCEPT THREAD    IO THREAD POOL    WORKER THREAD POOL
+ *  -------------    --------------    ------------------
+ *        |                 |                  |
+ *      ACCEPT              |                  |
+ *        | --------------> |                  |
+ *        |          READ AND DECODE           |
+ *        |                 | ---------------> |
+ *        |                 |                WORK
+ *        |                 | <--------------- |
+ *        |               WRITE                |
+ *        |                 |                  |
+ *      ACCEPT              |                  |
+ *        | --------------> |                  |
+ *
+ * By tuning the number of IO threads and worker threads based on the number of
+ * core of the host machine, it is possible to increase the number of served
+ * concurrent requests per seconds.
+ * The access to shared data strucures on the worker thread pool is guarded by
+ * a spinlock, and being generally fast operations it shouldn't suffer high
+ * contentions by the threads and thus being really fast.
+ */
+
+
+/*
+ * Guards the access to the main database structure, the trie underlying the
+ * DB
+ */
+static pthread_spinlock_t spinlock;
 
 /*
  * IO event strucuture, it's the main information that will be communicated
@@ -165,6 +207,10 @@ static handler *handlers[15] = {
 
 static int connect_handler(struct io_event *event) {
 
+#if WORKERPOOLSIZE > 1
+    pthread_spin_lock(&spinlock);
+#endif
+
     // TODO just return error_code and handle it on `on_read`
     if (hashtable_exists(sol.clients,
                          (const char *) event->payload->connect.payload.client_id)) {
@@ -225,6 +271,10 @@ static int connect_handler(struct io_event *event) {
 
     sol_free(response);
 
+#if WORKERPOOLSIZE > 1
+    pthread_spin_unlock(&spinlock);
+#endif
+
     return REPLY;
 }
 
@@ -250,6 +300,9 @@ static int disconnect_handler(struct io_event *event) {
 
     sol_debug("Received DISCONNECT from %s", event->client->client_id);
 
+#if WORKERPOOLSIZE > 1
+    pthread_spin_lock(&spinlock);
+#endif
     /* Handle disconnection request from client */
     close(event->client->fd);
     hashtable_del(sol.clients, event->client->client_id);
@@ -257,7 +310,9 @@ static int disconnect_handler(struct io_event *event) {
     // Update stats
     info.nclients--;
     info.nconnections--;
-
+#if WORKERPOOLSIZE > 1
+    pthread_spin_unlock(&spinlock);
+#endif
     // TODO remove from all topic where it subscribed
     return NOREPLY;
 }
@@ -289,7 +344,9 @@ static int subscribe_handler(struct io_event *event) {
 
         sol_debug("\t%s (QoS %i)",
                   topic, event->payload->subscribe.tuples[i].qos);
-
+#if WORKERPOOLSIZE > 1
+    pthread_spin_lock(&spinlock);
+#endif
         /* Recursive subscribe to all children topics if the topic ends with "/#" */
         if (topic[event->payload->subscribe.tuples[i].topic_len - 1] == '#' &&
             topic[event->payload->subscribe.tuples[i].topic_len - 2] == '/') {
@@ -318,7 +375,9 @@ static int subscribe_handler(struct io_event *event) {
         // Clean session true for now
         topic_add_subscriber(t, event->client,
                              event->payload->subscribe.tuples[i].qos, true);
-
+#if WORKERPOOLSIZE > 1
+    pthread_spin_unlock(&spinlock);
+#endif
         if (alloced)
             sol_free(topic);
 
@@ -358,7 +417,7 @@ static int unsubscribe_handler(struct io_event *event) {
 
     event->reply = bstring_copy(packed, MQTT_ACK_LEN);
 
-    return REARM_W;
+    return REPLY;
 }
 
 
@@ -374,6 +433,10 @@ static int publish_handler(struct io_event *event) {
               event->payload->publish.pkt_id,
               event->payload->publish.topic,
               event->payload->publish.payloadlen);
+
+#if WORKERPOOLSIZE > 1
+    pthread_spin_lock(&spinlock);
+#endif
 
     info.messages_recv++;
 
@@ -400,6 +463,10 @@ static int publish_handler(struct io_event *event) {
         t = topic_create(sol_strdup(topic));
         sol_topic_put(&sol, t);
     }
+
+#if WORKERPOOLSIZE > 1
+    pthread_spin_unlock(&spinlock);
+#endif
 
     // Not the best way to handle this
     if (alloced == true)
@@ -520,7 +587,7 @@ static int pubrec_handler(struct io_event *event) {
 
     sol_debug("Sending PUBREL to %s", c->client_id);
 
-    return REARM_W;
+    return REPLY;
 }
 
 
@@ -931,18 +998,18 @@ static void *io_worker(void *arg) {
                      * paired payload
                      */
 
-/* #if WORKERPOOLSIZE > 1 */
-/*                     pthread_spin_lock(&spinlock); */
-/* #endif */
+#if WORKERPOOLSIZE > 1
+                    pthread_spin_lock(&spinlock);
+#endif
 
                     close(event->client->fd);
                     hashtable_del(sol.clients, event->client->client_id);
                     sol_free(event->payload);
                     sol_free(event);
 
-/* #if WORKERPOOLSIZE > 1 */
-/*                     pthread_spin_unlock(&spinlock); */
-/* #endif */
+#if WORKERPOOLSIZE > 1
+                    pthread_spin_unlock(&spinlock);
+#endif
                 }
             } else if (e_events[i].events & EPOLLOUT) {
 
@@ -1044,7 +1111,6 @@ static void *worker(void *arg) {
                 eventfd_read(event->io_event, &val);
                 // TODO free client and remove it from the global map in case
                 // of QUIT command (check return code)
-                sol_debug("%d", event->payload->header.bits.type);
                 int reply = handlers[event->payload->header.bits.type](event);
                 if (reply == REPLY)
                     epoll_mod(event->epollfd, event->client->fd, EPOLLOUT, event);
@@ -1204,6 +1270,10 @@ int start_server(const char *addr, const char *port) {
     trie_init(&sol.topics);
     sol.clients = hashtable_create(client_destructor);
 
+#if WORKERPOOLSIZE > 1
+    pthread_spin_init(&spinlock, PTHREAD_PROCESS_SHARED);
+#endif
+
     /* Generate stats topics */
     for (int i = 0; i < SYS_TOPICS; i++)
         sol_topic_put(&sol, topic_create(sol_strdup(sys_topics[i])));
@@ -1223,10 +1293,10 @@ int start_server(const char *addr, const char *port) {
 
     memset(&timervalue, 0x00, sizeof(timervalue));
 
-    timervalue.it_value.tv_sec = 0;
-    timervalue.it_value.tv_nsec = conf->stats_pub_interval;
-    timervalue.it_interval.tv_sec = 0;
-    timervalue.it_interval.tv_nsec = conf->stats_pub_interval;
+    timervalue.it_value.tv_sec = conf->stats_pub_interval;
+    timervalue.it_value.tv_nsec = 0;
+    timervalue.it_interval.tv_sec = conf->stats_pub_interval;
+    timervalue.it_interval.tv_nsec = 0;
 
     // add expiration keys cron task
     int exptimerfd = add_cron_task(epoll.w_epollfd, &timervalue);
@@ -1271,6 +1341,10 @@ int start_server(const char *addr, const char *port) {
 
     hashtable_release(sol.clients);
     hashtable_release(sol.closures);
+
+#if WORKERPOOLSIZE > 1
+    pthread_spin_destroy(&spinlock);
+#endif
 
     sol_info("Sol v%s exiting", VERSION);
 

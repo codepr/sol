@@ -49,8 +49,8 @@
  * sent out or if the server just need to re-arm closure for reading incoming
  * bytes
  */
-#define REARM_R             0
-#define REARM_W             1
+#define REPLY               0
+#define NOREPLY             1
 
 /* Global informations statistics structure */
 struct sol_info {
