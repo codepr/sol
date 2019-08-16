@@ -131,6 +131,24 @@ char *remove_occur(char *str, char c) {
     return str;
 }
 
+
+char *update_integer_string(char *str, int num) {
+
+    int n = parse_int(str);
+    n += num;
+    /*
+     * Check for realloc if the new value is "larger" then
+     * previous
+     */
+    char tmp[number_len(n) + 1];  // max size in bytes
+    sprintf(tmp, "%d", n);  // XXX Unsafe
+    size_t len = strlen(tmp);
+    str = sol_realloc(str, len + 1);
+    memcpy(str, tmp, len + 1);
+
+    return str;
+}
+
 /*
  * Append a string to another, the destination string must be NUL-terminated
  * and long enough to contain the resulting string, for the chunk part that

@@ -55,19 +55,23 @@
 /* Global informations statistics structure */
 struct sol_info {
     /* Number of clients currently connected */
-    int nclients;
+    unsigned int nclients;
     /* Total number of clients connected since the start */
-    int nconnections;
-    /* Timestamp of the start time */
-    long long start_time;
-    /* Total number of bytes received */
-    long long bytes_recv;
-    /* Total number of bytes sent out */
-    long long bytes_sent;
+    unsigned int nconnections;
     /* Total number of sent messages */
-    long long messages_sent;
+    unsigned long long messages_sent;
     /* Total number of received messages */
-    long long messages_recv;
+    unsigned long long messages_recv;
+    /* Timestamp of the start time */
+    unsigned long long start_time;
+    /* Seconds passed since the start */
+    unsigned long long uptime;
+    /* Total number of requests served */
+    unsigned int nrequests;
+    /* Total number of bytes received */
+    unsigned long long bytes_sent;
+    /* Total number of bytes sent out */
+    unsigned long long bytes_recv;
 };
 
 

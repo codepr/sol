@@ -35,7 +35,6 @@
 #include <arpa/inet.h>
 #include <sys/un.h>
 #include <sys/epoll.h>
-#include <sys/timerfd.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/types.h>
@@ -306,179 +305,6 @@ err:
 }
 
 
-/******************************
- *         EPOLL APIS         *
- ******************************/
-
-
-struct evloop *evloop_create(int max_events, int timeout) {
-
-    struct evloop *loop = sol_malloc(sizeof(*loop));
-
-    evloop_init(loop, max_events, timeout);
-
-    return loop;
-}
-
-
-void evloop_init(struct evloop *loop, int max_events, int timeout) {
-    loop->max_events = max_events;
-    loop->events = sol_malloc(sizeof(struct epoll_event) * max_events);
-    loop->epollfd = epoll_create1(0);
-    loop->timeout = timeout;
-    loop->periodic_maxsize = EVLOOP_INITIAL_SIZE;
-    loop->periodic_nr = 0;
-    loop->periodic_tasks =
-        sol_malloc(EVLOOP_INITIAL_SIZE * sizeof(*loop->periodic_tasks));
-    loop->status = 0;
-}
-
-
-void evloop_free(struct evloop *loop) {
-    sol_free(loop->events);
-    for (int i = 0; i < loop->periodic_nr; i++)
-        sol_free(loop->periodic_tasks[i]);
-    sol_free(loop->periodic_tasks);
-    sol_free(loop);
-}
-
-
-void evloop_add_callback(struct evloop *loop, struct closure *cb) {
-    if (epoll_add(loop->epollfd, cb->fd, EPOLLIN, cb) < 0)
-        perror("Epoll register callback: ");
-}
-
-
-void evloop_add_periodic_task(struct evloop *loop,
-                              int seconds,
-                              unsigned long long ns,
-                              struct closure *cb) {
-
-    struct itimerspec timervalue;
-
-    int timerfd = timerfd_create(CLOCK_MONOTONIC, 0);
-
-    memset(&timervalue, 0x00, sizeof(timervalue));
-
-    // Set initial expire time and periodic interval
-    timervalue.it_value.tv_sec = seconds;
-    timervalue.it_value.tv_nsec = ns;
-    timervalue.it_interval.tv_sec = seconds;
-    timervalue.it_interval.tv_nsec = ns;
-
-    if (timerfd_settime(timerfd, 0, &timervalue, NULL) < 0) {
-        perror("timerfd_settime");
-        return;
-    }
-
-    // Add the timer to the event loop
-    struct epoll_event ev;
-    ev.data.fd = timerfd;
-    ev.events = EPOLLIN;
-
-    if (epoll_ctl(loop->epollfd, EPOLL_CTL_ADD, timerfd, &ev) < 0) {
-        perror("epoll_ctl(2): EPOLLIN");
-        return;
-    }
-
-    /* Store it into the event loop */
-    if (loop->periodic_nr + 1 > loop->periodic_maxsize) {
-        loop->periodic_maxsize *= 2;
-        loop->periodic_tasks =
-            sol_realloc(loop->periodic_tasks,
-                        loop->periodic_maxsize * sizeof(*loop->periodic_tasks));
-    }
-
-    loop->periodic_tasks[loop->periodic_nr] =
-        sol_malloc(sizeof(*loop->periodic_tasks[loop->periodic_nr]));
-
-    loop->periodic_tasks[loop->periodic_nr]->closure = cb;
-    loop->periodic_tasks[loop->periodic_nr]->timerfd = timerfd;
-    loop->periodic_nr++;
-
-}
-
-
-int evloop_wait(struct evloop *el) {
-
-    int rc = 0;
-    int events = 0;
-    long int timer = 0L;
-    int periodic_done = 0;
-
-    while (1) {
-
-        events = epoll_wait(el->epollfd, el->events,
-                            el->max_events, el->timeout);
-
-        if (events < 0) {
-
-            /* Signals to all threads. Ignore it for now */
-            if (errno == EINTR)
-                continue;
-
-            /* Error occured, break the loop */
-            rc = -1;
-            el->status = errno;
-            break;
-        }
-
-        for (int i = 0; i < events; i++) {
-
-            /* Check for errors */
-            if ((el->events[i].events & EPOLLERR) ||
-                (el->events[i].events & EPOLLHUP) ||
-                (!(el->events[i].events & EPOLLIN) &&
-                 !(el->events[i].events & EPOLLOUT))) {
-
-                /* An error has occured on this fd, or the socket is not
-                   ready for reading, closing connection */
-                perror ("epoll_wait(2)");
-                shutdown(el->events[i].data.fd, 0);
-                close(el->events[i].data.fd);
-                el->status = errno;
-                continue;
-            }
-
-            struct closure *closure = el->events[i].data.ptr;
-            periodic_done = 0;
-
-            for (int i = 0; i < el->periodic_nr && periodic_done == 0; i++) {
-                if (el->events[i].data.fd == el->periodic_tasks[i]->timerfd) {
-                    struct closure *c = el->periodic_tasks[i]->closure;
-                    (void) read(el->events[i].data.fd, &timer, 8);
-                    c->call(el, c->args);
-                    periodic_done = 1;
-                }
-            }
-
-            if (periodic_done == 1)
-                continue;
-
-            /* No error events, proceed to run callback */
-            closure->call(el, closure->args);
-        }
-    }
-
-    return rc;
-}
-
-
-int evloop_rearm_callback_read(struct evloop *el, struct closure *cb) {
-    return epoll_mod(el->epollfd, cb->fd, EPOLLIN, cb);
-}
-
-
-int evloop_rearm_callback_write(struct evloop *el, struct closure *cb) {
-    return epoll_mod(el->epollfd, cb->fd, EPOLLOUT, cb);
-}
-
-
-int evloop_del_callback(struct evloop *el, struct closure *cb) {
-    return epoll_del(el->epollfd, cb->fd);
-}
-
-
 int epoll_add(int efd, int fd, int evs, void *data) {
 
     struct epoll_event ev;
@@ -511,4 +337,28 @@ int epoll_mod(int efd, int fd, int evs, void *data) {
 
 int epoll_del(int efd, int fd) {
     return epoll_ctl(efd, EPOLL_CTL_DEL, fd, NULL);
+}
+
+
+int add_cron_task(int epollfd, const struct itimerspec *timervalue) {
+
+    int timerfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+
+    if (timerfd_settime(timerfd, 0, timervalue, NULL) < 0)
+        goto err;
+
+    // Add the timer to the event loop
+    struct epoll_event ev;
+    ev.data.fd = timerfd;
+    ev.events = EPOLLIN;
+
+    if (epoll_ctl(epollfd, EPOLL_CTL_ADD, timerfd, &ev) < 0)
+        goto err;
+
+    return timerfd;
+
+err:
+
+    perror("add_cron_task");
+    return -1;
 }
