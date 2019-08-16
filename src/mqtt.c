@@ -65,10 +65,6 @@ static size_t unpack_mqtt_ack(const unsigned char *,
                               union mqtt_packet *,
                               size_t);
 
-static size_t unpack_mqtt_ack(const unsigned char *,
-                              union mqtt_header *,
-                              union mqtt_packet *);
-
 
 static unsigned char *pack_mqtt_header(const union mqtt_header *);
 
@@ -520,23 +516,17 @@ static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
     int step = mqtt_encode_length(ptr, len);
     ptr += step;
 
-    // Packet id
-    if (pkt->header.bits.qos > AT_MOST_ONCE) {
-        /* pack_u16(&ptr, pkt->publish.pkt_id); */
-        pack(ptr, "H", pkt->publish.pkt_id);
-        ptr += 2;
-    }
-
     // Topic len followed by topic name in bytes
-    /* pack_u16(&ptr, pkt->publish.topiclen); */
     pack(ptr, "H", pkt->publish.topiclen);
-    ptr += 2;
+    ptr += sizeof(uint16_t);
     memcpy(ptr, pkt->publish.topic, pkt->publish.topiclen);
     ptr += pkt->publish.topiclen;
 
     // Packet id
-    if (pkt->publish.header.bits.qos > AT_MOST_ONCE)
-        pack_u16(&ptr, pkt->publish.pkt_id);
+    if (pkt->publish.header.bits.qos > AT_MOST_ONCE) {
+        pack(ptr, "H", pkt->publish.pkt_id);
+        ptr += sizeof(uint16_t);
+    }
 
     // Finally the payload, same way of topic, payload len -> payload
     memcpy(ptr, pkt->publish.payload, pkt->publish.payloadlen);
@@ -660,10 +650,11 @@ void mqtt_packet_release(union mqtt_packet *pkt, unsigned type) {
         default:
             break;
     }
-
-
-bstring pack_ack(unsigned char byte, unsigned char rc) {
-    unsigned char raw[3];
-    pack(raw, "BBB", byte, 1, rc);
-    return bstring_copy(raw, 3);
 }
+
+
+/* bstring pack_ack(unsigned char byte, unsigned char rc) { */
+/*     unsigned char raw[3]; */
+/*     pack(raw, "BBB", byte, 1, rc); */
+/*     return bstring_copy(raw, 3); */
+/* } */

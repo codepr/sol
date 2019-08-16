@@ -29,6 +29,7 @@
 #define MQTT_H
 
 #include <stdio.h>
+#include "pack.h"
 
 
 #define MQTT_HEADER_LEN 2

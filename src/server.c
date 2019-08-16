@@ -114,6 +114,8 @@ static const char *sys_topics[SYS_TOPICS] = {
 };
 
 
+static void publish_stats(void);
+
 /* Prototype for a command handler */
 typedef int handler(struct io_event *);
 
@@ -127,6 +129,10 @@ static int subscribe_handler(struct io_event *);
 static int unsubscribe_handler(struct io_event *);
 
 static int publish_handler(struct io_event *);
+
+static int puback_handler(struct io_event *);
+
+static int pubrec_handler(struct io_event *);
 
 static int pubrel_handler(struct io_event *);
 
@@ -443,7 +449,7 @@ static int publish_handler(struct io_event *event) {
 
     // TODO free publish
 
-    if (event->payload->publish.header.bits.qos == AT_LEAST_ONCE) {
+    if (qos == AT_LEAST_ONCE) {
 
         mqtt_puback *puback = mqtt_packet_ack(PUBACK,
                                               event->payload->publish.pkt_id);
@@ -458,11 +464,12 @@ static int publish_handler(struct io_event *event) {
 
         return REPLY;
 
-    } else if (event->payload->publish.header.bits.qos == EXACTLY_ONCE) {
+    } else if (qos == EXACTLY_ONCE) {
 
         // TODO add to a hashtable to track PUBREC clients last
 
-        mqtt_pubrec *pubrec = mqtt_packet_ack(PUBREC, event->payload->publish.pkt_id);
+        mqtt_pubrec *pubrec = mqtt_packet_ack(PUBREC,
+                                              event->payload->publish.pkt_id);
 
         event->payload->ack = *pubrec;
 
@@ -801,11 +808,7 @@ errdc:
     sol_error("Dropping client");
     close(fd);
 
-    hashtable_del(sol.clients, ((struct sol_client *) cb->obj)->client_id);
-    hashtable_del(sol.closures, cb->closure_id);
-
     info.nclients--;
-
     info.nconnections--;
 
     return -ERRCLIENTDC;
@@ -1035,12 +1038,13 @@ static void *worker(void *arg) {
             } else if (e_events[i].data.fd == epoll->expirefd) {
                 (void) read(e_events[i].data.fd, &timers, sizeof(timers));
                 // Check for keys about to expire out
-                /* expire_keys(); */
+                publish_stats();
             } else if (e_events[i].events & EPOLLIN) {
                 struct io_event *event = e_events[i].data.ptr;
                 eventfd_read(event->io_event, &val);
                 // TODO free client and remove it from the global map in case
                 // of QUIT command (check return code)
+                sol_debug("%d", event->payload->header.bits.type);
                 int reply = handlers[event->payload->header.bits.type](event);
                 if (reply == REPLY)
                     epoll_mod(event->epollfd, event->client->fd, EPOLLOUT, event);
@@ -1131,7 +1135,7 @@ static void publish_message(unsigned short pkt_id,
  * Publish statistics periodic task, it will be called once every N config
  * defined seconds, it publish some informations on predefined topics
  */
-static void publish_stats(struct evloop *loop, void *args) {
+static void publish_stats(void) {
 
     char cclients[number_len(info.nclients) + 1];
     sprintf(cclients, "%d", info.nclients);
@@ -1213,6 +1217,21 @@ int start_server(const char *addr, const char *port) {
         .serverfd = sfd,
         .busfd = -1
     };
+
+    /* Start the expiration keys check routine */
+    struct itimerspec timervalue;
+
+    memset(&timervalue, 0x00, sizeof(timervalue));
+
+    timervalue.it_value.tv_sec = 0;
+    timervalue.it_value.tv_nsec = conf->stats_pub_interval;
+    timervalue.it_interval.tv_sec = 0;
+    timervalue.it_interval.tv_nsec = conf->stats_pub_interval;
+
+    // add expiration keys cron task
+    int exptimerfd = add_cron_task(epoll.w_epollfd, &timervalue);
+
+    epoll.expirefd = exptimerfd;
 
     /*
      * We need to watch for global eventfd in order to gracefully shutdown IO
