@@ -233,9 +233,9 @@ union mqtt_packet {
 
 int mqtt_encode_length(unsigned char *, size_t);
 
-size_t mqtt_decode_length(const unsigned char **, unsigned *);
+size_t mqtt_decode_length(unsigned char **, unsigned *);
 
-int unpack_mqtt_packet(const unsigned char *, union mqtt_packet *, unsigned char, size_t);
+int unpack_mqtt_packet(unsigned char *, union mqtt_packet *, unsigned char, size_t);
 
 unsigned char *pack_mqtt_packet(const union mqtt_packet *, unsigned);
 

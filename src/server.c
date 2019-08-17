@@ -56,8 +56,8 @@ static struct sol_info info;
 /* Broker global instance, contains the topic trie and the clients hashtable */
 static struct sol sol;
 
-#define IOPOOLSIZE 1
-#define WORKERPOOLSIZE 1
+#define IOPOOLSIZE 2
+#define WORKERPOOLSIZE 2
 
 /*
  * TCP server, based on I/O multiplexing but sharing I/O and work loads between
@@ -102,6 +102,15 @@ static struct sol sol;
  * DB
  */
 static pthread_spinlock_t spinlock;
+
+static void lock(char *where) {
+    pthread_spin_lock(&spinlock);
+}
+
+
+static void unlock(char *where) {
+    pthread_spin_unlock(&spinlock);
+}
 
 /*
  * IO event strucuture, it's the main information that will be communicated
@@ -208,7 +217,7 @@ static handler *handlers[15] = {
 static int connect_handler(struct io_event *event) {
 
 #if WORKERPOOLSIZE > 1
-    pthread_spin_lock(&spinlock);
+    lock("connect_handler");
 #endif
 
     // TODO just return error_code and handle it on `on_read`
@@ -229,7 +238,11 @@ static int connect_handler(struct io_event *event) {
         info.nclients--;
         info.nconnections--;
 
-        return NOREPLY;
+#if WORKERPOOLSIZE > 1
+        unlock("connect_handler");
+#endif
+
+        return CLIENTDC;
     }
 
     sol_info("New client connected as %s (c%i, k%u)",
@@ -247,6 +260,11 @@ static int connect_handler(struct io_event *event) {
     memcpy(event->client->client_id,
            event->payload->connect.payload.client_id, cid_len + 1);
     hashtable_put(sol.clients, event->client->client_id, event->client);
+
+#if WORKERPOOLSIZE > 1
+    unlock("connect_handler 2");
+#endif
+
 
     /* Respond with a connack */
     union mqtt_packet *response = sol_malloc(sizeof(*response));
@@ -270,10 +288,6 @@ static int connect_handler(struct io_event *event) {
               session_present, rc);
 
     sol_free(response);
-
-#if WORKERPOOLSIZE > 1
-    pthread_spin_unlock(&spinlock);
-#endif
 
     return REPLY;
 }
@@ -301,7 +315,7 @@ static int disconnect_handler(struct io_event *event) {
     sol_debug("Received DISCONNECT from %s", event->client->client_id);
 
 #if WORKERPOOLSIZE > 1
-    pthread_spin_lock(&spinlock);
+    lock("disconnect_handler");
 #endif
     /* Handle disconnection request from client */
     close(event->client->fd);
@@ -311,7 +325,7 @@ static int disconnect_handler(struct io_event *event) {
     info.nclients--;
     info.nconnections--;
 #if WORKERPOOLSIZE > 1
-    pthread_spin_unlock(&spinlock);
+    unlock("disconnect_handler");
 #endif
     // TODO remove from all topic where it subscribed
     return NOREPLY;
@@ -345,7 +359,7 @@ static int subscribe_handler(struct io_event *event) {
         sol_debug("\t%s (QoS %i)",
                   topic, event->payload->subscribe.tuples[i].qos);
 #if WORKERPOOLSIZE > 1
-    pthread_spin_lock(&spinlock);
+        lock("subscribe_handler");
 #endif
         /* Recursive subscribe to all children topics if the topic ends with "/#" */
         if (topic[event->payload->subscribe.tuples[i].topic_len - 1] == '#' &&
@@ -376,7 +390,7 @@ static int subscribe_handler(struct io_event *event) {
         topic_add_subscriber(t, event->client,
                              event->payload->subscribe.tuples[i].qos, true);
 #if WORKERPOOLSIZE > 1
-    pthread_spin_unlock(&spinlock);
+        unlock("subscribe_handler");
 #endif
         if (alloced)
             sol_free(topic);
@@ -423,6 +437,7 @@ static int unsubscribe_handler(struct io_event *event) {
 
 static int publish_handler(struct io_event *event) {
 
+    int rc = NOREPLY;
     struct sol_client *c = event->client;
 
     sol_debug("Received PUBLISH from %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
@@ -435,7 +450,7 @@ static int publish_handler(struct io_event *event) {
               event->payload->publish.payloadlen);
 
 #if WORKERPOOLSIZE > 1
-    pthread_spin_lock(&spinlock);
+    lock("publish_handler");
 #endif
 
     info.messages_recv++;
@@ -463,10 +478,6 @@ static int publish_handler(struct io_event *event) {
         t = topic_create(sol_strdup(topic));
         sol_topic_put(&sol, t);
     }
-
-#if WORKERPOOLSIZE > 1
-    pthread_spin_unlock(&spinlock);
-#endif
 
     // Not the best way to handle this
     if (alloced == true)
@@ -529,7 +540,7 @@ static int publish_handler(struct io_event *event) {
 
         event->reply = bstring_copy(packed, MQTT_ACK_LEN);
 
-        return REPLY;
+        rc = REPLY;
 
     } else if (qos == EXACTLY_ONCE) {
 
@@ -546,17 +557,19 @@ static int publish_handler(struct io_event *event) {
 
         event->reply = bstring_copy(packed, MQTT_ACK_LEN);
 
-        return REPLY;
+        rc = REPLY;
 
     }
 
-    mqtt_packet_release(event->payload, PUBLISH_TYPE);
+#if WORKERPOOLSIZE > 1
+    unlock("publish_handler");
+#endif
 
     /*
      * We're in the case of AT_MOST_ONCE QoS level, we don't need to sent out
      * any byte, it's a fire-and-forget.
      */
-    return NOREPLY;
+    return rc;
 }
 
 
@@ -687,7 +700,7 @@ static void accept_loop(struct epoll *epoll) {
                  * An error has occured on this fd, or the socket is not
                  * ready for reading, closing connection
                  */
-                perror ("epoll_wait(2)");
+                perror("accept_loop :: epoll_wait(2)");
                 close(e_events[i].data.fd);
 
             } else if (e_events[i].data.fd == conf->run) {
@@ -787,8 +800,8 @@ ssize_t recv_packet(int clientfd, unsigned char **buf, unsigned char *header) {
     int n = 0;
 
     unsigned pos = 0;
-    unsigned long long tlen = mqtt_decode_length((const unsigned char **) &tmpbuf,
-                                                 &pos);
+    unsigned long long tlen = mqtt_decode_length(&tmpbuf, &pos);
+
     /*
      * Set return code to -ERRMAXREQSIZE in case the total packet len exceeds
      * the configuration limit `max_request_size`
@@ -802,7 +815,7 @@ ssize_t recv_packet(int clientfd, unsigned char **buf, unsigned char *header) {
         goto exit;
 
     /* Read remaining bytes to complete the packet */
-    if ((n = recv_bytes(clientfd, tmpbuf + pos + 1, tlen - pos)) < 0)
+    if ((n = recv_bytes(clientfd, tmpbuf + pos + 1, tlen - pos - 1)) < 0)
         goto err;
 
     nbytes += n - pos - 1;
@@ -852,9 +865,7 @@ static int read_data(int fd, unsigned char *buffer, union mqtt_packet *pkt) {
     if (bytes == -ERRPACKETERR)
         goto exit;
 
-    /* info.bytes_recv += bytes; */
-
-    info.bytes_recv++;
+    info.bytes_recv += bytes;
 
     /*
      * Unpack received bytes into a triedb_request structure and execute the
@@ -880,9 +891,6 @@ errdc:
 
     return -ERRCLIENTDC;
 }
-
-
-#define BUFSIZE 2048
 
 
 static void *io_worker(void *arg) {
@@ -923,7 +931,7 @@ static void *io_worker(void *arg) {
 
                 /* An error has occured on this fd, or the socket is not
                    ready for reading, closing connection */
-                perror ("epoll_wait(2)");
+                perror("io_worker :: epoll_wait(2)");
                 close(e_events[i].data.fd);
 
             } else if (e_events[i].data.fd == conf->run) {
@@ -937,31 +945,8 @@ static void *io_worker(void *arg) {
 
                 goto exit;
 
-            } else if (epoll->busfd > 0 && e_events[i].data.fd == epoll->busfd) {
-                // Bus communication from UDP chanel
-                int n;
-                socklen_t len;
-                n = recvfrom(e_events[i].data.fd, (char *)buffer, BUFSIZE,
-                             MSG_WAITALL, ( struct sockaddr *) &node, &len);
-                buffer[n] = '\0';
-
-                /* unsigned char header = 0; */
-
-                /* union triedb_request *pkt = sol_malloc(sizeof(*pkt)); */
-
-                const unsigned char *p = buffer;
-                p++;
-                /* unsigned pos = 0; */
-                /* size_t bytes = mqtt_decode_length(&p, &pos); */
-
-                /*
-                 * Unpack received bytes into a triedb_request structure and
-                 * execute the correct handler based on the type of the
-                 * operation.
-                 */
-                /* unpack_triedb_request(buffer, pkt, header, bytes); */
-                sol_debug("Received JOIN");
             } else if (e_events[i].events & EPOLLIN) {
+
                 struct io_event *event = sol_malloc(sizeof(*event));
                 event->epollfd = epoll->io_epollfd;
                 event->payload = sol_malloc(sizeof(*event->payload));
@@ -983,13 +968,13 @@ static void *io_worker(void *arg) {
                     epoll_add(epoll->w_epollfd, ev,
                               EPOLLIN | EPOLLONESHOT, event);
 
-                    /* Fire an event toward the worker thread pool */
-                    eventfd_write(ev, 1);
-
                     /* Record last action as of now */
                     event->client->last_action_time = time(NULL);
 
-                } else if (rc == -ERRCLIENTDC) {
+                    /* Fire an event toward the worker thread pool */
+                    eventfd_write(ev, 1);
+
+                } else if (rc == -ERRCLIENTDC || rc == -ERRPACKETERR) {
 
                     /*
                      * We got an unexpected error or a disconnection from the
@@ -998,18 +983,12 @@ static void *io_worker(void *arg) {
                      * paired payload
                      */
 
-#if WORKERPOOLSIZE > 1
-                    pthread_spin_lock(&spinlock);
-#endif
-
+                    lock("");
                     close(event->client->fd);
                     hashtable_del(sol.clients, event->client->client_id);
                     sol_free(event->payload);
                     sol_free(event);
-
-#if WORKERPOOLSIZE > 1
-                    pthread_spin_unlock(&spinlock);
-#endif
+                    unlock("");
                 }
             } else if (e_events[i].events & EPOLLOUT) {
 
@@ -1024,22 +1003,25 @@ static void *io_worker(void *arg) {
                                        event->reply,
                                        bstring_len(event->reply))) < 0) {
                     close(event->client->fd);
+                } else {
+                    /*
+                     * Rearm descriptor, we're using EPOLLONESHOT feature to avoid
+                     * race condition and thundering herd issues on multithreaded
+                     * EPOLL
+                     */
+                    epoll_mod(epoll->io_epollfd,
+                              event->client->fd, EPOLLIN, event->client);
                 }
 
                 // Update information stats
                 info.bytes_sent += sent < 0 ? 0 : sent;
 
-                /*
-                 * Rearm descriptor, we're using EPOLLONESHOT feature to avoid
-                 * race condition and thundering herd issues on multithreaded
-                 * EPOLL
-                 */
-                epoll_mod(epoll->io_epollfd,
-                          event->client->fd, EPOLLIN, event->client);
-
                 /* Free resource, ACKs will be free'd closing the server */
-                /* if ((*event->reply >> 4) != ACK) */
                 bstring_destroy(event->reply);
+
+                close(event->io_event);
+
+                mqtt_packet_release(event->payload, event->payload->header.bits.type);
 
                 sol_free(event);
             }
@@ -1089,7 +1071,7 @@ static void *worker(void *arg) {
                  * An error has occured on this fd, or the socket is not
                  * ready for reading, closing connection
                  */
-                perror ("epoll_wait(2)");
+                perror("worker :: epoll_wait(2)");
                 close(e_events[i].data.fd);
 
             } else if (e_events[i].data.fd == conf->run) {
@@ -1098,7 +1080,7 @@ static void *worker(void *arg) {
                 eventfd_read(conf->run, &val);
 
                 sol_debug("Stopping epoll loop. Thread %p exiting.",
-                       (void *) pthread_self());
+                          (void *) pthread_self());
 
                 goto exit;
 
@@ -1114,11 +1096,9 @@ static void *worker(void *arg) {
                 int reply = handlers[event->payload->header.bits.type](event);
                 if (reply == REPLY)
                     epoll_mod(event->epollfd, event->client->fd, EPOLLOUT, event);
-                else
+                else if (reply != CLIENTDC)
                     epoll_mod(epoll->io_epollfd,
                               event->client->fd, EPOLLIN, event->client);
-                close(event->io_event);
-                /* triedb_request_destroy(event->payload); */
             }
         }
     }
@@ -1270,9 +1250,7 @@ int start_server(const char *addr, const char *port) {
     trie_init(&sol.topics);
     sol.clients = hashtable_create(client_destructor);
 
-#if WORKERPOOLSIZE > 1
     pthread_spin_init(&spinlock, PTHREAD_PROCESS_SHARED);
-#endif
 
     /* Generate stats topics */
     for (int i = 0; i < SYS_TOPICS; i++)
@@ -1340,11 +1318,8 @@ int start_server(const char *addr, const char *port) {
         pthread_join(workers[i], NULL);
 
     hashtable_release(sol.clients);
-    hashtable_release(sol.closures);
 
-#if WORKERPOOLSIZE > 1
     pthread_spin_destroy(&spinlock);
-#endif
 
     sol_info("Sol v%s exiting", VERSION);
 

@@ -51,6 +51,7 @@
  */
 #define REPLY               0
 #define NOREPLY             1
+#define CLIENTDC            2
 
 /* Global informations statistics structure */
 struct sol_info {

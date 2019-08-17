@@ -45,7 +45,6 @@ struct topic {
  */
 struct sol {
     HashTable *clients;
-    HashTable *closures;
     Trie topics;
 };
 

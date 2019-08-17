@@ -130,4 +130,10 @@ unsigned int pack(unsigned char *, char *, ...);
 void unpack(unsigned char *, char *, ...);
 
 
+long long unpack_integer(unsigned char **, char);
+
+
+unsigned char *unpack_bytes(unsigned char **, size_t);
+
+
 #endif

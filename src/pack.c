@@ -427,3 +427,52 @@ void unpack(unsigned char *buf, char *format, ...) {
 
     va_end(ap);
 }
+
+/* Helper functions */
+long long unpack_integer(unsigned char **buf, char size) {
+    long long val = 0LL;
+    switch (size) {
+        case 'b':
+            val = **buf;
+            *buf += 1;
+            break;
+        case 'B':
+            val = **buf;
+            *buf += 1;
+            break;
+        case 'h':
+            val = unpacki16(*buf);
+            *buf += 2;
+            break;
+        case 'H':
+            val = unpacku16(*buf);
+            *buf += 2;
+            break;
+        case 'i':
+            val = unpacki32(*buf);
+            *buf += 4;
+            break;
+        case 'I':
+            val = unpacku32(*buf);
+            *buf += 4;
+            break;
+        case 'q':
+            val = unpacki64(*buf);
+            *buf += 8;
+            break;
+        case 'Q':
+            val = unpacku16(*buf);
+            *buf += 8;
+            break;
+    }
+    return val;
+}
+
+
+unsigned char *unpack_bytes(unsigned char **buf, size_t len) {
+    unsigned char *dest = sol_malloc(len + 1);
+    memcpy(dest, *buf, len);
+    dest[len] = '\0';
+    *buf += len;
+    return dest;
+}
