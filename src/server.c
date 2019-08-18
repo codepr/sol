@@ -801,7 +801,6 @@ ssize_t recv_packet(int clientfd, unsigned char **buf, unsigned char *header) {
 
     unsigned pos = 0;
     unsigned long long tlen = mqtt_decode_length(&tmpbuf, &pos);
-    sol_debug("tot. len %llu pos %u", tlen, pos);
 
     /*
      * Set return code to -ERRMAXREQSIZE in case the total packet len exceeds
@@ -821,7 +820,6 @@ ssize_t recv_packet(int clientfd, unsigned char **buf, unsigned char *header) {
     if ((n = recv_bytes(clientfd, tmpbuf + offset, tlen - offset)) < 0)
         goto err;
 
-    sol_debug("bytes %d", n);
     nbytes += n - pos - 1;
 
 exit:
@@ -1023,8 +1021,6 @@ static void *io_worker(void *arg) {
                 /* Free resource, ACKs will be free'd closing the server */
                 bstring_destroy(event->reply);
 
-                close(event->io_event);
-
                 mqtt_packet_release(event->payload, event->payload->header.bits.type);
 
                 sol_free(event);
@@ -1103,6 +1099,7 @@ static void *worker(void *arg) {
                 else if (reply != CLIENTDC)
                     epoll_mod(epoll->io_epollfd,
                               event->client->fd, EPOLLIN, event->client);
+                close(event->io_event);
             }
         }
     }

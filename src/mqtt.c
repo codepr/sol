@@ -242,7 +242,6 @@ static size_t unpack_mqtt_publish(unsigned char *raw,
     pkt->publish.topiclen = topic_len;
     pkt->publish.topic = unpack_bytes(&raw, topic_len);
 
-    sol_debug("%d", topic_len);
     uint16_t message_len = len;
 
     /* Read packet id */
