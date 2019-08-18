@@ -29,13 +29,28 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <unistd.h>
+#include <sys/eventfd.h>
 #include "util.h"
 #include "config.h"
 #include "server.h"
 
 
+// Stops epoll_wait loops by sending an event
+void sigint_handler(int signum) {
+    printf("\n");
+    for (int i = 0; i < IOPOOLSIZE + WORKERPOOLSIZE + 1; ++i) {
+        eventfd_write(conf->run, 1);
+        usleep(1500);
+    }
+}
+
+
 int main (int argc, char **argv) {
+
+    /* signal(SIGINT, sigint_handler); */
+    /* signal(SIGTERM, sigint_handler); */
 
     char *addr = DEFAULT_HOSTNAME;
     char *port = DEFAULT_PORT;

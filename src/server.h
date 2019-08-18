@@ -53,6 +53,15 @@
 #define NOREPLY             1
 #define CLIENTDC            2
 
+/*
+ * Number of I/O workers to start, in other words the size of the IO thread
+ * pool
+ */
+#define IOPOOLSIZE 2
+
+/* Number of Worker threads, or the size of the worker pool */
+#define WORKERPOOLSIZE 2
+
 /* Global informations statistics structure */
 struct sol_info {
     /* Number of clients currently connected */

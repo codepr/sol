@@ -56,9 +56,6 @@ static struct sol_info info;
 /* Broker global instance, contains the topic trie and the clients hashtable */
 static struct sol sol;
 
-#define IOPOOLSIZE 2
-#define WORKERPOOLSIZE 2
-
 /*
  * TCP server, based on I/O multiplexing but sharing I/O and work loads between
  * thread pools. The main thread have the exclusive responsibility of accepting
@@ -483,46 +480,49 @@ static int publish_handler(struct io_event *event) {
     if (alloced == true)
         sol_free(topic);
 
-    unsigned char *pub = pack_mqtt_packet(event->payload, PUBLISH_TYPE);
+    if (t->subscribers->len > 0) {
 
-    size_t publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
-        event->payload->publish.topiclen + event->payload->publish.payloadlen;
+        unsigned char *pub = pack_mqtt_packet(event->payload, PUBLISH_TYPE);
 
-    if (event->payload->publish.header.bits.qos > AT_MOST_ONCE)
-        publen += sizeof(uint16_t);
-
-    bstring payload = bstring_copy(pub, publen);
-
-    struct list_node *cur = t->subscribers->head;
-    for (; cur; cur = cur->next) {
-
-        struct subscriber *sub = cur->data;
-        struct sol_client *sc = sub->client;
-
-        /* Update QoS according to subscriber's one */
-        event->payload->publish.header.bits.qos = sub->qos;
+        size_t publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
+            event->payload->publish.topiclen + event->payload->publish.payloadlen;
 
         if (event->payload->publish.header.bits.qos > AT_MOST_ONCE)
             publen += sizeof(uint16_t);
 
-        ssize_t sent;
-        if ((sent = send_bytes(sc->fd, payload, bstring_len(payload))) < 0)
-            sol_error("Error publishing to %s: %s",
-                      sc->client_id, strerror(errno));
+        bstring payload = bstring_copy(pub, publen);
 
-        info.messages_sent++;
+        struct list_node *cur = t->subscribers->head;
+        for (; cur; cur = cur->next) {
 
-        // Update information stats
-        info.bytes_sent += sent;
+            struct subscriber *sub = cur->data;
+            struct sol_client *sc = sub->client;
 
-        sol_debug("Sending PUBLISH to %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
-                  sc->client_id,
-                  event->payload->publish.header.bits.dup,
-                  event->payload->publish.header.bits.qos,
-                  event->payload->publish.header.bits.retain,
-                  event->payload->publish.pkt_id,
-                  event->payload->publish.topic,
-                  event->payload->publish.payloadlen);
+            /* Update QoS according to subscriber's one */
+            event->payload->publish.header.bits.qos = sub->qos;
+
+            if (event->payload->publish.header.bits.qos > AT_MOST_ONCE)
+                publen += sizeof(uint16_t);
+
+            ssize_t sent;
+            if ((sent = send_bytes(sc->fd, payload, bstring_len(payload))) < 0)
+                sol_error("Error publishing to %s: %s",
+                          sc->client_id, strerror(errno));
+
+            info.messages_sent++;
+
+            // Update information stats
+            info.bytes_sent += sent;
+
+            sol_debug("Sending PUBLISH to %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
+                      sc->client_id,
+                      event->payload->publish.header.bits.dup,
+                      event->payload->publish.header.bits.qos,
+                      event->payload->publish.header.bits.retain,
+                      event->payload->publish.pkt_id,
+                      event->payload->publish.topic,
+                      event->payload->publish.payloadlen);
+        }
     }
 
     // TODO free publish
@@ -801,6 +801,7 @@ ssize_t recv_packet(int clientfd, unsigned char **buf, unsigned char *header) {
 
     unsigned pos = 0;
     unsigned long long tlen = mqtt_decode_length(&tmpbuf, &pos);
+    sol_debug("tot. len %llu pos %u", tlen, pos);
 
     /*
      * Set return code to -ERRMAXREQSIZE in case the total packet len exceeds
@@ -814,10 +815,13 @@ ssize_t recv_packet(int clientfd, unsigned char **buf, unsigned char *header) {
     if (tlen <= 4)
         goto exit;
 
+    int offset = 4 - pos -1;
+
     /* Read remaining bytes to complete the packet */
-    if ((n = recv_bytes(clientfd, tmpbuf + pos + 1, tlen - pos - 1)) < 0)
+    if ((n = recv_bytes(clientfd, tmpbuf + offset, tlen - offset)) < 0)
         goto err;
 
+    sol_debug("bytes %d", n);
     nbytes += n - pos - 1;
 
 exit:
@@ -983,12 +987,12 @@ static void *io_worker(void *arg) {
                      * paired payload
                      */
 
-                    lock("");
+                    /* lock(""); */
                     close(event->client->fd);
                     hashtable_del(sol.clients, event->client->client_id);
                     sol_free(event->payload);
                     sol_free(event);
-                    unlock("");
+                    /* unlock(""); */
                 }
             } else if (e_events[i].events & EPOLLOUT) {
 

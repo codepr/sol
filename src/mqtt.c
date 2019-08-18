@@ -154,7 +154,7 @@ int mqtt_encode_length(unsigned char *buf, size_t len) {
 size_t mqtt_decode_length(unsigned char **buf, unsigned *pos) {
 
     char c;
-	int multiplier = 1;
+	long long multiplier = 1;
 	unsigned long long value = 0LL;
     *pos = 0;
 
@@ -242,6 +242,7 @@ static size_t unpack_mqtt_publish(unsigned char *raw,
     pkt->publish.topiclen = topic_len;
     pkt->publish.topic = unpack_bytes(&raw, topic_len);
 
+    sol_debug("%d", topic_len);
     uint16_t message_len = len;
 
     /* Read packet id */
