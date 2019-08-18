@@ -100,12 +100,12 @@ static struct sol sol;
  */
 static pthread_spinlock_t spinlock;
 
-static void lock(char *where) {
+static void lock(void) {
     pthread_spin_lock(&spinlock);
 }
 
 
-static void unlock(char *where) {
+static void unlock(void) {
     pthread_spin_unlock(&spinlock);
 }
 
@@ -214,7 +214,7 @@ static handler *handlers[15] = {
 static int connect_handler(struct io_event *event) {
 
 #if WORKERPOOLSIZE > 1
-    lock("connect_handler");
+    lock();
 #endif
 
     // TODO just return error_code and handle it on `on_read`
@@ -236,7 +236,7 @@ static int connect_handler(struct io_event *event) {
         info.nconnections--;
 
 #if WORKERPOOLSIZE > 1
-        unlock("connect_handler");
+        unlock();
 #endif
 
         return CLIENTDC;
@@ -259,7 +259,7 @@ static int connect_handler(struct io_event *event) {
     hashtable_put(sol.clients, event->client->client_id, event->client);
 
 #if WORKERPOOLSIZE > 1
-    unlock("connect_handler 2");
+    unlock();
 #endif
 
 
@@ -312,7 +312,7 @@ static int disconnect_handler(struct io_event *event) {
     sol_debug("Received DISCONNECT from %s", event->client->client_id);
 
 #if WORKERPOOLSIZE > 1
-    lock("disconnect_handler");
+    lock();
 #endif
     /* Handle disconnection request from client */
     close(event->client->fd);
@@ -322,7 +322,7 @@ static int disconnect_handler(struct io_event *event) {
     info.nclients--;
     info.nconnections--;
 #if WORKERPOOLSIZE > 1
-    unlock("disconnect_handler");
+    unlock();
 #endif
     // TODO remove from all topic where it subscribed
     return NOREPLY;
@@ -356,7 +356,7 @@ static int subscribe_handler(struct io_event *event) {
         sol_debug("\t%s (QoS %i)",
                   topic, event->payload->subscribe.tuples[i].qos);
 #if WORKERPOOLSIZE > 1
-        lock("subscribe_handler");
+        lock();
 #endif
         /* Recursive subscribe to all children topics if the topic ends with "/#" */
         if (topic[event->payload->subscribe.tuples[i].topic_len - 1] == '#' &&
@@ -387,7 +387,7 @@ static int subscribe_handler(struct io_event *event) {
         topic_add_subscriber(t, event->client,
                              event->payload->subscribe.tuples[i].qos, true);
 #if WORKERPOOLSIZE > 1
-        unlock("subscribe_handler");
+        unlock();
 #endif
         if (alloced)
             sol_free(topic);
@@ -447,7 +447,7 @@ static int publish_handler(struct io_event *event) {
               event->payload->publish.payloadlen);
 
 #if WORKERPOOLSIZE > 1
-    lock("publish_handler");
+    lock();
 #endif
 
     info.messages_recv++;
@@ -562,7 +562,7 @@ static int publish_handler(struct io_event *event) {
     }
 
 #if WORKERPOOLSIZE > 1
-    unlock("publish_handler");
+    unlock();
 #endif
 
     /*
@@ -985,12 +985,10 @@ static void *io_worker(void *arg) {
                      * paired payload
                      */
 
-                    /* lock(""); */
                     close(event->client->fd);
                     hashtable_del(sol.clients, event->client->client_id);
                     sol_free(event->payload);
                     sol_free(event);
-                    /* unlock(""); */
                 }
             } else if (e_events[i].events & EPOLLOUT) {
 
@@ -1022,6 +1020,8 @@ static void *io_worker(void *arg) {
                 bstring_destroy(event->reply);
 
                 mqtt_packet_release(event->payload, event->payload->header.bits.type);
+
+                close(event->io_event);
 
                 sol_free(event);
             }
@@ -1096,10 +1096,11 @@ static void *worker(void *arg) {
                 int reply = handlers[event->payload->header.bits.type](event);
                 if (reply == REPLY)
                     epoll_mod(event->epollfd, event->client->fd, EPOLLOUT, event);
-                else if (reply != CLIENTDC)
+                else if (reply != CLIENTDC) {
                     epoll_mod(epoll->io_epollfd,
                               event->client->fd, EPOLLIN, event->client);
-                close(event->io_event);
+                    close(event->io_event);
+                }
             }
         }
     }
@@ -1139,7 +1140,7 @@ static void publish_message(unsigned short pkt_id,
 
     /* Send payload through TCP to all subscribed clients of the topic */
     struct list_node *cur = t->subscribers->head;
-    size_t sent = 0L;
+    ssize_t sent = 0L;
     for (; cur; cur = cur->next) {
 
         sol_debug("Sending PUBLISH (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",

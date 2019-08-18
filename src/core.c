@@ -69,6 +69,7 @@ void topic_add_subscriber(struct topic *t,
 void topic_del_subscriber(struct topic *t,
                           struct sol_client *client,
                           bool cleansession) {
+    cleansession = (bool) cleansession; // temporary placeholder for compiler
     list_remove_node(t->subscribers, client, compare_cid);
 
     // TODO remomve in case of cleansession == false
