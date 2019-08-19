@@ -44,9 +44,6 @@
 #include "network.h"
 
 
-#define EVLOOP_INITIAL_SIZE 4
-
-
 static const int INITIAL_BUFLEN = 4;
 
 

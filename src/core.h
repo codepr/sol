@@ -46,6 +46,7 @@ struct topic {
 struct sol {
     HashTable *clients;
     Trie topics;
+    bool *pending_packets;
 };
 
 

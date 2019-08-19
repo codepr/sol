@@ -557,6 +557,8 @@ static int publish_handler(struct io_event *event) {
 
         event->reply = bstring_copy(packed, MQTT_ACK_LEN);
 
+        sol.pending_packets[event->payload->publish.pkt_id] = true;
+
         rc = REPLY;
 
     }
@@ -590,7 +592,7 @@ static int pubrec_handler(struct io_event *event) {
     sol_debug("Received PUBREC from %s", c->client_id);
 
     mqtt_pubrel *pubrel = mqtt_packet_ack(PUBREL,
-                                          event->payload->publish.pkt_id);
+                                          event->payload->ack.pkt_id);
 
     event->payload->ack = *pubrel;
 
@@ -609,7 +611,7 @@ static int pubrel_handler(struct io_event *event) {
     sol_debug("Received PUBREL from %s", event->client->client_id);
 
     mqtt_pubcomp *pubcomp = mqtt_packet_ack(PUBCOMP,
-                                            event->payload->publish.pkt_id);
+                                            event->payload->ack.pkt_id);
 
     event->payload->ack = *pubcomp;
 
@@ -619,6 +621,8 @@ static int pubrel_handler(struct io_event *event) {
     sol_debug("Sending PUBCOMP to %s", event->client->client_id);
 
     event->reply = bstring_copy(packed, MQTT_ACK_LEN);
+
+    sol.pending_packets[event->payload->ack.pkt_id] = false;
 
     return REPLY;
 }
@@ -1251,6 +1255,9 @@ int start_server(const char *addr, const char *port) {
     /* Initialize global Sol instance */
     trie_init(&sol.topics);
     sol.clients = hashtable_create(client_destructor);
+    sol.pending_packets = sol_malloc(65535);
+    for (int i = 0; i < 65535; ++i)
+        sol.pending_packets[i] = false;
 
     pthread_spin_init(&spinlock, PTHREAD_PROCESS_SHARED);
 
@@ -1320,6 +1327,7 @@ int start_server(const char *addr, const char *port) {
         pthread_join(workers[i], NULL);
 
     hashtable_release(sol.clients);
+    sol_free(sol.pending_packets);
 
     pthread_spin_destroy(&spinlock);
 
