@@ -217,6 +217,15 @@ static int connect_handler(struct io_event *event) {
     lock();
 #endif
 
+    if (!event->payload->connect.payload.client_id
+        && event->payload->connect.bits.clean_session == false)
+        goto clientdc;
+
+    if (!event->payload->connect.payload.client_id) {
+        event->payload->connect.payload.client_id = sol_malloc(1);
+        event->payload->connect.payload.client_id[0] = '\0';
+    }
+
     // TODO just return error_code and handle it on `on_read`
     if (hashtable_exists(sol.clients,
                          (const char *) event->payload->connect.payload.client_id)) {
@@ -231,15 +240,7 @@ static int connect_handler(struct io_event *event) {
         hashtable_del(sol.clients,
                       (const char *) event->payload->connect.payload.client_id);
 
-        // Update stats
-        info.nclients--;
-        info.nconnections--;
-
-#if WORKERPOOLSIZE > 1
-        unlock();
-#endif
-
-        return CLIENTDC;
+        goto clientdc;
     }
 
     sol_info("New client connected as %s (c%i, k%u)",
@@ -287,6 +288,18 @@ static int connect_handler(struct io_event *event) {
     sol_free(response);
 
     return REPLY;
+
+clientdc:
+
+    // Update stats
+    info.nclients--;
+    info.nconnections--;
+
+#if WORKERPOOLSIZE > 1
+        unlock();
+#endif
+
+    return CLIENTDC;
 }
 
 
