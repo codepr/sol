@@ -154,7 +154,7 @@ int mqtt_encode_length(unsigned char *buf, size_t len) {
 size_t mqtt_decode_length(unsigned char **buf, unsigned *pos) {
 
     char c;
-	long long multiplier = 1;
+	unsigned long long multiplier = 1LL;
 	unsigned long long value = 0LL;
     *pos = 0;
 
@@ -242,7 +242,7 @@ static size_t unpack_mqtt_publish(unsigned char *raw,
     pkt->publish.topiclen = topic_len;
     pkt->publish.topic = unpack_bytes(&raw, topic_len);
 
-    uint16_t message_len = len;
+    uint64_t message_len = len;
 
     /* Read packet id */
     if (publish.header.bits.qos > AT_MOST_ONCE) {

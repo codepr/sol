@@ -190,7 +190,7 @@ struct mqtt_publish {
 
     unsigned short topiclen;
     unsigned char *topic;
-    unsigned short payloadlen;
+    unsigned long long payloadlen;
     unsigned char *payload;
 };
 

@@ -450,7 +450,7 @@ static int publish_handler(struct io_event *event) {
     int rc = NOREPLY;
     struct sol_client *c = event->client;
 
-    sol_debug("Received PUBLISH from %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
+    sol_debug("Received PUBLISH from %s (d%i, q%u, r%i, m%u, %s, ... (%llu bytes))",
               c->client_id,
               event->payload->publish.header.bits.dup,
               event->payload->publish.header.bits.qos,
@@ -833,11 +833,20 @@ ssize_t recv_packet(int clientfd, unsigned char **buf, unsigned char *header) {
 
     int offset = 4 - pos -1;
 
-    /* Read remaining bytes to complete the packet */
-    if ((n = recv_bytes(clientfd, tmpbuf + offset, tlen - offset)) < 0)
-        goto err;
+    unsigned long long remaining_bytes = tlen - offset;
 
-    nbytes += n - pos - 1;
+    /* Read remaining bytes to complete the packet */
+    while (remaining_bytes > 0) {
+
+        if ((n = recv_bytes(clientfd, tmpbuf + offset, remaining_bytes)) < 0)
+            goto err;
+
+        remaining_bytes -= n;
+        nbytes += n;
+        offset += n;
+    }
+
+    nbytes -= (pos + 1);
 
 exit:
 
