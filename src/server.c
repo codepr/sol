@@ -338,7 +338,7 @@ static int disconnect_handler(struct io_event *event) {
     unlock();
 #endif
     // TODO remove from all topic where it subscribed
-    return NOREPLY;
+    return CLIENTDC;
 }
 
 
