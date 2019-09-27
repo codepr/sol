@@ -63,7 +63,6 @@ struct sol_client {
     char *client_id;
     int fd;
     struct session session;
-    struct buffer buf;
     unsigned long last_action_time;
 };
 
