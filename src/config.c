@@ -207,6 +207,8 @@ static void add_config_value(const char *key, const char *value) {
         config.tcp_backlog = tcp_backlog <= SOMAXCONN ? tcp_backlog : SOMAXCONN;
     } else if (STREQ("stats_publish_interval", key, klen) == true) {
         config.stats_pub_interval = read_time_with_mul(value);
+    } else if (STREQ("keepalive", key, klen) == true) {
+        config.keepalive = read_time_with_mul(value);
     }
 }
 
