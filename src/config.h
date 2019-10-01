@@ -32,7 +32,7 @@
 
 // Default parameters
 
-#define VERSION                     "0.4.8"
+#define VERSION                     "0.5.2"
 #define DEFAULT_SOCKET_FAMILY       INET
 #define DEFAULT_LOG_LEVEL           DEBUG
 #define DEFAULT_LOG_PATH            "/tmp/sol.log"
@@ -42,6 +42,7 @@
 #define DEFAULT_MAX_MEMORY          "2GB"
 #define DEFAULT_MAX_REQUEST_SIZE    "2MB"
 #define DEFAULT_STATS_INTERVAL      "10s"
+#define DEFAULT_KEEPALVIE           "60s"
 
 
 struct config {
@@ -72,6 +73,11 @@ struct config {
     int tcp_backlog;
     /* Delay between every automatic publish of broker stats on topic */
     size_t stats_pub_interval;
+    /*
+     * Seconds to keep alive any connection,
+     * **CURRENTLY USED AS ACK TIMER AS WELL**
+     */
+    size_t keepalive;
 };
 
 

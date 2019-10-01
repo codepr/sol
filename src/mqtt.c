@@ -627,6 +627,25 @@ void mqtt_packet_release(union mqtt_packet *pkt, unsigned type) {
 }
 
 
+void mqtt_set_dup(union mqtt_packet *pkt, int type) {
+    switch (type) {
+        case SUBACK_TYPE:
+            pkt->suback.header.bits.dup = 1;
+            break;
+        case PUBLISH_TYPE:
+            pkt->publish.header.bits.dup = 1;
+            break;
+        case PUBACK_TYPE:
+        case PUBREC_TYPE:
+        case PUBREL_TYPE:
+            pkt->ack.header.bits.dup = 1;
+            break;
+        default:
+            break;
+    }
+}
+
+
 /* bstring pack_ack(unsigned char byte, unsigned char rc) { */
 /*     unsigned char raw[3]; */
 /*     pack(raw, "BBB", byte, 1, rc); */

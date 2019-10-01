@@ -47,6 +47,17 @@
 /* Seconds in a Sol, easter egg */
 static const double SOL_SECONDS = 88775.24;
 
+struct pending_message {
+    int fd;
+    int type;
+    time_t sent_timestamp;
+    unsigned long size;
+    union mqtt_packet *packet;
+};
+
+/* Outgoing packet tracking for QoS > 0 */
+static struct pending_message *outgoing[65535];
+
 /*
  * General informations of the broker, all fields will be published
  * periodically to internal topics
@@ -134,7 +145,7 @@ struct epoll {
     int io_epollfd;
     int w_epollfd;
     int serverfd;
-    int expirefd;
+    int timerfd[2];
     int busfd;
 };
 
@@ -163,6 +174,8 @@ static const char *sys_topics[SYS_TOPICS] = {
 
 
 static void publish_stats(void);
+
+static void pending_message_check(void);
 
 /* Prototype for a command handler */
 typedef int handler(struct io_event *);
@@ -506,6 +519,7 @@ static int publish_handler(struct io_event *event) {
         bstring payload = bstring_copy(pub, publen);
 
         struct list_node *cur = t->subscribers->head;
+
         for (; cur; cur = cur->next) {
 
             struct subscriber *sub = cur->data;
@@ -514,8 +528,16 @@ static int publish_handler(struct io_event *event) {
             /* Update QoS according to subscriber's one */
             event->payload->publish.header.bits.qos = sub->qos;
 
-            if (event->payload->publish.header.bits.qos > AT_MOST_ONCE)
+            if (event->payload->publish.header.bits.qos > AT_MOST_ONCE) {
                 publen += sizeof(uint16_t);
+                struct pending_message *pm = sol_malloc(sizeof(*pm));
+                pm->fd = sc->fd;
+                pm->sent_timestamp = time(NULL);
+                pm->packet = event->payload;
+                pm->type = PUBLISH_TYPE;
+                pm->size = publen;
+                outgoing[event->payload->publish.pkt_id] = pm;
+            }
 
             ssize_t sent;
             if ((sent = send_bytes(sc->fd, payload, bstring_len(payload))) < 0)
@@ -594,6 +616,19 @@ static int puback_handler(struct io_event *event) {
 
     // TODO Remove from pending PUBACK clients map
 
+#if WORKERPOOLSIZE > 1
+    lock();
+#endif
+
+    if (outgoing[event->payload->publish.pkt_id]) {
+        sol_free(outgoing[event->payload->ack.pkt_id]);
+        outgoing[event->payload->ack.pkt_id] = NULL;
+    }
+
+#if WORKERPOOLSIZE > 1
+    unlock();
+#endif
+
     return REPLY;
 }
 
@@ -604,8 +639,7 @@ static int pubrec_handler(struct io_event *event) {
 
     sol_debug("Received PUBREC from %s", c->client_id);
 
-    mqtt_pubrel *pubrel = mqtt_packet_ack(PUBREL,
-                                          event->payload->ack.pkt_id);
+    mqtt_pubrel *pubrel = mqtt_packet_ack(PUBREL, event->payload->ack.pkt_id);
 
     event->payload->ack = *pubrel;
 
@@ -1110,10 +1144,14 @@ static void *worker(void *arg) {
 
                 goto exit;
 
-            } else if (e_events[i].data.fd == epoll->expirefd) {
+            } else if (e_events[i].data.fd == epoll->timerfd[0]) {
                 (void) read(e_events[i].data.fd, &timers, sizeof(timers));
                 // Check for keys about to expire out
                 publish_stats();
+            } else if (e_events[i].data.fd == epoll->timerfd[1]) {
+                (void) read(e_events[i].data.fd, &timers, sizeof(timers));
+                // Check for keys about to expire out
+                pending_message_check();
             } else if (e_events[i].events & EPOLLIN) {
                 struct io_event *event = e_events[i].data.ptr;
                 eventfd_read(event->io_event, &val);
@@ -1253,6 +1291,39 @@ static void publish_stats(void) {
 }
 
 /*
+ * Check for pending messages in the ingoing and outgoing maps (actually
+ * arrays), each position between 0-65535 contains either NULL or a pointer
+ * to a pending_packet stucture with a timestamp of the sending action, the
+ * target file descriptor (e.g. the client) and the payload to be sent
+ * unserialized, this way it's possible to set the DUP flag easily at the cost
+ * of additional packing before re-sending it out
+ */
+static void pending_message_check(void) {
+    sol_debug("Checking");
+    time_t now = time(NULL);
+    for (int i = 0; i < 65535; ++i) {
+        // TODO Remove hard-coded values, 65535 and 20
+        if (outgoing[i] && (now - outgoing[i]->sent_timestamp) > 20) {
+            // Set DUP flag to 1
+            mqtt_set_dup(outgoing[i]->packet, outgoing[i]->type);
+            // Serialize the packet and send it out again
+            unsigned char *pub = pack_mqtt_packet(outgoing[i]->packet,
+                                                  outgoing[i]->type);
+            bstring payload = bstring_copy(pub, outgoing[i]->size);
+            ssize_t sent;
+            if ((sent = send_bytes(outgoing[i]->fd,
+                                   payload, bstring_len(payload))) < 0)
+                sol_error("Error re-sending %s", strerror(errno));
+
+            info.messages_sent++;
+
+            // Update information stats
+            info.bytes_sent += sent;
+        }
+    }
+}
+
+/*
  * Cleanup function to be passed in as destructor to the Hashtable for
  * connecting clients
  */
@@ -1298,19 +1369,31 @@ int start_server(const char *addr, const char *port) {
     };
 
     /* Start the expiration keys check routine */
-    struct itimerspec timervalue;
+    struct itimerspec expiration_timer;
 
-    memset(&timervalue, 0x00, sizeof(timervalue));
+    memset(&expiration_timer, 0x00, sizeof(expiration_timer));
 
-    timervalue.it_value.tv_sec = conf->stats_pub_interval;
-    timervalue.it_value.tv_nsec = 0;
-    timervalue.it_interval.tv_sec = conf->stats_pub_interval;
-    timervalue.it_interval.tv_nsec = 0;
+    expiration_timer.it_value.tv_sec = conf->stats_pub_interval;
+    expiration_timer.it_value.tv_nsec = 0;
+    expiration_timer.it_interval.tv_sec = conf->stats_pub_interval;
+    expiration_timer.it_interval.tv_nsec = 0;
 
-    // add expiration keys cron task
-    int exptimerfd = add_cron_task(epoll.w_epollfd, &timervalue);
+    /* And one for the pending ingoing and outgoing messages with QoS > 0 */
+    struct itimerspec pending_timer;
 
-    epoll.expirefd = exptimerfd;
+    memset(&pending_timer, 0x00, sizeof(pending_timer));
+
+    pending_timer.it_value.tv_sec = 0;
+    pending_timer.it_value.tv_nsec = 1000;
+    pending_timer.it_interval.tv_sec = 0;
+    pending_timer.it_interval.tv_nsec = 1000;
+
+    // add expiration keys cron task and pending messages cron task
+    int exptimerfd = add_cron_task(epoll.w_epollfd, &expiration_timer);
+    int pendingfd = add_cron_task(epoll.w_epollfd, &pending_timer);
+
+    epoll.timerfd[0] = exptimerfd;
+    epoll.timerfd[1] = pendingfd;
 
     /*
      * We need to watch for global eventfd in order to gracefully shutdown IO
@@ -1339,7 +1422,10 @@ int start_server(const char *addr, const char *port) {
     accept_loop(&epoll);
 
     // Stop expire keys check routine
-    epoll_del(epoll.w_epollfd, epoll.expirefd);
+    epoll_del(epoll.w_epollfd, epoll.timerfd[0]);
+
+    // Stop pending messages timer fd
+    epoll_del(epoll.w_epollfd, epoll.timerfd[1]);
 
     /* Join started thread pools */
     for (int i = 0; i < IOPOOLSIZE; ++i)
