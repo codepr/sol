@@ -279,7 +279,7 @@ static int connect_handler(struct io_event *event) {
 
     /* Respond with a connack */
     union mqtt_packet *response = sol_malloc(sizeof(*response));
-    unsigned char byte = CONNACK;
+    unsigned char byte = CONNACK_BYTE;
 
     // TODO check for session already present
 
@@ -422,11 +422,11 @@ static int subscribe_handler(struct io_event *event) {
     }
 
     struct mqtt_suback *suback =
-        mqtt_packet_suback(SUBACK, event->payload->subscribe.pkt_id,
+        mqtt_packet_suback(SUBACK_BYTE, event->payload->subscribe.pkt_id,
                            rcs, event->payload->subscribe.tuples_len);
 
     union mqtt_packet pkt = { .suback = *suback };
-    unsigned char *packed = pack_mqtt_packet(&pkt, SUBACK_TYPE);
+    unsigned char *packed = pack_mqtt_packet(&pkt, SUBACK);
     size_t len = MQTT_HEADER_LEN
         + sizeof(uint16_t)
         + event->payload->subscribe.tuples_len;
@@ -446,9 +446,9 @@ static int unsubscribe_handler(struct io_event *event) {
     sol_debug("Received UNSUBSCRIBE from %s", c->client_id);
 
     event->payload->ack =
-        *mqtt_packet_ack(UNSUBACK, event->payload->unsubscribe.pkt_id);
+        *mqtt_packet_ack(UNSUBACK_BYTE, event->payload->unsubscribe.pkt_id);
 
-    unsigned char *packed = pack_mqtt_packet(event->payload, UNSUBACK_TYPE);
+    unsigned char *packed = pack_mqtt_packet(event->payload, UNSUBACK);
 
     sol_debug("Sending UNSUBACK to %s", c->client_id);
 
@@ -508,7 +508,7 @@ static int publish_handler(struct io_event *event) {
 
     if (t->subscribers->len > 0) {
 
-        unsigned char *pub = pack_mqtt_packet(event->payload, PUBLISH_TYPE);
+        unsigned char *pub = pack_mqtt_packet(event->payload, PUBLISH);
 
         size_t publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
             event->payload->publish.topiclen + event->payload->publish.payloadlen;
@@ -534,7 +534,7 @@ static int publish_handler(struct io_event *event) {
                 pm->fd = sc->fd;
                 pm->sent_timestamp = time(NULL);
                 pm->packet = event->payload;
-                pm->type = PUBLISH_TYPE;
+                pm->type = PUBLISH;
                 pm->size = publen;
                 outgoing[event->payload->publish.pkt_id] = pm;
             }
@@ -564,12 +564,12 @@ static int publish_handler(struct io_event *event) {
 
     if (qos == AT_LEAST_ONCE) {
 
-        mqtt_puback *puback = mqtt_packet_ack(PUBACK,
+        mqtt_puback *puback = mqtt_packet_ack(PUBACK_BYTE,
                                               event->payload->publish.pkt_id);
 
         event->payload->ack = *puback;
 
-        unsigned char *packed = pack_mqtt_packet(event->payload, PUBACK_TYPE);
+        unsigned char *packed = pack_mqtt_packet(event->payload, PUBACK);
 
         sol_debug("Sending PUBACK to %s", c->client_id);
 
@@ -581,12 +581,12 @@ static int publish_handler(struct io_event *event) {
 
         // TODO add to a hashtable to track PUBREC clients last
 
-        mqtt_pubrec *pubrec = mqtt_packet_ack(PUBREC,
+        mqtt_pubrec *pubrec = mqtt_packet_ack(PUBREC_BYTE,
                                               event->payload->publish.pkt_id);
 
         event->payload->ack = *pubrec;
 
-        unsigned char *packed = pack_mqtt_packet(event->payload, PUBREC_TYPE);
+        unsigned char *packed = pack_mqtt_packet(event->payload, PUBREC);
 
         sol_debug("Sending PUBREC to %s", c->client_id);
 
@@ -639,11 +639,12 @@ static int pubrec_handler(struct io_event *event) {
 
     sol_debug("Received PUBREC from %s", c->client_id);
 
-    mqtt_pubrel *pubrel = mqtt_packet_ack(PUBREL, event->payload->ack.pkt_id);
+    mqtt_pubrel *pubrel = mqtt_packet_ack(PUBREL_BYTE,
+                                          event->payload->ack.pkt_id);
 
     event->payload->ack = *pubrel;
 
-    unsigned char *packed = pack_mqtt_packet(event->payload, PUBREC_TYPE);
+    unsigned char *packed = pack_mqtt_packet(event->payload, PUBREC);
     event->reply = bstring_copy(packed, MQTT_ACK_LEN);
     sol_free(packed);
 
@@ -657,12 +658,12 @@ static int pubrel_handler(struct io_event *event) {
 
     sol_debug("Received PUBREL from %s", event->client->client_id);
 
-    mqtt_pubcomp *pubcomp = mqtt_packet_ack(PUBCOMP,
+    mqtt_pubcomp *pubcomp = mqtt_packet_ack(PUBCOMP_BYTE,
                                             event->payload->ack.pkt_id);
 
     event->payload->ack = *pubcomp;
 
-    unsigned char *packed = pack_mqtt_packet(event->payload, PUBCOMP_TYPE);
+    unsigned char *packed = pack_mqtt_packet(event->payload, PUBCOMP);
 
 
     sol_debug("Sending PUBCOMP to %s", event->client->client_id);
@@ -692,7 +693,7 @@ static int pingreq_handler(struct io_event *event) {
 
     sol_debug("Received PINGREQ from %s", event->client->client_id);
 
-    unsigned char *packed = pack_mqtt_packet(event->payload, PINGRESP_TYPE);
+    unsigned char *packed = pack_mqtt_packet(event->payload, PINGRESP);
     event->reply = bstring_copy(packed, MQTT_HEADER_LEN);
 
     sol_free(packed);
@@ -840,7 +841,7 @@ ssize_t recv_packet(int clientfd, unsigned char **buf, unsigned char *header) {
     tmpbuf++;
 
     /* Check for OPCODE, if an unknown OPCODE is received return an error */
-    if (DISCONNECT_TYPE < (*header >> 4) || CONNECT_TYPE > (*header >> 4))
+    if (DISCONNECT < (*header >> 4) || CONNECT > (*header >> 4))
         return -ERRPACKETERR;
 
     /*
@@ -1191,7 +1192,8 @@ static void publish_message(unsigned short pkt_id,
 
     /* Build MQTT packet with command PUBLISH */
     union mqtt_packet pkt;
-    struct mqtt_publish *p = mqtt_packet_publish(PUBLISH, pkt_id,
+    struct mqtt_publish *p = mqtt_packet_publish(PUBLISH_BYTE,
+                                                 pkt_id,
                                                  topiclen,
                                                  (unsigned char *) topic,
                                                  payloadlen,
@@ -1227,7 +1229,7 @@ static void publish_message(unsigned short pkt_id,
         if (pkt.publish.header.bits.qos > AT_MOST_ONCE)
             len += sizeof(uint16_t);
 
-        packed = pack_mqtt_packet(&pkt, PUBLISH_TYPE);
+        packed = pack_mqtt_packet(&pkt, PUBLISH);
 
         if ((sent = send_bytes(sc->fd, packed, len)) < 0)
             sol_error("Error publishing to %s: %s",
