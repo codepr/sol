@@ -40,6 +40,7 @@
  */
 #define CONNACK_BYTE  0x20
 #define PUBLISH_BYTE  0x30
+#define PUBACK_BYTE   0x40
 #define PUBREC_BYTE   0x50
 #define PUBREL_BYTE   0x60
 #define PUBCOMP_BYTE  0x70

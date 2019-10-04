@@ -520,8 +520,8 @@ static int publish_handler(struct closure *cb, union mqtt_packet *pkt) {
 
     if (qos == AT_LEAST_ONCE) {
 
-        unsigned char pkt_byte = 0x40;
-        mqtt_puback *puback = mqtt_packet_ack(pkt_byte, pkt->publish.pkt_id);
+        mqtt_puback *puback = mqtt_packet_ack(PUBACK_BYTE,
+                                              pkt->publish.pkt_id);
 
         mqtt_packet_release(pkt, PUBLISH);
 
