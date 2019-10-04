@@ -407,9 +407,9 @@ int unpack_mqtt_packet(const unsigned char *raw, union mqtt_packet *pkt) {
         .byte = type
     };
 
-    if (header.bits.type == DISCONNECT_TYPE
-        || header.bits.type == PINGREQ_TYPE
-        || header.bits.type == PINGRESP_TYPE)
+    if (header.bits.type == DISCONNECT
+        || header.bits.type == PINGREQ
+        || header.bits.type == PINGRESP)
         pkt->header = header;
     else
         /* Call the appropriate unpack handler based on the message type */
@@ -533,7 +533,7 @@ static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
 
 unsigned char *pack_mqtt_packet(const union mqtt_packet *pkt, unsigned type) {
 
-    if (type == PINGREQ_TYPE || type == PINGRESP_TYPE)
+    if (type == PINGREQ || type == PINGRESP)
         return pack_mqtt_header(&pkt->header);
 
     return pack_handlers[type](pkt);
@@ -619,7 +619,7 @@ struct mqtt_publish *mqtt_packet_publish(unsigned char byte,
 void mqtt_packet_release(union mqtt_packet *pkt, unsigned type) {
 
     switch (type) {
-        case CONNECT_TYPE:
+        case CONNECT:
             sol_free(pkt->connect.payload.client_id);
             if (pkt->connect.bits.username == 1)
                 sol_free(pkt->connect.payload.username);
@@ -630,16 +630,16 @@ void mqtt_packet_release(union mqtt_packet *pkt, unsigned type) {
                 sol_free(pkt->connect.payload.will_topic);
             }
             break;
-        case SUBSCRIBE_TYPE:
-        case UNSUBSCRIBE_TYPE:
+        case SUBSCRIBE:
+        case UNSUBSCRIBE:
             for (unsigned i = 0; i < pkt->subscribe.tuples_len; i++)
                 sol_free(pkt->subscribe.tuples[i].topic);
             sol_free(pkt->subscribe.tuples);
             break;
-        case SUBACK_TYPE:
+        case SUBACK:
             sol_free(pkt->suback.rcs);
             break;
-        case PUBLISH_TYPE:
+        case PUBLISH:
             sol_free(pkt->publish.topic);
             sol_free(pkt->publish.payload);
             break;

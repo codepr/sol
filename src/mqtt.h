@@ -34,41 +34,35 @@
 #define MQTT_HEADER_LEN 2
 #define MQTT_ACK_LEN    4
 
+/*
+ * Stub bytes, useful for generic replies, these represent the first byte in
+ * the fixed header
+ */
+#define CONNACK_BYTE  0x20
+#define PUBLISH_BYTE  0x30
+#define PUBREC_BYTE   0x50
+#define PUBREL_BYTE   0x60
+#define PUBCOMP_BYTE  0x70
+#define SUBACK_BYTE   0x90
+#define UNSUBACK_BYTE 0xB0
+#define PINGRESP_BYTE 0xD0
 
 /* Message types */
-enum message_opcode {
-    CONNECT     = 0x10,
-    CONNACK     = 0x20,
-    PUBLISH     = 0x30,
-    PUBACK      = 0x40,
-    PUBREC      = 0x50,
-    PUBREL      = 0x60,
-    PUBCOMP     = 0x70,
-    SUBSCRIBE   = 0x80,
-    SUBACK      = 0x90,
-    UNSUBSCRIBE = 0xA0,
-    UNSUBACK    = 0xB0,
-    PINGREQ     = 0xC0,
-    PINGRESP    = 0xD0,
-    DISCONNECT  = 0xE0
-};
-
-
-enum message_type {
-    CONNECT_TYPE     = 1,
-    CONNACK_TYPE     = 2,
-    PUBLISH_TYPE     = 3,
-    PUBACK_TYPE      = 4,
-    PUBREC_TYPE      = 5,
-    PUBREL_TYPE      = 6,
-    PUBCOMP_TYPE     = 7,
-    SUBSCRIBE_TYPE   = 8,
-    SUBACK_TYPE      = 9,
-    UNSUBSCRIBE_TYPE = 10,
-    UNSUBACK_TYPE    = 11,
-    PINGREQ_TYPE     = 12,
-    PINGRESP_TYPE    = 13,
-    DISCONNECT_TYPE  = 14
+enum packet_type {
+    CONNECT     = 1,
+    CONNACK     = 2,
+    PUBLISH     = 3,
+    PUBACK      = 4,
+    PUBREC      = 5,
+    PUBREL      = 6,
+    PUBCOMP     = 7,
+    SUBSCRIBE   = 8,
+    SUBACK      = 9,
+    UNSUBSCRIBE = 10,
+    UNSUBACK    = 11,
+    PINGREQ     = 12,
+    PINGRESP    = 13,
+    DISCONNECT  = 14
 };
 
 
