@@ -234,10 +234,8 @@ static int connect_handler(struct io_event *e) {
         && e->data->connect.bits.clean_session == false)
         goto clientdc;
 
-    if (!e->data->connect.payload.client_id) {
-        e->data->connect.payload.client_id = sol_malloc(1);
-        e->data->connect.payload.client_id[0] = '\0';
-    }
+    if (!e->data->connect.payload.client_id)
+        e->data->connect.payload.client_id = sol_calloc(1, 1);
 
     // TODO just return error_code and handle it on `on_read`
     if (hashtable_exists(sol.clients,
@@ -278,7 +276,6 @@ static int connect_handler(struct io_event *e) {
 
     /* Respond with a connack */
     union mqtt_packet *response = sol_malloc(sizeof(*response));
-    unsigned char byte = CONNACK_BYTE;
 
     // TODO check for session already present
 
@@ -289,7 +286,7 @@ static int connect_handler(struct io_event *e) {
     unsigned char connect_flags = 0 | (session_present & 0x1) << 0;
     unsigned char rc = 0;  // 0 means connection accepted
 
-    response->connack = *mqtt_packet_connack(byte, connect_flags, rc);
+    response->connack = *mqtt_packet_connack(CONNACK_BYTE, connect_flags, rc);
 
     e->reply = bstring_copy(pack_mqtt_packet(response, 2), MQTT_ACK_LEN);
 
