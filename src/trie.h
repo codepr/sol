@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2019, Andrea Giacomo Baldan
+ * Copyright (c) 2018, Andrea Giacomo Baldan
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,10 +30,11 @@
 
 #include <stdio.h>
 #include <stdbool.h>
+#include "bst.h"
 #include "list.h"
 
 
-typedef struct trie Trie;
+typedef struct Trie Trie;
 
 /*
  * Trie node, it contains a fixed size array (every node can have at max the
@@ -42,26 +43,36 @@ typedef struct trie Trie;
  */
 struct trie_node {
     char chr;
-    List *children;
+    struct bst_node *children;
     void *data;
 };
 
+
+typedef bool trie_destructor(struct trie_node *, bool);
+
 /*
- * Trie ADT, it is formed by a root struct trie_node, and the total size of the
- * Trie
+ * Trie ADT, it is formed by a root struct trie_node, and the total size of
+ * the Trie
  */
-struct trie {
+struct Trie {
+    trie_destructor *destructor;
     struct trie_node *root;
     size_t size;
+};
+
+/* Key val abstraction, useful for range queries like GET with prefix */
+struct kv_obj {
+    const char *key;
+    const void *data;
 };
 
 // Returns new trie node (initialized to NULLs)
 struct trie_node *trie_create_node(char);
 
 // Returns a new Trie, which is formed by a root node and a size
-struct trie *trie_create(void);
+struct Trie *trie_new(trie_destructor *);
 
-void trie_init(Trie *);
+void trie_init(Trie *, trie_destructor *);
 
 // Return the size of the trie
 size_t trie_size(const Trie *);
@@ -70,51 +81,53 @@ size_t trie_size(const Trie *);
  * The leaf represents the node with the associated data
  *           .
  *          / \
- *         h   s: s -> value
+ *         h   s: s-value
  *        / \
- *       e   k: hk -> value
+ *       e   k: hk-value
  *      /
- *     l: hel -> value
+ *     l: hel-value
  *
  * Here we got 3 <key:value> pairs:
- * - s   -> value
- * - hk  -> value
- * - hel -> value
+ * - s: s-value
+ * - hk: hk-value
+ * - hel: hel-value
  */
-void *trie_insert(Trie *, const char *, const void *);
+struct node_data *trie_insert(Trie *, const char *, const void *);
 
 bool trie_delete(Trie *, const char *);
 
-/* Returns true if key presents in trie, else false, the last pointer to
-   pointer is used to store the value associated with the searched key, if
-   present */
+/*
+ * Returns true if key presents in trie, else false, the last pointer to
+ * pointer is used to store the value associated with the searched key, if
+ * present
+ */
 bool trie_find(const Trie *, const char *, void **);
 
-void trie_node_free(struct trie_node *, size_t *);
+void trie_node_destroy(struct trie_node *, size_t *, trie_destructor *);
 
-void trie_release(Trie *);
+void trie_destroy(Trie *);
 
-/* Remove all keys matching a given prefix in a less than linear time
-   complexity */
+/*
+ * Remove all keys matching a given prefix in a less than linear time
+ * complexity
+ */
 void trie_prefix_delete(Trie *, const char *);
 
-/* Count all keys matching a given prefix in a less than linear time
-   complexity */
+/*
+ * Count all keys matching a given prefix in a less than linear time
+ * complexity
+ */
 int trie_prefix_count(const Trie *, const char *);
 
 /* Search for all keys matching a given prefix */
 List *trie_prefix_find(const Trie *, const char *);
 
 /* Apply a given function to all nodes which keys match a given prefix */
-void trie_prefix_map(Trie *, const char *, void (*mapfunc)(struct trie_node *));
+void trie_prefix_map(struct trie_node *, const char *, void (*fn)(struct trie_node *, void *), void *);
 
-/*
- * Apply a given function to all ndoes which keys match a given prefix. The
- * function accepts two arguments, a struct trie_node pointer which correspond
- * to each node on the trie after the prefix node and a void pointer, used for
- * additional data which can be useful to the execution of `mapfunc`.
- */
-void trie_prefix_map_tuple(Trie *, const char *,
-                           void (*mapfunc)(struct trie_node *, void *), void *);
+bool trie_is_free_node(const struct trie_node *);
+
+struct trie_node *trie_node_find(const struct trie_node *, const char *);
+
 
 #endif

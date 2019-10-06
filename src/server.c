@@ -312,20 +312,12 @@ clientdc:
 }
 
 
-static void recursive_subscription(struct trie_node *node, void *arg) {
-
+static void rec_sub(struct trie_node *node, void *arg) {
     if (!node || !node->data)
         return;
-
-    struct list_node *child = node->children->head;
-    for (; child; child = child->next)
-        recursive_subscription(child->data, arg);
-
     struct topic *t = node->data;
-
-    struct subscriber *s = arg;
-
-    t->subscribers = list_push(t->subscribers, s);
+    sol_debug("Adding subscriber to topic %s", t->name);
+    t->subscribers = list_push(t->subscribers, arg);
 }
 
 
@@ -391,8 +383,6 @@ static int subscribe_handler(struct io_event *e) {
 
         struct topic *t = sol_topic_get(&sol, topic);
 
-        // TODO check for callback correctly set to obj
-
         if (!t) {
             t = topic_create(sol_strdup(topic));
             sol_topic_put(&sol, t);
@@ -400,8 +390,7 @@ static int subscribe_handler(struct io_event *e) {
             struct subscriber *sub = sol_malloc(sizeof(*sub));
             sub->client = e->client;
             sub->qos = e->data->subscribe.tuples[i].qos;
-            trie_prefix_map_tuple(&sol.topics, topic,
-                                  recursive_subscription, sub);
+            trie_prefix_map(sol.topics.root, topic, rec_sub, sub);
         }
 
         // Clean session true for now
@@ -1323,7 +1312,7 @@ static int client_destructor(struct hashtable_entry *entry) {
 int start_server(const char *addr, const char *port) {
 
     /* Initialize global Sol instance */
-    trie_init(&sol.topics);
+    trie_init(&sol.topics, NULL);
     sol.clients = hashtable_create(client_destructor);
     sol.pending_packets = sol_malloc(65535);
     for (int i = 0; i < 65535; ++i)
