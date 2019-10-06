@@ -105,12 +105,16 @@ def create_connect(client_id=None, clean_session=True, keepalive=60,
 
 
 def create_disconnect(rc=-1):
-    return struct.pack('!BBBB', 0xE0, 2, rc, 0)
+    return struct.pack('!BBB', 0xE0, 1, rc)
 
 
 def read_connack(packet):
     cmd, _, _, rc = struct.unpack('!BBBB', packet)
     return cmd, rc
+
+
+def read_ack(packet):
+    return struct.unpack('!BBB')
 
 
 def create_subscribe(mid, topic, qos):
