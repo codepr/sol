@@ -1,4 +1,23 @@
+import os
+import time
 import struct
+import signal
+import subprocess
+
+
+def start_broker(host='127.0.0.1', port=1883):
+    proc = subprocess.Popen(
+        f'./sol -a {host} -p {port}'.split(),
+        stdout=subprocess.PIPE,
+        preexec_fn=os.setsid
+    )
+    time.sleep(.5)
+    return proc
+
+
+def kill_broker(proc):
+    os.kill(proc.pid, signal.SIGTERM)
+
 
 def mqtt_encode_len(remaining_length):
     s = b""
@@ -11,6 +30,23 @@ def mqtt_encode_len(remaining_length):
 
         s += struct.pack("!B", byte)
     return s
+
+
+def mqtt_decode_len(packet):
+    pk_len = min(5, len(packet))
+    all_bytes = struct.unpack("!" + "B" * pk_len, packet[:pk_len])
+    mult = 1
+    rl = 0
+    for i in range(1, pk_len - 1):
+        byte = all_bytes[i]
+
+        rl += (byte & 127) * mult
+        mult *= 128
+        if byte & 128 == 0:
+            packet = packet[i + 1:]
+            break
+
+    return packet, rl
 
 
 def create_connect(client_id=None, clean_session=True, keepalive=60,
@@ -68,6 +104,27 @@ def create_connect(client_id=None, clean_session=True, keepalive=60,
     return packet
 
 
+def create_disconnect(rc=-1):
+    return struct.pack('!BBBB', 0xE0, 2, rc, 0)
+
+
 def read_connack(packet):
     cmd, _, _, rc = struct.unpack('!BBBB', packet)
     return cmd, rc
+
+
+def create_subscribe(mid, topic, qos):
+    topic = topic.encode("utf-8")
+    packet = struct.pack("!B", 0x80)
+    packet += mqtt_encode_len(2 + 1 + 2 + len(topic) + 1)
+    pack_format = "!HBH" + str(len(topic)) + "sB"
+    return packet + struct.pack(pack_format, mid, 0, len(topic), topic, qos)
+
+
+def read_suback(packet):
+    packet, plen = mqtt_decode_len(packet)
+    pack_format = "!H" + str(len(packet) - 2) + 's'
+    mid, packet = struct.unpack(pack_format, packet)
+    pack_format = "!" + "B" * len(packet)
+    granted_qos = struct.unpack(pack_format, packet)
+    return mid, granted_qos
