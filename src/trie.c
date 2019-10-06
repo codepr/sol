@@ -31,8 +31,11 @@
 #include "trie.h"
 #include "util.h"
 
-
+// Private functions declaration
 static void children_destroy(struct bst_node *, size_t *, trie_destructor *);
+static int trie_node_count(const struct trie_node *);
+static void trie_node_prefix_find(const struct trie_node *,
+                                  char *, int , List *);
 
 /*
  * Check for children in a struct trie_node, if a node has no children is
@@ -68,9 +71,6 @@ struct trie_node *trie_node_find(const struct trie_node *node,
 }
 
 
-static int trie_node_count(const struct trie_node *);
-
-
 static int trie_children_count(const struct bst_node *node) {
     if (!node)
         return 0;
@@ -84,10 +84,6 @@ static int trie_node_count(const struct trie_node *node) {
     if (!node)
         return 0;
     return (node->data != NULL) + trie_children_count(node->children);
-    /* if (node->data) */
-    /*     return 1 + trie_children_count(node->children); */
-    /* else */
-    /*     return trie_children_count(node->children); */
 }
 
 // Returns new trie node (initialized to NULL)
@@ -121,22 +117,25 @@ size_t trie_size(const Trie *trie) {
 }
 
 /*
- * If not present, inserts key into trie, if the key is prefix of trie node,
- * just marks leaf node by assigning the new data pointer. Returns a pointer
- * to the new inserted data.
- *
- * Being a Trie, it should guarantees O(m) performance for insertion on the
- * worst case, where `m` is the length of the key.
+ * Insert a new key-value pair in the Trie structure, returning a pointer to
+ * the new inserted data in order to simplify some operations as the addition
+ * of expiring keys with a set TTL.
  */
-static struct node_data *trie_node_insert(struct trie_node *root,
-                                          const char *key,
-                                          const void *data, size_t *size) {
+struct node_data *trie_insert(Trie *trie, const char *key, const void *data) {
 
-    struct trie_node *cursor = root;
+    assert(trie && key);
+
+    struct trie_node *cursor = trie->root;
     struct trie_node *cur_node = NULL;
     struct bst_node *tmp = NULL;
 
-    // Iterate through the key char by char
+    /*
+     * If not present, inserts key into trie, if the key is prefix of trie
+     * node, just marks leaf node by assigning the new data pointer. Returns a
+     * pointer to the new inserted data.
+     *
+     * Iterate through the key char by char
+     */
     for (; *key; key++) {
 
         /*
@@ -146,7 +145,8 @@ static struct node_data *trie_node_insert(struct trie_node *root,
          */
         tmp = bst_search(cursor->children, *key);
 
-        // No match, we add a new node and sort the list with the new added link
+        // No match, we add a new node and sort the list with the new added
+        // link
         if (!tmp) {
             cur_node = trie_create_node(*key);
             cursor->children = bst_insert(cursor->children, *key, cur_node);
@@ -163,39 +163,11 @@ static struct node_data *trie_node_insert(struct trie_node *root,
      * effectively changing the size
      */
     if (!cursor->data)
-        (*size)++;
+        trie->size++;
 
     cursor->data = (void *) data;
 
     return cursor->data;
-}
-
-/*
- * Returns true if key is present in trie, else false. Also for lookup the
- * big-O runtime is guaranteed O(m) with `m` as length of the key. In this
- * case, by using an AVL tree, the real complexity is O(mlogk) with k the size
- * of the sub-trees for each children node
- */
-static bool trie_node_search(const struct trie_node *root,
-                             const char *key, void **ret) {
-
-    // Walk the trie till the end of the key
-    struct trie_node *cursor = trie_node_find(root, key);
-
-    *ret = (cursor && cursor->data) ? cursor->data : NULL;
-
-    // Return false if no complete key found, true otherwise
-    return !*ret ? false : true;
-}
-
-/*
- * Insert a new key-value pair in the Trie structure, returning a pointer to
- * the new inserted data in order to simplify some operations as the addition
- * of expiring keys with a set TTL.
- */
-struct node_data *trie_insert(Trie *trie, const char *key, const void *data) {
-    assert(trie && key);
-    return trie_node_insert(trie->root, key, data, &trie->size);
 }
 
 
@@ -238,10 +210,23 @@ bool trie_delete(Trie *trie, const char *key) {
     return false;
 }
 
-
+/*
+ * Returns true if key is present in trie, else false. Also for lookup the
+ * big-O runtime is guaranteed O(m) with `m` as length of the key. In this
+ * case, by using an AVL tree, the real complexity is O(mlogk) with k the size
+ * of the sub-trees for each children node
+ */
 bool trie_find(const Trie *trie, const char *key, void **ret) {
+
     assert(trie && key);
-    return trie_node_search(trie->root, key, ret);
+
+    // Walk the trie till the end of the key
+    struct trie_node *cursor = trie_node_find(trie->root, key);
+
+    *ret = (cursor && cursor->data) ? cursor->data : NULL;
+
+    // Return false if no complete key found, true otherwise
+    return !*ret ? false : true;
 }
 
 /*
@@ -294,10 +279,6 @@ int trie_prefix_count(const Trie *trie, const char *prefix) {
 
     return count;
 }
-
-
-static void trie_node_prefix_find(const struct trie_node *,
-                                  char *, int , List *);
 
 
 static void children_prefix_find(const struct bst_node *node,
