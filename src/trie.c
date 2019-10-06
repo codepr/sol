@@ -333,7 +333,7 @@ List *trie_prefix_find(const Trie *trie, const char *prefix) {
     if (!node)
         return NULL;
 
-    List *keys = list_create(NULL);
+    List *keys = list_new(NULL);
 
     // Check all possible sub-paths and add the resulting key to the result
     char *str = sol_malloc(32);

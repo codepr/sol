@@ -177,7 +177,7 @@ static int destroy_entry(struct hashtable_entry *entry) {
  * Return an empty hashtable, or NULL on failure. The newly create HashTable is
  * dynamically allocated on the heap memory, so it must be released manually.
  */
-HashTable *hashtable_create(int (*destructor)(struct hashtable_entry *)) {
+HashTable *hashtable_new(int (*destructor)(struct hashtable_entry *)) {
 
     HashTable *table = sol_malloc(sizeof(HashTable));
     if(!table)
@@ -185,7 +185,7 @@ HashTable *hashtable_create(int (*destructor)(struct hashtable_entry *)) {
 
     table->entries = sol_calloc(INITIAL_SIZE, sizeof(struct hashtable_entry));
     if(!table->entries) {
-        hashtable_release(table);
+        hashtable_destroy(table);
         return NULL;
     }
 
@@ -393,7 +393,7 @@ int hashtable_map2(HashTable *table,
  * Deallocate the hashtable using the defined destructor, if the destructor is
  * NULL it call normal free on key-value pairs.
  */
-void hashtable_release(HashTable *table){
+void hashtable_destroy(HashTable *table){
 
     if (!table)
         return;

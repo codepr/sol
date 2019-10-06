@@ -59,14 +59,14 @@ typedef struct hashtable HashTable;
  * define a custom destructor, which can be NULL in case of bytes stream or
  * simple pointers as values
  */
-HashTable *hashtable_create(int (*destructor)(struct hashtable_entry *));
+HashTable *hashtable_new(int (*destructor)(struct hashtable_entry *));
 
-/* Destroy the hashtable by calling functor `destructor` on every
- * `struct hashtable_entry`, thus it needs to have a defined destructor function
- * for each different data-type inserted. In case of a NULL destructor, it' ll call
+/* Destroy the hashtable by calling functor `destructor` on every `struct
+ * hashtable_entry`, thus it needs to have a defined destructor function for
+ * each different data-type inserted. In case of a NULL destructor, it' ll call
  * normal free.
  */
-void hashtable_release(HashTable *);
+void hashtable_destroy(HashTable *);
 
 /* Return hashtable size */
 size_t hashtable_size(const HashTable *);

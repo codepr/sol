@@ -36,7 +36,7 @@ static struct list_node *list_node_remove(struct list_node *,
 /*
  * Create a list, initializing all fields
  */
-List *list_create(int (*destructor)(struct list_node *)) {
+List *list_new(int (*destructor)(struct list_node *)) {
 
     List *l = sol_malloc(sizeof(List));
 
@@ -56,7 +56,7 @@ List *list_create(int (*destructor)(struct list_node *)) {
 /*
  * Destroy a list, releasing all allocated memory
  */
-void list_release(List *l, int deep) {
+void list_destroy(List *l, int deep) {
 
     if (!l)
         return;

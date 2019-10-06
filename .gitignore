@@ -26,5 +26,5 @@ cmake_install.cmake
 install_manifest.txt
 sol.build
 prof_output
-test.py
 sol
+sol_test

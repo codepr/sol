@@ -280,7 +280,7 @@ static int connect_handler(struct io_event *e) {
     // TODO check for session already present
 
     if (e->data->connect.bits.clean_session == false)
-        e->client->session.subscriptions = list_create(NULL);
+        e->client->session.subscriptions = list_new(NULL);
 
     unsigned char session_present = 0;
     unsigned char connect_flags = 0 | (session_present & 0x1) << 0;
@@ -1313,7 +1313,7 @@ int start_server(const char *addr, const char *port) {
 
     /* Initialize global Sol instance */
     trie_init(&sol.topics, NULL);
-    sol.clients = hashtable_create(client_destructor);
+    sol.clients = hashtable_new(client_destructor);
     sol.pending_packets = sol_malloc(65535);
     for (int i = 0; i < 65535; ++i)
         sol.pending_packets[i] = false;
@@ -1400,7 +1400,7 @@ int start_server(const char *addr, const char *port) {
     for (int i = 0; i < WORKERPOOLSIZE; ++i)
         pthread_join(workers[i], NULL);
 
-    hashtable_release(sol.clients);
+    hashtable_destroy(sol.clients);
     sol_free(sol.pending_packets);
 
     pthread_spin_destroy(&spinlock);
