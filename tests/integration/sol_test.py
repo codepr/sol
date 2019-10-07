@@ -119,9 +119,9 @@ def read_ack(packet):
 def create_subscribe(mid, topic, qos):
     topic = topic.encode("utf-8")
     packet = struct.pack("!B", 0x80)
-    packet += mqtt_encode_len(2 + 1 + 2 + len(topic) + 1)
-    pack_format = "!HBH" + str(len(topic)) + "sB"
-    return packet + struct.pack(pack_format, mid, 0, len(topic), topic, qos)
+    packet += mqtt_encode_len(2 + 2 + len(topic) + 1)
+    pack_format = "!HH" + str(len(topic)) + "sB"
+    return packet + struct.pack(pack_format, mid, len(topic), topic, qos)
 
 
 def read_suback(packet):
@@ -130,4 +130,4 @@ def read_suback(packet):
     mid, packet = struct.unpack(pack_format, packet)
     pack_format = "!" + "B" * len(packet)
     granted_qos = struct.unpack(pack_format, packet)
-    return mid, granted_qos
+    return mid, granted_qos[0]
