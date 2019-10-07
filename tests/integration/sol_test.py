@@ -90,7 +90,6 @@ def create_connect(client_id=None, clean_session=True, keepalive=60,
         packet += struct.pack("!H", 0)
 
     if will_topic is not None:
-        packet += will_properties
         packet += struct.pack("!H" + str(len(will_topic)) + "s", len(will_topic), will_topic)
         if len(will_payload) > 0:
             packet += struct.pack("!H" + str(len(will_payload)) + "s", len(will_payload), will_payload)
@@ -104,7 +103,7 @@ def create_connect(client_id=None, clean_session=True, keepalive=60,
     return packet
 
 
-def create_disconnect(rc=-1):
+def create_disconnect(rc=0):
     return struct.pack('!BBB', 0xE0, 1, rc)
 
 

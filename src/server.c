@@ -1350,9 +1350,9 @@ int start_server(const char *addr, const char *port) {
     memset(&pending_timer, 0x00, sizeof(pending_timer));
 
     pending_timer.it_value.tv_sec = 0;
-    pending_timer.it_value.tv_nsec = 100000;
+    pending_timer.it_value.tv_nsec = 1e8;
     pending_timer.it_interval.tv_sec = 0;
-    pending_timer.it_interval.tv_nsec = 100000;
+    pending_timer.it_interval.tv_nsec = 1e8;
 
     // add expiration keys cron task and pending messages cron task
     int exptimerfd = add_cron_task(epoll.w_epollfd, &expiration_timer);
