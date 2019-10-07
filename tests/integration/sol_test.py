@@ -116,18 +116,33 @@ def read_ack(packet):
     return struct.unpack('!BBB')
 
 
-def create_subscribe(mid, topic, qos):
-    topic = topic.encode("utf-8")
+def create_subscribe(mid, topics):
     packet = struct.pack("!B", 0x80)
-    packet += mqtt_encode_len(2 + 2 + len(topic) + 1)
-    pack_format = "!HH" + str(len(topic)) + "sB"
-    return packet + struct.pack(pack_format, mid, len(topic), topic, qos)
+    for topic, qos in topics.items():
+        topic = topic.encode("utf-8")
+        packet += mqtt_encode_len(2 + 2 + len(topic) + 1)
+        pack_format = "!HH" + str(len(topic)) + "sB"
+        packet += struct.pack(pack_format, mid, len(topic), topic, qos)
+    return packet
+
+
+def create_unsubscribe(mid, topic):
+    topic = topic.encode("utf-8")
+    pack_format = "!BBHH" + str(len(topic)) + "s"
+    return struct.pack(pack_format, 162, 2 + 2 + len(topic), mid, len(topic), topic)
+
+
+def read_unsuback(packet):
+    packet, plen = mqtt_decode_len(packet)
+    pack_format = "!H" + str(len(packet) - 2) + 's'
+    mid, packet = struct.unpack(pack_format, packet)
 
 
 def read_suback(packet):
+    header = packet[0]
     packet, plen = mqtt_decode_len(packet)
     pack_format = "!H" + str(len(packet) - 2) + 's'
     mid, packet = struct.unpack(pack_format, packet)
     pack_format = "!" + "B" * len(packet)
     granted_qos = struct.unpack(pack_format, packet)
-    return mid, granted_qos[0]
+    return header, mid, granted_qos[0]

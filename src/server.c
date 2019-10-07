@@ -1281,9 +1281,8 @@ static void pending_message_check(void) {
                                    payload, bstring_len(payload))) < 0)
                 sol_error("Error re-sending %s", strerror(errno));
 
-            info.messages_sent++;
-
             // Update information stats
+            info.messages_sent++;
             info.bytes_sent += sent;
         }
     }

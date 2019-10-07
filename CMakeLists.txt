@@ -6,30 +6,34 @@ OPTION(DEBUG "add debug flags" OFF)
 
 if (DEBUG)
     message(STATUS "Configuring build for debug")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wunused -Werror -std=c11 -O3 -D_DEFAULT_SOURCE -pedantic -lpthread -luuid -ggdb -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer -pg")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wunused -Werror -std=c11 -O3 \
+    -D_DEFAULT_SOURCE -pedantic -lpthread -luuid -ggdb -fsanitize=address \
+    -fsanitize=undefined -fno-omit-frame-pointer -pg")
 else (DEBUG)
     message(STATUS "Configuring build for production")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wunused -Werror -Wextra -std=c11 -O3 -D_DEFAULT_SOURCE -pedantic -lpthread -luuid")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wunused -Werror -Wextra \
+    -std=c11 -O3 -D_DEFAULT_SOURCE -pedantic -lpthread -luuid")
 endif (DEBUG)
 
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
 
 file(GLOB SOURCES src/*.c)
-file(GLOB TEST src/hashtable.c src/bst.c src/config.c src/list.c src/trie.c src/util.c tests/*.c)
+file(GLOB TEST src/hashtable.c src/bst.c src/config.c src/list.c src/trie.c
+    src/util.c tests/*.c)
 
 set(AUTHOR "Andrea Giacomo Baldan")
 set(LICENSE "BSD2 license")
 
 # Executable
 add_executable(sol ${SOURCES})
-add_executable(sol_test ${TEST})
+add_executable(test ${TEST})
 
 add_custom_command(
     TARGET sol
     POST_BUILD
-    COMMAND ${CMAKE_BINARY_DIR}/sol_test
+    COMMAND ${CMAKE_BINARY_DIR}/test
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "\n Running unit tests")
 
 # Tests
-add_test(sol_test bin/sol_test)
+add_test(test ./test)
