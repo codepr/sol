@@ -83,6 +83,6 @@ class TestSubscribe(base_testcase.BaseTestcase):
             unsubscribe = sol_test.create_unsubscribe(1, 'test')
             conn.send(unsubscribe)
             packet = conn.recv(100)
-            code, mid = sol_test.read_unsuback(packet)
+            code, mid = sol_test.read_ack(packet)
             self.assertEqual(code, 0xB0)
             self.assertEqual(mid, 1)

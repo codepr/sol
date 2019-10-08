@@ -113,7 +113,8 @@ def read_connack(packet):
 
 
 def read_ack(packet):
-    return struct.unpack('!BBB')
+    code, plen = struct.unpack('!BH', packet[:3])
+    return code, struct.unpack('!B', packet[3:])[0]
 
 
 def create_subscribe(mid, topics):
@@ -129,13 +130,7 @@ def create_subscribe(mid, topics):
 def create_unsubscribe(mid, topic):
     topic = topic.encode("utf-8")
     pack_format = "!BBHH" + str(len(topic)) + "s"
-    return struct.pack(pack_format, 162, 2 + 2 + len(topic), mid, len(topic), topic)
-
-
-def read_unsuback(packet):
-    packet, plen = mqtt_decode_len(packet)
-    pack_format = "!H" + str(len(packet) - 2) + 's'
-    mid, packet = struct.unpack(pack_format, packet)
+    return struct.pack(pack_format, 0xA0, 2 + 2 + len(topic), mid, len(topic), topic)
 
 
 def read_suback(packet):
