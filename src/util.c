@@ -150,16 +150,15 @@ char *update_integer_string(char *str, int num) {
 }
 
 /*
- * Append a string to another, the destination string must be NUL-terminated
- * and long enough to contain the resulting string, for the chunk part that
- * will be appended the function require the length, the resulting string will
- * be heap alloced and nul-terminated.
+ * Append a string to another for the destination part that will be appended
+ * the function require the length, the resulting string will be heap alloced
+ * and nul-terminated.
  */
-char *append_string(const char *src, char *chunk, size_t chunklen) {
+char *append_string(const char *src, char *dst, size_t chunklen) {
     size_t srclen = strlen(src);
     char *ret = sol_malloc(srclen + chunklen + 1);
     memcpy(ret, src, srclen);
-    memcpy(ret + srclen, chunk, chunklen);
+    memcpy(ret + srclen, dst, chunklen);
     ret[srclen + chunklen] = '\0';
     return ret;
 }
