@@ -1257,16 +1257,16 @@ static void publish_stats(void) {
  */
 static void pending_message_check(void) {
     time_t now = time(NULL);
+    unsigned char *pub = NULL;
+    ssize_t sent;
     for (int i = 0; i < 65535; ++i) {
         // TODO Remove hard-coded values, 65535 and 20
         if (outgoing[i] && (now - outgoing[i]->sent_timestamp) > 20) {
             // Set DUP flag to 1
             mqtt_set_dup(outgoing[i]->packet, outgoing[i]->type);
             // Serialize the packet and send it out again
-            unsigned char *pub = pack_mqtt_packet(outgoing[i]->packet,
-                                                  outgoing[i]->type);
+            pub = pack_mqtt_packet(outgoing[i]->packet, outgoing[i]->type);
             bstring payload = bstring_copy(pub, outgoing[i]->size);
-            ssize_t sent;
             if ((sent = send_bytes(outgoing[i]->fd,
                                    payload, bstring_len(payload))) < 0)
                 sol_error("Error re-sending %s", strerror(errno));
