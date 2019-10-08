@@ -32,10 +32,12 @@
 #include "list.h"
 #include "network.h"
 #include "hashtable.h"
+#include "pack.h"
 
 
 struct topic {
     const char *name;
+    bstring retained_msg;
     List *subscribers;
 };
 

@@ -75,6 +75,7 @@ features expected from an MQTT broker.
 - [X] Unix/TCP sockets
 - [X] Pub/Sub working fine
 - [X] QoS 0, 1, 2 are correctly parsed, 0 and 1 handled as well
+- [X] Retained messages
 - [X] Trie as underlying structure to handle topic hierarchies
 - [X] Periodic tasks like stats publishing
 - [X] Wildcards (#) on subscriptions

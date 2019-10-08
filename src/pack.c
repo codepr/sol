@@ -65,6 +65,11 @@ bstring bstring_copy(const unsigned char *init, size_t len) {
 }
 
 
+bstring bstring_dup(const bstring src) {
+    size_t len = bstring_len(src);
+    return bstring_copy(src, len);
+}
+
 /* Same as bstring_copy but setting the entire content of the string to 0 */
 bstring bstring_empty(size_t len) {
     unsigned char *str = sol_malloc(len);

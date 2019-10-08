@@ -46,6 +46,7 @@ struct topic *topic_create(const char *name) {
 void topic_init(struct topic *t, const char *name) {
     t->name = name;
     t->subscribers = list_new(NULL);
+    t->retained_msg = NULL;
 }
 
 

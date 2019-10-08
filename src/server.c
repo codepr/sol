@@ -392,6 +392,18 @@ static int subscribe_handler(struct io_event *e) {
         // Clean session true for now
         topic_add_subscriber(t, e->client,
                              e->data->subscribe.tuples[i].qos, true);
+
+        // Retained message? Publish it
+        if (t->retained_msg) {
+            ssize_t sent;
+            if ((sent = send_bytes(e->client->fd, t->retained_msg, bstring_len(t->retained_msg))) < 0)
+                sol_error("Error publishing to %s: %s",
+                          e->client->client_id, strerror(errno));
+
+            info.messages_sent++;
+            info.bytes_sent += sent;
+        }
+
 #if WORKERPOOLSIZE > 1
         unlock();
 #endif
@@ -476,21 +488,21 @@ static int publish_handler(struct io_event *e) {
      */
     struct topic *t = sol_topic_get_or_create(&sol, topic);
 
+    // Retained? Store it
+    unsigned char *pub = pack_mqtt_packet(e->data, PUBLISH);
+    size_t publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
+        e->data->publish.topiclen + e->data->publish.payloadlen;
+    if (e->data->publish.header.bits.qos > AT_MOST_ONCE)
+        publen += sizeof(uint16_t);
+    bstring payload = bstring_copy(pub, publen);
+
+    t->retained_msg = bstring_dup(payload);
+
     // Not the best way to handle this
     if (alloced == true)
         sol_free(topic);
 
     if (t->subscribers->len > 0) {
-
-        unsigned char *pub = pack_mqtt_packet(e->data, PUBLISH);
-
-        size_t publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
-            e->data->publish.topiclen + e->data->publish.payloadlen;
-
-        if (e->data->publish.header.bits.qos > AT_MOST_ONCE)
-            publen += sizeof(uint16_t);
-
-        bstring payload = bstring_copy(pub, publen);
 
         struct list_node *cur = t->subscribers->head;
 

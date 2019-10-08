@@ -53,6 +53,9 @@ bstring bstring_new(const unsigned char *);
  */
 bstring bstring_copy(const unsigned char *, size_t);
 
+/* Duplicate a bstring */
+bstring bstring_dup(const bstring);
+
 /* Bytestring constructor, it creates a new empty bytstring of a given size */
 bstring bstring_empty(size_t);
 
