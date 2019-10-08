@@ -39,15 +39,15 @@
  * Stub bytes, useful for generic replies, these represent the first byte in
  * the fixed header
  */
-#define CONNACK_BYTE  0x20
-#define PUBLISH_BYTE  0x30
-#define PUBACK_BYTE   0x40
-#define PUBREC_BYTE   0x50
-#define PUBREL_BYTE   0x60
-#define PUBCOMP_BYTE  0x70
-#define SUBACK_BYTE   0x90
-#define UNSUBACK_BYTE 0xB0
-#define PINGRESP_BYTE 0xD0
+#define CONNACK_B  0x20
+#define PUBLISH_B  0x30
+#define PUBACK_B   0x40
+#define PUBREC_B   0x50
+#define PUBREL_B   0x60
+#define PUBCOMP_B  0x70
+#define SUBACK_B   0x90
+#define UNSUBACK_B 0xB0
+#define PINGRESP_B 0xD0
 
 /* Message types */
 enum packet_type {

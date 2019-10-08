@@ -60,7 +60,7 @@ size_t malloc_size(void *);
 void sol_free(void *);
 char *sol_strdup(const char *);
 char *remove_occur(char *, char);
-char *append_string(char *, char *, size_t);
+char *append_string(const char *, char *, size_t);
 
 size_t memory_used(void);
 

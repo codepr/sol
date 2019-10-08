@@ -155,7 +155,7 @@ char *update_integer_string(char *str, int num) {
  * will be appended the function require the length, the resulting string will
  * be heap alloced and nul-terminated.
  */
-char *append_string(char *src, char *chunk, size_t chunklen) {
+char *append_string(const char *src, char *chunk, size_t chunklen) {
     size_t srclen = strlen(src);
     char *ret = sol_malloc(srclen + chunklen + 1);
     memcpy(ret, src, srclen);

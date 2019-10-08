@@ -91,3 +91,13 @@ struct topic *sol_topic_get(struct sol *sol, const char *name) {
     trie_find(&sol->topics, name, (void *) &ret_topic);
     return ret_topic;
 }
+
+
+struct topic *sol_topic_get_or_create(struct sol *sol, const char *name) {
+    struct topic *t = sol_topic_get(sol, name);
+    if (!t) {
+        t = topic_create(sol_strdup(name));
+        sol_topic_put(sol, t);
+    }
+    return t;
+}

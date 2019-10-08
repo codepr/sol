@@ -89,5 +89,8 @@ void sol_topic_del(struct sol *, const char *);
 /* Find a topic by name and return it */
 struct topic *sol_topic_get(struct sol *, const char *);
 
+/* Get or create a new topic if it doesn't exists */
+struct topic *sol_topic_get_or_create(struct sol *, const char *);
+
 
 #endif

@@ -285,7 +285,7 @@ static int connect_handler(struct io_event *e) {
     unsigned char connect_flags = 0 | (session_present & 0x1) << 0;
     unsigned char rc = 0;  // 0 means connection accepted
 
-    response->connack = *mqtt_packet_connack(CONNACK_BYTE, connect_flags, rc);
+    response->connack = *mqtt_packet_connack(CONNACK_B, connect_flags, rc);
 
     e->reply = bstring_copy(pack_mqtt_packet(response, 2), MQTT_ACK_LEN);
 
@@ -380,12 +380,9 @@ static int subscribe_handler(struct io_event *e) {
             alloced = true;
         }
 
-        struct topic *t = sol_topic_get(&sol, topic);
+        struct topic *t = sol_topic_get_or_create(&sol, topic);
 
-        if (!t) {
-            t = topic_create(sol_strdup(topic));
-            sol_topic_put(&sol, t);
-        } else if (wildcard == true) {
+        if (wildcard == true) {
             struct subscriber *sub = sol_malloc(sizeof(*sub));
             sub->client = e->client;
             sub->qos = e->data->subscribe.tuples[i].qos;
@@ -405,7 +402,7 @@ static int subscribe_handler(struct io_event *e) {
     }
 
     struct mqtt_suback *suback =
-        mqtt_packet_suback(SUBACK_BYTE, e->data->subscribe.pkt_id,
+        mqtt_packet_suback(SUBACK_B, e->data->subscribe.pkt_id,
                            rcs, e->data->subscribe.tuples_len);
 
     union mqtt_packet pkt = { .suback = *suback };
@@ -428,8 +425,7 @@ static int unsubscribe_handler(struct io_event *e) {
 
     sol_debug("Received UNSUBSCRIBE from %s", c->client_id);
 
-    e->data->ack = *mqtt_packet_ack(UNSUBACK_BYTE,
-                                    e->data->unsubscribe.pkt_id);
+    e->data->ack = *mqtt_packet_ack(UNSUBACK_B, e->data->unsubscribe.pkt_id);
 
     unsigned char *packed = pack_mqtt_packet(e->data, UNSUBACK);
 
@@ -478,12 +474,7 @@ static int publish_handler(struct io_event *e) {
      * Retrieve the topic from the global map, if it wasn't created before,
      * create a new one with the name selected
      */
-    struct topic *t = sol_topic_get(&sol, topic);
-
-    if (!t) {
-        t = topic_create(sol_strdup(topic));
-        sol_topic_put(&sol, t);
-    }
+    struct topic *t = sol_topic_get_or_create(&sol, topic);
 
     // Not the best way to handle this
     if (alloced == true)
@@ -550,12 +541,12 @@ static int publish_handler(struct io_event *e) {
 
     if (qos == AT_LEAST_ONCE) {
         sol_debug("Sending PUBACK to %s", c->client_id);
-        e->data->ack = *mqtt_packet_ack(PUBACK_BYTE, e->data->publish.pkt_id);
+        e->data->ack = *mqtt_packet_ack(PUBACK_B, e->data->publish.pkt_id);
         ptype = PUBACK;
     } else if (qos == EXACTLY_ONCE) {
         // TODO add to a hashtable to track PUBREC clients last
         sol_debug("Sending PUBREC to %s", c->client_id);
-        e->data->ack = *mqtt_packet_ack(PUBREC_BYTE, e->data->publish.pkt_id);
+        e->data->ack = *mqtt_packet_ack(PUBREC_B, e->data->publish.pkt_id);
         ptype = PUBREC;
     }
 
@@ -606,7 +597,7 @@ static int pubrec_handler(struct io_event *e) {
 
     sol_debug("Received PUBREC from %s", c->client_id);
 
-    mqtt_pubrel *pubrel = mqtt_packet_ack(PUBREL_BYTE, e->data->ack.pkt_id);
+    mqtt_pubrel *pubrel = mqtt_packet_ack(PUBREL_B, e->data->ack.pkt_id);
 
     e->data->ack = *pubrel;
 
@@ -624,7 +615,7 @@ static int pubrel_handler(struct io_event *e) {
 
     sol_debug("Received PUBREL from %s", e->client->client_id);
 
-    mqtt_pubcomp *pubcomp = mqtt_packet_ack(PUBCOMP_BYTE, e->data->ack.pkt_id);
+    mqtt_pubcomp *pubcomp = mqtt_packet_ack(PUBCOMP_B, e->data->ack.pkt_id);
 
     e->data->ack = *pubcomp;
 
@@ -1156,7 +1147,7 @@ static void publish_message(unsigned short pkt_id,
 
     /* Build MQTT packet with command PUBLISH */
     union mqtt_packet pkt;
-    struct mqtt_publish *p = mqtt_packet_publish(PUBLISH_BYTE,
+    struct mqtt_publish *p = mqtt_packet_publish(PUBLISH_B,
                                                  pkt_id,
                                                  topiclen,
                                                  (unsigned char *) topic,

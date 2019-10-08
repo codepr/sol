@@ -101,6 +101,8 @@ uint_least64_t ntohll(const uint8_t *block) {
         | (uint_least64_t) block[6] << 8 | (uint_least64_t) block[7] << 0;
 }
 
+// Beej'us network guide functions
+
 /*
 ** packi16() -- store a 16-bit int into a char buffer (like htons())
 */
