@@ -407,8 +407,7 @@ static unsigned char *pack_mqtt_ack(const union mqtt_packet *pkt) {
     unsigned char *packed = sol_malloc(MQTT_ACK_LEN);
     unsigned char *ptr = packed;
 
-    pack(ptr, "B", pkt->ack.header.byte);
-    ptr++;
+    pack(ptr++, "B", pkt->ack.header.byte);
     int step = mqtt_encode_length(ptr, MQTT_HEADER_LEN);
     ptr += step;
 
@@ -423,8 +422,7 @@ static unsigned char *pack_mqtt_connack(const union mqtt_packet *pkt) {
     unsigned char *packed = sol_malloc(MQTT_ACK_LEN);
     unsigned char *ptr = packed;
 
-    pack(ptr, "B", pkt->connack.header.byte);
-    ptr++;
+    pack(ptr++, "B", pkt->connack.header.byte);
     int step = mqtt_encode_length(ptr, MQTT_HEADER_LEN);
     ptr += step;
 
@@ -440,8 +438,7 @@ static unsigned char *pack_mqtt_suback(const union mqtt_packet *pkt) {
     unsigned char *packed = sol_malloc(pktlen + 0);
     unsigned char *ptr = packed;
 
-    pack(ptr, "B", pkt->suback.header.byte);
-    ptr++;
+    pack(ptr++, "B", pkt->suback.header.byte);
     size_t len = sizeof(uint16_t) + pkt->suback.rcslen;
     int step = mqtt_encode_length(ptr, len);
     ptr += step;

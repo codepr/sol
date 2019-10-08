@@ -86,18 +86,4 @@ void list_remove(List *, struct list_node *, compare_func);
  */
 struct list_node *list_remove_node(List *, void *, compare_func);
 
-/* Comapare function for merge_sort application */
-typedef int cmp(void *, void *);
-
-/* Merge sort customized on TTL of new values data with complexity of O(nlogn) */
-struct list_node *list_merge_sort(struct list_node *, cmp);
-
-/* Divide a list in 2 sublists at roughly the middle of the original list */
-struct list_node *bisect_list(struct list_node *);
-
-/* Insert a new node into a list while maintaining the order of the elements */
-struct list_node *list_sort_insert(struct list_node **,
-                                   struct list_node *, compare_func);
-
-
 #endif
