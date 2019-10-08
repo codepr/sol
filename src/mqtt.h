@@ -253,6 +253,4 @@ void mqtt_packet_release(union mqtt_packet *, unsigned);
 
 void mqtt_set_dup(union mqtt_packet *, int);
 
-bstring pack_ack(unsigned char, unsigned char);
-
 #endif

@@ -393,8 +393,7 @@ static unsigned char *pack_mqtt_header(const union mqtt_header *hdr) {
     unsigned char *packed = sol_malloc(MQTT_HEADER_LEN);
     unsigned char *ptr = packed;
 
-    pack(ptr, "B", hdr->byte);
-    ptr++;
+    pack(ptr++, "B", hdr->byte);
 
     /* Encode 0 length bytes, message like this have only a fixed header */
     mqtt_encode_length(ptr, 0);
@@ -449,10 +448,8 @@ static unsigned char *pack_mqtt_suback(const union mqtt_packet *pkt) {
 
     pack(ptr, "H", pkt->suback.pkt_id);
     ptr += 2;
-    for (int i = 0; i < pkt->suback.rcslen; i++) {
-        pack(ptr, "B", pkt->suback.rcs[i]);
-        ptr++;
-    }
+    for (int i = 0; i < pkt->suback.rcslen; i++)
+        pack(ptr++, "B", pkt->suback.rcs[i]);
 
     return packed;
 }
@@ -476,9 +473,7 @@ static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
     unsigned char *packed = sol_malloc(pktlen);
     unsigned char *ptr = packed;
 
-    /* pack_u8(&ptr, pkt->publish.header.byte); */
-    pack(ptr, "B", pkt->publish.header.byte);
-    ptr++;
+    pack(ptr++, "B", pkt->publish.header.byte);
 
     // Total len of the packet excluding fixed header len
     len += (pktlen - MQTT_HEADER_LEN);
@@ -644,10 +639,3 @@ void mqtt_set_dup(union mqtt_packet *pkt, int type) {
             break;
     }
 }
-
-
-/* bstring pack_ack(unsigned char byte, unsigned char rc) { */
-/*     unsigned char raw[3]; */
-/*     pack(raw, "BBB", byte, 1, rc); */
-/*     return bstring_copy(raw, 3); */
-/* } */

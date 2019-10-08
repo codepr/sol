@@ -273,7 +273,6 @@ static int connect_handler(struct io_event *e) {
     unlock();
 #endif
 
-
     /* Respond with a connack */
     union mqtt_packet *response = sol_malloc(sizeof(*response));
 
