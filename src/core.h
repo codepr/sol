@@ -62,6 +62,7 @@ struct session {
  * or a subscriber, it can be used to track sessions too.
  */
 struct sol_client {
+    bool online;  // just a boolean will be fine for now
     char *client_id;
     int fd;
     struct session session;

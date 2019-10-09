@@ -751,6 +751,8 @@ static void accept_loop(struct epoll *epoll) {
                     if (!client)
                         return;
 
+                    client->online = true;
+
                     /* Populate client structure */
                     client->fd = fd;
 
@@ -909,9 +911,6 @@ exit:
 
 errdc:
 
-    sol_error("Dropping client");
-    close(fd);
-
     info.nclients--;
     info.nconnections--;
 
@@ -1008,9 +1007,10 @@ static void *io_worker(void *arg) {
                      * free resources allocated such as io_event structure and
                      * paired payload
                      */
-
+                    sol_error("Dropping client");
+                    event->client->online = false;
                     close(event->client->fd);
-                    hashtable_del(sol.clients, event->client->client_id);
+                    /* hashtable_del(sol.clients, event->client->client_id); */
                     sol_free(event->data);
                     sol_free(event);
                 }
@@ -1161,6 +1161,13 @@ static void publish_message(const struct mqtt_publish *p) {
     ssize_t sent = 0L;
     for (; cur; cur = cur->next) {
 
+        struct subscriber *sub = cur->data;
+        struct sol_client *sc = sub->client;
+
+        // Skip DC's clients
+        if (!sub->client || sc->online == false)
+            continue;
+
         sol_debug("Sending PUBLISH (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
                   pkt.publish.header.bits.dup,
                   pkt.publish.header.bits.qos,
@@ -1171,9 +1178,6 @@ static void publish_message(const struct mqtt_publish *p) {
 
         len = MQTT_HEADER_LEN + sizeof(uint16_t) +
             pkt.publish.topiclen + pkt.publish.payloadlen;
-
-        struct subscriber *sub = cur->data;
-        struct sol_client *sc = sub->client;
 
         /* Update QoS according to subscriber's one */
         pkt.publish.header.bits.qos = sub->qos;
