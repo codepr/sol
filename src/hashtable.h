@@ -33,6 +33,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "iterator.h"
 
 
 #define HASHTABLE_OK   0
@@ -98,6 +99,8 @@ int hashtable_map(HashTable *, int (*func)(struct hashtable_entry *));
  */
 int hashtable_map2(HashTable *,
         int (*func)(struct hashtable_entry *, void *), void *);
+
+void hashtable_iter_next(struct iterator *);
 
 
 #endif

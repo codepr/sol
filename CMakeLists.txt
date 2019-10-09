@@ -19,21 +19,21 @@ set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
 
 file(GLOB SOURCES src/*.c)
 file(GLOB TEST src/hashtable.c src/bst.c src/config.c src/list.c src/trie.c
-    src/util.c tests/*.c)
+    src/util.c src/iterator.c tests/*.c)
 
 set(AUTHOR "Andrea Giacomo Baldan")
 set(LICENSE "BSD2 license")
 
 # Executable
 add_executable(sol ${SOURCES})
-add_executable(test ${TEST})
+add_executable(sol_test ${TEST})
 
 add_custom_command(
-    TARGET sol
+    TARGET sol_test
     POST_BUILD
-    COMMAND ${CMAKE_BINARY_DIR}/test
+    COMMAND ${CMAKE_BINARY_DIR}/sol_test
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "\n Running unit tests")
 
 # Tests
-add_test(test ./test)
+add_test(test ./sol_test)

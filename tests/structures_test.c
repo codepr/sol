@@ -33,7 +33,7 @@
 #include "../src/trie.h"
 #include "../src/list.h"
 #include "../src/hashtable.h"
-
+#include "../src/iterator.h"
 
 /*
  * Tests the init feature of the list
@@ -106,6 +106,23 @@ static char *test_list_remove_node(void) {
     sol_free(node);
     list_destroy(l, 0);
     printf(" [list::list_remove_node]: OK\n");
+    return 0;
+}
+
+/*
+ * Tests the list iterator
+ */
+static char *test_list_iterator(void) {
+    List *l = list_new(NULL);
+    char *x = "abc";
+    l = list_push(l, x);
+    struct iterator *it = iter_get(l, list_iter_next);
+    struct list_node *n = iter_next(it)->ptr;
+    ASSERT("[! list_iter_next]: next iterator didn't point to the right item",
+           strcmp(n->data, x) == 0);
+    list_destroy(l, 0);
+    iter_destroy(it);
+    printf(" [list::list_iterator]: OK\n");
     return 0;
 }
 
@@ -338,6 +355,30 @@ static char *test_hashtable_del(void) {
 }
 
 /*
+ * Tests the hashtable iterator function of the hashtable
+ */
+static char *test_hashtable_iterator(void) {
+    HashTable *m = hashtable_new(NULL);
+    char *key = "hello";
+    char *val = "world";
+    hashtable_put(m, sol_strdup(key), sol_strdup(val));
+    char *keytwo = "foobar";
+    char *valtwo = "worldfoo";
+    hashtable_put(m, sol_strdup(keytwo), sol_strdup(valtwo));
+    struct iterator *it = iter_get(m, hashtable_iter_next);
+    it = iter_next(it);
+    ASSERT("[! hashtable_iterator]: hashtable_iterator didn't work as expected",
+           strcmp(it->ptr, val) == 0);
+    it = iter_next(it);
+    ASSERT("[! hashtable_iterator]: hashtable_iterator didn't work as expected",
+           strcmp(it->ptr, valtwo) == 0);
+    hashtable_destroy(m);
+    iter_destroy(it);
+    printf(" [hashtable::hashtable_iterator]: OK\n");
+    return 0;
+}
+
+/*
  * All datastructure tests
  */
 char *structures_test() {
@@ -347,6 +388,7 @@ char *structures_test() {
     RUN_TEST(test_list_push);
     RUN_TEST(test_list_push_back);
     RUN_TEST(test_list_remove_node);
+    RUN_TEST(test_list_iterator);
     RUN_TEST(test_trie_create_node);
     RUN_TEST(test_trie_new);
     RUN_TEST(test_trie_insert);
@@ -359,6 +401,7 @@ char *structures_test() {
     RUN_TEST(test_hashtable_put);
     RUN_TEST(test_hashtable_get);
     RUN_TEST(test_hashtable_del);
+    RUN_TEST(test_hashtable_iterator);
 
     return 0;
 }

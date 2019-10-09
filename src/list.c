@@ -265,3 +265,17 @@ struct list_node *list_remove_node(List *list, void *data, compare_func cmp) {
 
     return node;
 }
+
+/*
+ * Iterator function to retrieve the next node, uses cur pointer in the
+ * iterator to track the last visited node in the list
+ */
+void list_iter_next(struct iterator *it) {
+    if (!it)
+        return;
+    if (!it->ptr)
+        it->ptr = ((List *) it->iterable)->head;
+    else
+        it->ptr = ((struct list_node *) it->ptr)->next;
+    it->index++;
+}

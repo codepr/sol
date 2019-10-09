@@ -28,6 +28,8 @@
 #ifndef LIST_H
 #define LIST_H
 
+#include "iterator.h"
+
 
 struct list_node {
     void *data;
@@ -85,5 +87,8 @@ void list_remove(List *, struct list_node *, compare_func);
  * criteria, without de-allocating it
  */
 struct list_node *list_remove_node(List *, void *, compare_func);
+
+void list_iter_next(struct iterator *);
+
 
 #endif
