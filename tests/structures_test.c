@@ -116,7 +116,7 @@ static char *test_list_iterator(void) {
     List *l = list_new(NULL);
     char *x = "abc";
     l = list_push(l, x);
-    struct iterator *it = iter_get(l, list_iter_next);
+    struct iterator *it = iter_new(l, list_iter_next);
     struct list_node *n = iter_next(it)->ptr;
     ASSERT("[! list_iter_next]: next iterator didn't point to the right item",
            strcmp(n->data, x) == 0);
@@ -365,7 +365,7 @@ static char *test_hashtable_iterator(void) {
     char *keytwo = "foobar";
     char *valtwo = "worldfoo";
     hashtable_put(m, sol_strdup(keytwo), sol_strdup(valtwo));
-    struct iterator *it = iter_get(m, hashtable_iter_next);
+    struct iterator *it = iter_new(m, hashtable_iter_next);
     it = iter_next(it);
     ASSERT("[! hashtable_iterator]: hashtable_iterator didn't work as expected",
            strcmp(it->ptr, val) == 0);

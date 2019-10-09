@@ -29,8 +29,11 @@
 #include "util.h"
 #include "iterator.h"
 
-
-struct iterator *iter_get(void *iterable, void (*next)(struct iterator *)) {
+/*
+ * Create an iterator for the given iterable data structure, requires a next
+ * function to define how the iterator next ptr should be updated
+ */
+struct iterator *iter_new(void *iterable, void (*next)(struct iterator *)) {
     struct iterator *i = sol_malloc(sizeof(*i));
     i->index = 0;
     i->iterable = iterable;
@@ -44,7 +47,9 @@ void iter_destroy(struct iterator *i) {
     sol_free(i);
 }
 
-
+/*
+ * Advance the iterator ptr to the next item in the iterable collection
+ */
 struct iterator *iter_next(struct iterator *i) {
     i->next(i);
     return i;

@@ -45,7 +45,7 @@ struct iterator {
 };
 
 
-struct iterator *iter_get(void *, void (*next)(struct iterator *));
+struct iterator *iter_new(void *, void (*next)(struct iterator *));
 struct iterator *iter_next(struct iterator *);
 void iter_destroy(struct iterator *);
 
