@@ -911,9 +911,6 @@ exit:
 
 errdc:
 
-    info.nclients--;
-    info.nconnections--;
-
     return -ERRCLIENTDC;
 }
 
@@ -1011,6 +1008,8 @@ static void *io_worker(void *arg) {
                     event->client->online = false;
                     close(event->client->fd);
                     /* hashtable_del(sol.clients, event->client->client_id); */
+                    info.nclients--;
+                    info.nconnections--;
                     sol_free(event->data);
                     sol_free(event);
                 }
