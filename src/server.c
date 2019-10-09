@@ -1288,6 +1288,20 @@ static int client_destructor(struct hashtable_entry *entry) {
     return 0;
 }
 
+/*
+ * Helper function, return an itimerspec structure for creating custom timer
+ * events to be triggered after being registered in an EPOLL loop
+ */
+static struct itimerspec get_timer(int sec, unsigned long ns) {
+    struct itimerspec timer;
+    memset(&timer, 0x00, sizeof(timer));
+    timer.it_value.tv_sec = sec;
+    timer.it_value.tv_nsec = ns;
+    timer.it_interval.tv_sec = sec;
+    timer.it_interval.tv_nsec = ns;
+    return timer;
+}
+
 
 int start_server(const char *addr, const char *port) {
 
@@ -1315,28 +1329,14 @@ int start_server(const char *addr, const char *port) {
     };
 
     /* Start the expiration keys check routine */
-    struct itimerspec expiration_timer;
-
-    memset(&expiration_timer, 0x00, sizeof(expiration_timer));
-
-    expiration_timer.it_value.tv_sec = conf->stats_pub_interval;
-    expiration_timer.it_value.tv_nsec = 0;
-    expiration_timer.it_interval.tv_sec = conf->stats_pub_interval;
-    expiration_timer.it_interval.tv_nsec = 0;
+    struct itimerspec exp_keys_timer = get_timer(conf->stats_pub_interval, 0);
 
     /* And one for the pending ingoing and outgoing messages with QoS > 0 */
-    struct itimerspec pending_timer;
-
-    memset(&pending_timer, 0x00, sizeof(pending_timer));
-
-    pending_timer.it_value.tv_sec = 0;
-    pending_timer.it_value.tv_nsec = 1e8;
-    pending_timer.it_interval.tv_sec = 0;
-    pending_timer.it_interval.tv_nsec = 1e8;
+    struct itimerspec pending_msgs_timer = get_timer(0, 1e8);
 
     // add expiration keys cron task and pending messages cron task
-    int exptimerfd = add_cron_task(epoll.w_epollfd, &expiration_timer);
-    int pendingfd = add_cron_task(epoll.w_epollfd, &pending_timer);
+    int exptimerfd = add_cron_task(epoll.w_epollfd, &exp_keys_timer);
+    int pendingfd = add_cron_task(epoll.w_epollfd, &pending_msgs_timer);
 
     epoll.timerfd[0] = exptimerfd;
     epoll.timerfd[1] = pendingfd;
