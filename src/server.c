@@ -47,17 +47,6 @@
 /* Seconds in a Sol, easter egg */
 static const double SOL_SECONDS = 88775.24;
 
-struct pending_message {
-    int fd;
-    int type;
-    time_t sent_timestamp;
-    unsigned long size;
-    union mqtt_packet *packet;
-};
-
-/* Outgoing packet tracking for QoS > 0 */
-static struct pending_message *outgoing[65535];
-
 /*
  * General informations of the broker, all fields will be published
  * periodically to internal topics
@@ -524,13 +513,8 @@ static int publish_handler(struct io_event *e) {
 
             if (p->header.bits.qos > AT_MOST_ONCE) {
                 publen += sizeof(uint16_t);
-                struct pending_message *pm = sol_malloc(sizeof(*pm));
-                pm->fd = sc->fd;
-                pm->sent_timestamp = time(NULL);
-                pm->packet = e->data;
-                pm->type = PUBLISH;
-                pm->size = publen;
-                outgoing[p->pkt_id] = pm;
+                sol.pending_msgs[p->pkt_id] =
+                    pending_message_new(sc->fd, e->data, PUBLISH, publen);
             }
 
             ssize_t sent;
@@ -599,9 +583,9 @@ static int puback_handler(struct io_event *e) {
     lock();
 #endif
 
-    if (outgoing[e->data->publish.pkt_id]) {
-        sol_free(outgoing[e->data->ack.pkt_id]);
-        outgoing[e->data->ack.pkt_id] = NULL;
+    if (sol.pending_msgs[e->data->publish.pkt_id]) {
+        sol_free(sol.pending_msgs[e->data->ack.pkt_id]);
+        sol.pending_msgs[e->data->ack.pkt_id] = NULL;
     }
 
 #if WORKERPOOLSIZE > 1
@@ -645,8 +629,6 @@ static int pubrel_handler(struct io_event *e) {
     sol_debug("Sending PUBCOMP to %s", e->client->client_id);
 
     e->reply = bstring_copy(packed, MQTT_ACK_LEN);
-
-    sol.pending_packets[e->data->ack.pkt_id] = false;
 
     return REPLY;
 }
@@ -1269,13 +1251,16 @@ static void pending_message_check(void) {
     ssize_t sent;
     for (int i = 0; i < 65535; ++i) {
         // TODO Remove hard-coded values, 65535 and 20
-        if (outgoing[i] && (now - outgoing[i]->sent_timestamp) > 20) {
+        if (sol.pending_msgs[i]
+            && (now - sol.pending_msgs[i]->sent_timestamp) > 20) {
             // Set DUP flag to 1
-            mqtt_set_dup(outgoing[i]->packet, outgoing[i]->type);
+            mqtt_set_dup(sol.pending_msgs[i]->packet,
+                         sol.pending_msgs[i]->type);
             // Serialize the packet and send it out again
-            pub = pack_mqtt_packet(outgoing[i]->packet, outgoing[i]->type);
-            bstring payload = bstring_copy(pub, outgoing[i]->size);
-            if ((sent = send_bytes(outgoing[i]->fd,
+            pub = pack_mqtt_packet(sol.pending_msgs[i]->packet,
+                                   sol.pending_msgs[i]->type);
+            bstring payload = bstring_copy(pub, sol.pending_msgs[i]->size);
+            if ((sent = send_bytes(sol.pending_msgs[i]->fd,
                                    payload, bstring_len(payload))) < 0)
                 sol_error("Error re-sending %s", strerror(errno));
 
@@ -1325,9 +1310,6 @@ int start_server(const char *addr, const char *port) {
     /* Initialize global Sol instance */
     trie_init(&sol.topics, NULL);
     sol.clients = hashtable_new(client_destructor);
-    sol.pending_packets = sol_malloc(65535);
-    for (int i = 0; i < 65535; ++i)
-        sol.pending_packets[i] = false;
 
     pthread_spin_init(&spinlock, PTHREAD_PROCESS_SHARED);
 
@@ -1398,7 +1380,6 @@ int start_server(const char *addr, const char *port) {
         pthread_join(workers[i], NULL);
 
     hashtable_destroy(sol.clients);
-    sol_free(sol.pending_packets);
 
     pthread_spin_destroy(&spinlock);
 

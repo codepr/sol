@@ -35,6 +35,23 @@
 #include "pack.h"
 
 
+#define MAX_INFLIGHT_MSGS 65535
+
+/*
+ * Pending messages remaining to be sent out, they can be either PUBLISH or
+ * generic ACKs, fields required are the descriptor of destination, the type
+ * of the message, the timestamp of the last send try, the size of the packet
+ * and the packet himself
+ */
+struct pending_message {
+    int fd;
+    int type;
+    time_t sent_timestamp;
+    unsigned long size;
+    union mqtt_packet *packet;
+};
+
+
 struct topic {
     const char *name;
     bstring retained_msg;
@@ -44,11 +61,15 @@ struct topic {
 /*
  * Main structure, a global instance will be instantiated at start, tracking
  * topics, connected clients and registered closures.
+ *
+ * pending_msgs and pendings_acks are two arrays used to track remaining
+ * messages to push out and acks respectively.
  */
 struct sol {
     HashTable *clients;
     Trie topics;
-    bool *pending_packets;
+    struct pending_message *pending_msgs[MAX_INFLIGHT_MSGS];
+    struct pending_message *pending_acks[MAX_INFLIGHT_MSGS];
 };
 
 
@@ -76,6 +97,9 @@ struct subscriber {
     unsigned long last_action_time;
 };
 
+
+struct pending_message *pending_message_new(int, union mqtt_packet *,
+                                            int, size_t);
 
 struct topic *topic_new(const char *);
 
