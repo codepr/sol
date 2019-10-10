@@ -77,7 +77,7 @@ struct subscriber {
 };
 
 
-struct topic *topic_create(const char *);
+struct topic *topic_new(const char *);
 
 void topic_init(struct topic *, const char *);
 

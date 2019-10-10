@@ -1326,7 +1326,7 @@ int start_server(const char *addr, const char *port) {
 
     /* Generate stats topics */
     for (int i = 0; i < SYS_TOPICS; i++)
-        sol_topic_put(&sol, topic_create(sol_strdup(sys_topics[i])));
+        sol_topic_put(&sol, topic_new(sol_strdup(sys_topics[i])));
 
     /* Start listening for new connections */
     int sfd = make_listen(addr, port, conf->socket_family);

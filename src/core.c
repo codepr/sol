@@ -30,7 +30,7 @@
 #include "core.h"
 
 
-struct topic *topic_create(const char *name) {
+struct topic *topic_new(const char *name) {
     struct topic *t = sol_malloc(sizeof(*t));
     topic_init(t, name);
     return t;
@@ -91,7 +91,7 @@ struct topic *sol_topic_get(struct sol *sol, const char *name) {
 struct topic *sol_topic_get_or_create(struct sol *sol, const char *name) {
     struct topic *t = sol_topic_get(sol, name);
     if (!t) {
-        t = topic_create(sol_strdup(name));
+        t = topic_new(sol_strdup(name));
         sol_topic_put(sol, t);
     }
     return t;
