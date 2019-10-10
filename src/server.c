@@ -543,6 +543,7 @@ static int publish_handler(struct io_event *e) {
         goto exit;
 
     int ptype = -1;
+    size_t acklen = MQTT_HEADER_LEN + sizeof(uint16_t) + sizeof(uint8_t);
 
     if (qos == AT_LEAST_ONCE) {
         sol_debug("Sending PUBACK to %s", c->client_id);
@@ -553,6 +554,8 @@ static int publish_handler(struct io_event *e) {
         sol_debug("Sending PUBREC to %s", c->client_id);
         e->data->ack = *mqtt_packet_ack(PUBREC_B, p->pkt_id);
         ptype = PUBREC;
+        sol.pending_acks[p->pkt_id] =
+            pending_message_new(c->fd, e->data, ptype, acklen);
     }
 
     unsigned char *packed = pack_mqtt_packet(e->data, ptype);
@@ -583,7 +586,7 @@ static int puback_handler(struct io_event *e) {
     lock();
 #endif
 
-    if (sol.pending_msgs[e->data->publish.pkt_id]) {
+    if (sol.pending_msgs[e->data->ack.pkt_id]) {
         sol_free(sol.pending_msgs[e->data->ack.pkt_id]);
         sol.pending_msgs[e->data->ack.pkt_id] = NULL;
     }
@@ -609,6 +612,14 @@ static int pubrec_handler(struct io_event *e) {
     unsigned char *packed = pack_mqtt_packet(e->data, PUBREC);
     e->reply = bstring_copy(packed, MQTT_ACK_LEN);
     sol_free(packed);
+
+    // Update pending acks table
+    size_t acklen = MQTT_ACK_LEN;
+    if (sol.pending_acks[e->data->ack.pkt_id]) {
+        sol_free(sol.pending_acks[e->data->ack.pkt_id]);
+        sol.pending_acks[e->data->ack.pkt_id] =
+            pending_message_new(c->fd, e->data, PUBREL, acklen);
+    }
 
     sol_debug("Sending PUBREL to %s", c->client_id);
 
