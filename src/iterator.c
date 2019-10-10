@@ -39,6 +39,7 @@ struct iterator *iter_new(void *iterable, void (*next)(struct iterator *)) {
     i->iterable = iterable;
     i->ptr = NULL;
     i->next = next;
+    iter_next(i);
     return i;
 }
 

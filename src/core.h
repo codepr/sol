@@ -38,7 +38,7 @@
 struct topic {
     const char *name;
     bstring retained_msg;
-    List *subscribers;
+    HashTable *subscribers;
 };
 
 /*

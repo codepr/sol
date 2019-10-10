@@ -525,6 +525,8 @@ void hashtable_iter_next(struct iterator *it) {
     if (!table || table->size <= 0 || it->index >= table->table_size)
         return;
 
+    it->ptr = NULL;
+
     for (size_t i = it->index + 1; i < table->table_size; i++) {
         if (table->entries[i].taken == true) {
             it->ptr = table->entries[i].val;

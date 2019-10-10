@@ -235,8 +235,10 @@ static int connect_handler(struct io_event *e) {
     if (!c->payload.client_id && c->bits.clean_session == false)
         goto clientdc;
 
-    if (!c->payload.client_id)
-        c->payload.client_id = sol_calloc(1, 1);
+    if (!c->payload.client_id) {
+        c->payload.client_id = sol_malloc(UUID_LEN);
+        generate_uuid((char *) c->payload.client_id);
+    }
 
     // TODO just return error_code and handle it on `on_read`
     if (hashtable_exists(sol.clients, (const char *) c->payload.client_id)) {
@@ -313,8 +315,10 @@ static void rec_sub(struct trie_node *node, void *arg) {
     if (!node || !node->data)
         return;
     struct topic *t = node->data;
+    struct subscriber *s = arg;
     sol_debug("Adding subscriber to topic %s", t->name);
-    t->subscribers = list_push(t->subscribers, arg);
+    /* t->subscribers = list_push(t->subscribers, arg); */
+    hashtable_put(t->subscribers, s->client->client_id, s);
 }
 
 
@@ -498,13 +502,14 @@ static int publish_handler(struct io_event *e) {
     if (alloced == true)
         sol_free(topic);
 
-    if (t->subscribers->len > 0) {
+    if (hashtable_size(t->subscribers) > 0) {
 
-        struct list_node *cur = t->subscribers->head;
+        struct iterator *it = iter_new(t->subscribers, hashtable_iter_next);
 
-        for (; cur; cur = cur->next) {
+        while (it) {
 
-            struct subscriber *sub = cur->data;
+            /* struct subscriber *sub = cur->data; */
+            struct subscriber *sub = it->ptr;
             struct sol_client *sc = sub->client;
 
             /* Update QoS according to subscriber's one */
@@ -539,6 +544,7 @@ static int publish_handler(struct io_event *e) {
                       p->pkt_id,
                       p->topic,
                       p->payloadlen);
+            it = iter_next(it);
         }
     }
 
@@ -1149,18 +1155,18 @@ static void publish_message(const struct mqtt_publish *p) {
         return;
 
     /* Build MQTT packet with command PUBLISH */
-    union mqtt_packet pkt;
-    pkt.publish = *p;
+    union mqtt_packet pkt = { .publish = *p };
 
     size_t len;
     unsigned char *packed;
 
     /* Send payload through TCP to all subscribed clients of the topic */
-    struct list_node *cur = t->subscribers->head;
+    struct iterator *it = iter_new(t->subscribers, hashtable_iter_next);
     ssize_t sent = 0L;
-    for (; cur; cur = cur->next) {
 
-        struct subscriber *sub = cur->data;
+    while (it->ptr) {
+
+        struct subscriber *sub = it->ptr;
         struct sol_client *sc = sub->client;
 
         // Skip DC's clients
@@ -1195,6 +1201,7 @@ static void publish_message(const struct mqtt_publish *p) {
         info.messages_sent++;
 
         sol_free(packed);
+        it = iter_next(it);
     }
 }
 

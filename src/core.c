@@ -30,12 +30,6 @@
 #include "core.h"
 
 
-static int compare_cid(void *c1, void *c2) {
-    return strcmp(((struct subscriber *) c1)->client->client_id,
-                  ((struct subscriber *) c2)->client->client_id);
-}
-
-
 struct topic *topic_create(const char *name) {
     struct topic *t = sol_malloc(sizeof(*t));
     topic_init(t, name);
@@ -45,7 +39,7 @@ struct topic *topic_create(const char *name) {
 
 void topic_init(struct topic *t, const char *name) {
     t->name = name;
-    t->subscribers = list_new(NULL);
+    t->subscribers = hashtable_new(NULL);
     t->retained_msg = NULL;
 }
 
@@ -57,7 +51,7 @@ void topic_add_subscriber(struct topic *t,
     struct subscriber *sub = sol_malloc(sizeof(*sub));
     sub->client = client;
     sub->qos = qos;
-    t->subscribers = list_push(t->subscribers, sub);
+    hashtable_put(t->subscribers, sub->client->client_id, sub);
 
     // It must be added to the session if cleansession is false
     if (!cleansession)
@@ -71,7 +65,7 @@ void topic_del_subscriber(struct topic *t,
                           struct sol_client *client,
                           bool cleansession) {
     cleansession = (bool) cleansession; // temporary placeholder for compiler
-    list_remove_node(t->subscribers, client, compare_cid);
+    hashtable_del(t->subscribers, client->client_id);
 
     // TODO remomve in case of cleansession == false
 }
