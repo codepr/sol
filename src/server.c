@@ -436,8 +436,15 @@ static int unsubscribe_handler(struct io_event *e) {
 
     sol_debug("Received UNSUBSCRIBE from %s", c->client_id);
 
-    e->data->ack = *mqtt_packet_ack(UNSUBACK_B, e->data->unsubscribe.pkt_id);
+    struct topic *t = NULL;
+    for (int i = 0; i < e->data->unsubscribe.tuples_len; ++i) {
+        t = sol_topic_get(&sol,
+                          (const char *) e->data->unsubscribe.tuples[i].topic);
+        if (t)
+            topic_del_subscriber(t, c, false);
+    }
 
+    e->data->ack = *mqtt_packet_ack(UNSUBACK_B, e->data->unsubscribe.pkt_id);
     unsigned char *packed = pack_mqtt_packet(e->data, UNSUBACK);
 
     sol_debug("Sending UNSUBACK to %s", c->client_id);
