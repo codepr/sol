@@ -163,6 +163,8 @@ static const char *sys_topics[SYS_TOPICS] = {
 
 static void publish_stats(void);
 
+static void publish_message(const struct mqtt_publish *);
+
 static void pending_message_check(void);
 
 /* Prototype for a command handler */
@@ -275,21 +277,21 @@ static int connect_handler(struct io_event *e) {
         // I'm sure that the string will be NUL terminated by unpack function
         size_t msg_len = strlen((const char *) c->payload.will_message);
         size_t tpc_len = strlen((const char *) c->payload.will_topic);
-        e->client->lwt_msg = sol_malloc(msg_len + 1);
-        strncpy((char *) e->client->lwt_msg,
-                (const char *) c->payload.will_message, msg_len);
+        /* e->client->lwt_msg = sol_malloc(msg_len + 1); */
+        /* strncpy((char *) e->client->lwt_msg, */
+        /*         (const char *) c->payload.will_message, msg_len); */
         // We must store the retained message in the topic
         if (c->bits.will_retain == 1) {
-            union mqtt_packet up = {
-                .publish = (struct mqtt_publish) {
-                    .header = (union mqtt_header) { .byte = PUBLISH_B },
-                    .pkt_id = 0,  // placeholder
-                    .topiclen = tpc_len,
-                    .topic = c->payload.will_topic,
-                    .payloadlen = msg_len,
-                    .payload = c->payload.will_message
-                }
-            };
+            struct mqtt_publish *p = sol_malloc(sizeof(*p));
+            p->header = (union mqtt_header) { .byte = PUBLISH_B };
+            p->pkt_id = 0;  // placeholder
+            p->topiclen = tpc_len;
+            p->topic = c->payload.will_topic;
+            p->payloadlen = msg_len;
+            p->payload = c->payload.will_message;
+
+            union mqtt_packet up = { .publish = *p };
+            e->client->lwt_msg = p;
             // Update the QOS of the retained message according to the desired
             // one by the connected client
             up.publish.header.bits.qos = c->bits.will_qos;
@@ -905,6 +907,7 @@ exit:
 
 err:
 
+    // TODO move this out of the function (LWT handling)
     close(fd);
 
     return nbytes;
@@ -1053,6 +1056,9 @@ static void *io_worker(void *arg) {
                      * paired payload
                      */
                     sol_error("Dropping client");
+                    // Publish, if present, LWT message
+                    if (event->client->lwt_msg)
+                        publish_message(event->client->lwt_msg);
                     event->client->online = false;
                     close(event->client->fd);
                     /* hashtable_del(sol.clients, event->client->client_id); */
