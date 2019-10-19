@@ -516,7 +516,7 @@ static int publish_handler(struct io_event *e) {
 
             if (p->header.bits.qos > AT_MOST_ONCE) {
                 publen += sizeof(uint16_t);
-                sol.pending_msgs[p->pkt_id] =
+                sol.out_pending_msgs[p->pkt_id] =
                     pending_message_new(sc->fd, e->data, PUBLISH, publen);
             }
 
@@ -557,7 +557,7 @@ static int publish_handler(struct io_event *e) {
         sol_debug("Sending PUBREC to %s", c->client_id);
         e->data->ack = *mqtt_packet_ack(PUBREC_B, p->pkt_id);
         ptype = PUBREC;
-        sol.pending_acks[p->pkt_id] =
+        sol.out_pending_acks[p->pkt_id] =
             pending_message_new(c->fd, e->data, ptype, acklen);
     }
 
@@ -588,9 +588,9 @@ static int puback_handler(struct io_event *e) {
     lock();
 #endif
 
-    if (sol.pending_msgs[e->data->ack.pkt_id]) {
-        sol_free(sol.pending_msgs[e->data->ack.pkt_id]);
-        sol.pending_msgs[e->data->ack.pkt_id] = NULL;
+    if (sol.out_pending_msgs[e->data->ack.pkt_id]) {
+        sol_free(sol.out_pending_msgs[e->data->ack.pkt_id]);
+        sol.out_pending_msgs[e->data->ack.pkt_id] = NULL;
     }
 
 #if WORKERPOOLSIZE > 1
@@ -616,9 +616,9 @@ static int pubrec_handler(struct io_event *e) {
 
     // Update pending acks table
     size_t acklen = MQTT_ACK_LEN;
-    if (sol.pending_acks[e->data->ack.pkt_id]) {
-        sol_free(sol.pending_acks[e->data->ack.pkt_id]);
-        sol.pending_acks[e->data->ack.pkt_id] =
+    if (sol.out_pending_acks[e->data->ack.pkt_id]) {
+        sol_free(sol.out_pending_acks[e->data->ack.pkt_id]);
+        sol.out_pending_acks[e->data->ack.pkt_id] =
             pending_message_new(c->fd, e->data, PUBREL, acklen);
     }
 
@@ -1258,16 +1258,16 @@ static void pending_message_check(void) {
     ssize_t sent;
     for (int i = 0; i < 65535; ++i) {
         // TODO Remove hard-coded values, 65535 and 20
-        if (sol.pending_msgs[i]
-            && (now - sol.pending_msgs[i]->sent_timestamp) > 20) {
+        if (sol.out_pending_msgs[i]
+            && (now - sol.out_pending_msgs[i]->sent_timestamp) > 20) {
             // Set DUP flag to 1
-            mqtt_set_dup(sol.pending_msgs[i]->packet,
-                         sol.pending_msgs[i]->type);
+            mqtt_set_dup(sol.out_pending_msgs[i]->packet,
+                         sol.out_pending_msgs[i]->type);
             // Serialize the packet and send it out again
-            pub = pack_mqtt_packet(sol.pending_msgs[i]->packet,
-                                   sol.pending_msgs[i]->type);
-            bstring payload = bstring_copy(pub, sol.pending_msgs[i]->size);
-            if ((sent = send_bytes(sol.pending_msgs[i]->fd,
+            pub = pack_mqtt_packet(sol.out_pending_msgs[i]->packet,
+                                   sol.out_pending_msgs[i]->type);
+            bstring payload = bstring_copy(pub, sol.out_pending_msgs[i]->size);
+            if ((sent = send_bytes(sol.out_pending_msgs[i]->fd,
                                    payload, bstring_len(payload))) < 0)
                 sol_error("Error re-sending %s", strerror(errno));
 

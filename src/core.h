@@ -67,8 +67,10 @@ struct sol {
     HashTable *clients;
     Trie topics;
     HashTable *sessions;
-    struct pending_message *pending_msgs[MAX_INFLIGHT_MSGS];
-    struct pending_message *pending_acks[MAX_INFLIGHT_MSGS];
+    struct pending_message *in_pending_msgs[MAX_INFLIGHT_MSGS];
+    struct pending_message *in_pending_acks[MAX_INFLIGHT_MSGS];
+    struct pending_message *out_pending_msgs[MAX_INFLIGHT_MSGS];
+    struct pending_message *out_pending_acks[MAX_INFLIGHT_MSGS];
 };
 
 struct session {
