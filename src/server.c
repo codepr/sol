@@ -93,7 +93,6 @@ static struct sol sol;
  * contentions by the threads and thus being really fast.
  */
 
-
 /*
  * Guards the access to the main database structure, the trie underlying the
  * DB
@@ -299,7 +298,6 @@ clientdc:
     return CLIENTDC;
 }
 
-
 static void rec_sub(struct trie_node *node, void *arg) {
     if (!node || !node->data)
         return;
@@ -309,7 +307,6 @@ static void rec_sub(struct trie_node *node, void *arg) {
     /* t->subscribers = list_push(t->subscribers, arg); */
     hashtable_put(t->subscribers, s->client->client_id, s);
 }
-
 
 static int disconnect_handler(struct io_event *e) {
 
@@ -331,7 +328,6 @@ static int disconnect_handler(struct io_event *e) {
     // TODO remove from all topic where it subscribed
     return CLIENTDC;
 }
-
 
 static int subscribe_handler(struct io_event *e) {
 
@@ -418,7 +414,6 @@ static int subscribe_handler(struct io_event *e) {
     return REPLY;
 }
 
-
 static int unsubscribe_handler(struct io_event *e) {
 
     struct sol_client *c = e->client;
@@ -442,7 +437,6 @@ static int unsubscribe_handler(struct io_event *e) {
 
     return REPLY;
 }
-
 
 static int publish_handler(struct io_event *e) {
 
@@ -575,7 +569,6 @@ exit:
     return rc;
 }
 
-
 static int puback_handler(struct io_event *e) {
 
     sol_debug("Received PUBACK from %s", e->client->client_id);
@@ -597,7 +590,6 @@ static int puback_handler(struct io_event *e) {
 
     return REPLY;
 }
-
 
 static int pubrec_handler(struct io_event *e) {
 
@@ -625,7 +617,6 @@ static int pubrec_handler(struct io_event *e) {
 
     return REPLY;
 }
-
 
 static int pubrel_handler(struct io_event *e) {
 
@@ -656,7 +647,6 @@ static int pubcomp_handler(struct io_event *e) {
 
     return NOREPLY;
 }
-
 
 static int pingreq_handler(struct io_event *e) {
 
@@ -799,13 +789,13 @@ exit:
  * - flags -> flags pointer, copy the flag setting of the incoming packet,
  *            again for simplicity and convenience of the caller.
  */
-ssize_t recv_packet(int clientfd, unsigned char **buf, unsigned char *header) {
+ssize_t recv_packet(int fd, unsigned char **buf, unsigned char *header) {
 
     ssize_t nbytes = 0;
     unsigned char *tmpbuf = *buf;
 
     /* Read the first byte, it should contain the message type code */
-    if ((nbytes = recv_bytes(clientfd, *buf, 4)) <= 0)
+    if ((nbytes = recv_bytes(fd, *buf, 4)) <= 0)
         return -ERRCLIENTDC;
 
     *header = *tmpbuf;
@@ -844,7 +834,7 @@ ssize_t recv_packet(int clientfd, unsigned char **buf, unsigned char *header) {
     /* Read remaining bytes to complete the packet */
     while (remaining_bytes > 0) {
 
-        if ((n = recv_bytes(clientfd, tmpbuf + offset, remaining_bytes)) < 0)
+        if ((n = recv_bytes(fd, tmpbuf + offset, remaining_bytes)) < 0)
             goto err;
 
         remaining_bytes -= n;
@@ -862,7 +852,7 @@ exit:
 
 err:
 
-    close(clientfd);
+    close(fd);
 
     return nbytes;
 
@@ -919,7 +909,6 @@ errdc:
 
     return -ERRCLIENTDC;
 }
-
 
 static void *io_worker(void *arg) {
 
@@ -1065,7 +1054,6 @@ exit:
     return NULL;
 }
 
-
 static void *worker(void *arg) {
 
     struct epoll *epoll = arg;
@@ -1144,7 +1132,6 @@ exit:
 
     return NULL;
 }
-
 
 static void publish_message(const struct mqtt_publish *p) {
 
@@ -1328,7 +1315,6 @@ static struct itimerspec get_timer(int sec, unsigned long ns) {
     timer.it_interval.tv_nsec = ns;
     return timer;
 }
-
 
 int start_server(const char *addr, const char *port) {
 
