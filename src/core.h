@@ -88,6 +88,7 @@ struct sol_client {
     int fd;
     struct session session;
     unsigned long last_action_time;
+    const char *lwt_msg;
 };
 
 struct subscriber {

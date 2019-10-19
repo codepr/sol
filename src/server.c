@@ -272,7 +272,37 @@ static int connect_handler(struct io_event *e) {
             sol_topic_get_or_create(&sol, (char *) c->payload.will_topic);
         if (!sol_topic_exists(&sol, t->name))
             sol_topic_put(&sol, t);
-
+        // I'm sure that the string will be NUL terminated by unpack function
+        size_t msg_len = strlen((const char *) c->payload.will_message);
+        size_t tpc_len = strlen((const char *) c->payload.will_topic);
+        e->client->lwt_msg = sol_malloc(msg_len + 1);
+        strncpy((char *) e->client->lwt_msg,
+                (const char *) c->payload.will_message, msg_len);
+        // We must store the retained message in the topic
+        if (c->bits.will_retain == 1) {
+            union mqtt_packet up = {
+                .publish = (struct mqtt_publish) {
+                    .header = (union mqtt_header) { .byte = PUBLISH_B },
+                    .pkt_id = 0,  // placeholder
+                    .topiclen = tpc_len,
+                    .topic = c->payload.will_topic,
+                    .payloadlen = msg_len,
+                    .payload = c->payload.will_message
+                }
+            };
+            // Update the QOS of the retained message according to the desired
+            // one by the connected client
+            up.publish.header.bits.qos = c->bits.will_qos;
+            size_t publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
+                tpc_len + msg_len;
+            if (c->bits.will_qos > AT_MOST_ONCE)
+                publen += sizeof(uint16_t);
+            unsigned char *pub = pack_mqtt_packet(&up, PUBLISH);
+            bstring payload = bstring_copy(pub, publen);
+            // We got a ready-to-be sent bytestring in the retained message
+            // field
+            t->retained_msg = payload;
+        }
     }
 
 #if WORKERPOOLSIZE > 1
@@ -505,7 +535,8 @@ static int publish_handler(struct io_event *e) {
         publen += sizeof(uint16_t);
     bstring payload = bstring_copy(pub, publen);
 
-    t->retained_msg = bstring_dup(payload);
+    if (p->header.bits.retain == 1)
+        t->retained_msg = bstring_dup(payload);
 
     // Not the best way to handle this
     if (alloced == true)
@@ -773,6 +804,9 @@ static void accept_loop(struct epoll *epoll) {
 
                     /* Record last action as of now */
                     client->last_action_time = time(NULL);
+
+                    /* LWT message placeholder */
+                    client->lwt_msg = NULL;
 
                     /* Add it to the epoll loop */
                     epoll_add(epoll->io_epollfd, fd,
