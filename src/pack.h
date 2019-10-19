@@ -62,9 +62,7 @@ bstring bstring_empty(size_t);
 /* Release memory of a bytestring effectively deleting it */
 void bstring_destroy(bstring);
 
-
 void htonll(uint8_t *, uint_least64_t );
-
 
 uint_least64_t ntohll(const uint8_t *);
 
@@ -132,11 +130,8 @@ unsigned int pack(unsigned char *, char *, ...);
  */
 void unpack(unsigned char *, char *, ...);
 
-
 long long unpack_integer(unsigned char **, char);
 
-
 unsigned char *unpack_bytes(unsigned char **, size_t);
-
 
 #endif

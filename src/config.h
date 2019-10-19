@@ -44,7 +44,6 @@
 #define DEFAULT_STATS_INTERVAL      "10s"
 #define DEFAULT_KEEPALVIE           "60s"
 
-
 struct config {
     /* Sol version <MAJOR.MINOR.PATCH> */
     const char *version;
@@ -80,9 +79,7 @@ struct config {
     size_t keepalive;
 };
 
-
 extern struct config *conf;
-
 
 void config_set_default(void);
 void config_print(void);

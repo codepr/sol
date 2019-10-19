@@ -68,7 +68,6 @@ int set_tcp_nodelay(int fd) {
     return setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &(int) {1}, sizeof(int));
 }
 
-
 static int create_and_bind_unix(const char *sockpath) {
 
     struct sockaddr_un addr;
@@ -93,7 +92,6 @@ static int create_and_bind_unix(const char *sockpath) {
     return fd;
 }
 
-
 static int create_and_bind_tcp(const char *host, const char *port) {
 
     struct addrinfo hints = {
@@ -105,10 +103,8 @@ static int create_and_bind_tcp(const char *host, const char *port) {
     struct addrinfo *result, *rp;
     int sfd;
 
-    if (getaddrinfo(host, port, &hints, &result) != 0) {
-        perror("getaddrinfo error");
-        return -1;
-    }
+    if (getaddrinfo(host, port, &hints, &result) != 0)
+        goto err;
 
     for (rp = result; rp != NULL; rp = rp->ai_next) {
         sfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
@@ -127,29 +123,30 @@ static int create_and_bind_tcp(const char *host, const char *port) {
         close(sfd);
     }
 
-    if (rp == NULL) {
-        perror("Could not bind");
-        return -1;
-    }
-
     freeaddrinfo(result);
-    return sfd;
-}
 
+    if (rp == NULL)
+        goto err;
+
+    return sfd;
+
+err:
+
+    perror("Unable to bind socket");
+    return -1;
+}
 
 int create_and_bind(const char *host, const char *port, int socket_family) {
 
     int fd;
 
-    if (socket_family == UNIX) {
+    if (socket_family == UNIX)
         fd = create_and_bind_unix(host);
-    } else {
+    else
         fd = create_and_bind_tcp(host, port);
-    }
 
     return fd;
 }
-
 
 /*
  * Create a non-blocking socket and make it listen on the specfied address and
@@ -176,7 +173,6 @@ int make_listen(const char *host, const char *port, int socket_family) {
 
     return sfd;
 }
-
 
 int accept_connection(int serversock) {
 
@@ -264,7 +260,6 @@ err:
     return -1;
 }
 
-
 int epoll_add(int efd, int fd, int evs, void *data) {
 
     struct epoll_event ev;
@@ -278,7 +273,6 @@ int epoll_add(int efd, int fd, int evs, void *data) {
 
     return epoll_ctl(efd, EPOLL_CTL_ADD, fd, &ev);
 }
-
 
 int epoll_mod(int efd, int fd, int evs, void *data) {
 
@@ -294,11 +288,9 @@ int epoll_mod(int efd, int fd, int evs, void *data) {
     return epoll_ctl(efd, EPOLL_CTL_MOD, fd, &ev);
 }
 
-
 int epoll_del(int efd, int fd) {
     return epoll_ctl(efd, EPOLL_CTL_DEL, fd, NULL);
 }
-
 
 int add_cron_task(int epollfd, const struct itimerspec *timervalue) {
 

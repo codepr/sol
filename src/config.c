@@ -34,11 +34,9 @@
 #include "config.h"
 #include "network.h"
 
-
 /* The main configuration structure */
 static struct config config;
 struct config *conf;
-
 
 struct llevel {
     const char *lname;
@@ -52,7 +50,6 @@ static const struct llevel lmap[5] = {
     {"INFO", INFORMATION},
     {"INFORMATION", INFORMATION}
 };
-
 
 static size_t read_memory_with_mul(const char *memory_string) {
 
@@ -73,7 +70,6 @@ static size_t read_memory_with_mul(const char *memory_string) {
 
     return num * mul;
 }
-
 
 static size_t read_time_with_mul(const char *time_string) {
 
@@ -212,12 +208,10 @@ static void add_config_value(const char *key, const char *value) {
     }
 }
 
-
 static inline void strip_spaces(char **str) {
     if (!*str) return;
     while (isspace(**str) && **str) ++(*str);
 }
-
 
 static inline void unpack_bytes(char **str, char *dest) {
 
@@ -225,7 +219,6 @@ static inline void unpack_bytes(char **str, char *dest) {
 
     while (!isspace(**str) && **str) *dest++ = *(*str)++;
 }
-
 
 int config_load(const char *configpath) {
 
@@ -285,7 +278,6 @@ int config_load(const char *configpath) {
     return true;
 }
 
-
 void config_set_default(void) {
 
     // Set the global pointer
@@ -305,7 +297,6 @@ void config_set_default(void) {
     config.tcp_backlog = SOMAXCONN;
     config.stats_pub_interval = read_time_with_mul(DEFAULT_STATS_INTERVAL);
 }
-
 
 void config_print(void) {
     if (config.loglevel < WARNING) {

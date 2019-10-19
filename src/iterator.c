@@ -43,7 +43,6 @@ struct iterator *iter_new(void *iterable, void (*next)(struct iterator *)) {
     return i;
 }
 
-
 void iter_destroy(struct iterator *i) {
     sol_free(i);
 }

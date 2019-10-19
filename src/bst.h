@@ -31,7 +31,6 @@
 
 #include "util.h"
 
-
 struct bst_node {
     unsigned char key;
     int height;
@@ -40,20 +39,14 @@ struct bst_node {
     void *data;
 };
 
-
 struct bst_node *bst_new(unsigned char, const void *);
-
 
 struct bst_node *bst_insert(struct bst_node *, unsigned char, const void *);
 
-
 struct bst_node *bst_search(const struct bst_node *, unsigned char);
-
 
 struct bst_node *bst_delete(struct bst_node *, unsigned char);
 
-
 void bst_destroy(struct bst_node *, void (*free_fn)(struct bst_node *));
-
 
 #endif

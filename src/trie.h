@@ -33,7 +33,6 @@
 #include "bst.h"
 #include "list.h"
 
-
 typedef struct Trie Trie;
 
 /*
@@ -46,7 +45,6 @@ struct trie_node {
     struct bst_node *children;
     void *data;
 };
-
 
 typedef bool trie_destructor(struct trie_node *, bool);
 
@@ -128,6 +126,5 @@ void trie_prefix_map(struct trie_node *, const char *, void (*fn)(struct trie_no
 bool trie_is_free_node(const struct trie_node *);
 
 struct trie_node *trie_node_find(const struct trie_node *, const char *);
-
 
 #endif

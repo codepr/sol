@@ -31,7 +31,6 @@
 #include <stdio.h>
 #include "pack.h"
 
-
 #define MQTT_HEADER_LEN 2
 #define MQTT_ACK_LEN    4
 
@@ -67,14 +66,10 @@ enum packet_type {
     DISCONNECT  = 14
 };
 
-
 enum qos_level { AT_MOST_ONCE, AT_LEAST_ONCE, EXACTLY_ONCE };
 
-
 union mqtt_header {
-
     unsigned char byte;
-
     struct {
         unsigned retain : 1;
         unsigned qos : 2;
@@ -84,15 +79,10 @@ union mqtt_header {
 
 };
 
-
 struct mqtt_connect {
-
     union mqtt_header header;
-
     union {
-
         unsigned char byte;
-
         struct {
             int reserverd : 1;
             unsigned clean_session : 1;
@@ -103,7 +93,6 @@ struct mqtt_connect {
             unsigned username : 1;
         } bits;
     };
-
     struct {
         unsigned short keepalive;
         unsigned char *client_id;
@@ -112,36 +101,24 @@ struct mqtt_connect {
         unsigned char *will_topic;
         unsigned char *will_message;
     } payload;
-
 };
 
-
 struct mqtt_connack {
-
     union mqtt_header header;
-
     union {
-
         unsigned char byte;
-
         struct {
             unsigned session_present : 1;
             unsigned reserverd : 7;
         } bits;
     };
-
     unsigned char rc;
 };
 
-
 struct mqtt_subscribe {
-
     union mqtt_header header;
-
     unsigned short pkt_id;
-
     unsigned short tuples_len;
-
     struct {
         unsigned short topic_len;
         unsigned char *topic;
@@ -151,52 +128,35 @@ struct mqtt_subscribe {
 
 
 struct mqtt_unsubscribe {
-
     union mqtt_header header;
-
     unsigned short pkt_id;
-
     unsigned short tuples_len;
-
     struct {
         unsigned short topic_len;
         unsigned char *topic;
     } *tuples;
 };
 
-
 struct mqtt_suback {
-
     union mqtt_header header;
-
     unsigned short pkt_id;
-
     unsigned short rcslen;
-
     unsigned char *rcs;
 };
 
-
 struct mqtt_publish {
-
     union mqtt_header header;
-
     unsigned short pkt_id;
-
     unsigned short topiclen;
     unsigned char *topic;
     unsigned long long payloadlen;
     unsigned char *payload;
 };
 
-
 struct mqtt_ack {
-
     union mqtt_header header;
-
     unsigned short pkt_id;
 };
-
 
 typedef struct mqtt_ack mqtt_puback;
 typedef struct mqtt_ack mqtt_pubrec;
@@ -207,24 +167,18 @@ typedef union mqtt_header mqtt_pingreq;
 typedef union mqtt_header mqtt_pingresp;
 typedef union mqtt_header mqtt_disconnect;
 
-
 union mqtt_packet {
-
     // This will cover PUBACK, PUBREC, PUBREL, PUBCOMP and UNSUBACK
     struct mqtt_ack ack;
-
     // This will cover PINGREQ, PINGRESP and DISCONNECT
     union mqtt_header header;
-
     struct mqtt_connect connect;
     struct mqtt_connack connack;
     struct mqtt_suback suback;
     struct mqtt_publish publish;
     struct mqtt_subscribe subscribe;
     struct mqtt_unsubscribe unsubscribe;
-
 };
-
 
 int mqtt_encode_length(unsigned char *, size_t);
 

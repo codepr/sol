@@ -28,7 +28,6 @@
 #include "list.h"
 #include "util.h"
 
-
 static struct list_node *list_node_remove(struct list_node *,
                                           struct list_node *,
                                           compare_func, int *);
@@ -51,7 +50,6 @@ List *list_new(int (*destructor)(struct list_node *)) {
 
     return l;
 }
-
 
 /*
  * Destroy a list, releasing all allocated memory
@@ -85,7 +83,6 @@ void list_destroy(List *l, int deep) {
     // free List structure pointer
     sol_free(l);
 }
-
 
 unsigned long list_size(const List *list) {
     return list->len;
@@ -156,7 +153,6 @@ List *list_push(List *l, void *val) {
     return l;
 }
 
-
 /*
  * Insert value at the back of the list
  * Complexity: O(1)
@@ -183,7 +179,6 @@ List *list_push_back(List *l, void *val) {
     return l;
 }
 
-
 void list_remove(List *l, struct list_node *node, compare_func cmp) {
 
     if (!l || !node)
@@ -196,7 +191,6 @@ void list_remove(List *l, struct list_node *node, compare_func cmp) {
     l->len -= counter;
 
 }
-
 
 static struct list_node *list_node_remove(struct list_node *head,
                                           struct list_node *node,
@@ -222,7 +216,6 @@ static struct list_node *list_node_remove(struct list_node *head,
     return head;
 }
 
-
 static struct list_node *list_remove_single_node(struct list_node *head,
                                                  void *data,
                                                  struct list_node **ret,
@@ -247,7 +240,6 @@ static struct list_node *list_remove_single_node(struct list_node *head,
     return head;
 
 }
-
 
 struct list_node *list_remove_node(List *list, void *data, compare_func cmp) {
 

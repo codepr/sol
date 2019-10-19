@@ -28,11 +28,9 @@
 
 #include "bst.h"
 
-
 #define MAX(a, b) a > b ? a : b
 #define HEIGHT(n) !n ? 0 : n->height
 #define BALANCE(n) !n ? 0 : (HEIGHT(n->left)) - (HEIGHT(n->right))
-
 
 struct bst_node *bst_new(unsigned char key, const void *data) {
     struct bst_node *node = sol_malloc(sizeof(*node));
@@ -43,7 +41,6 @@ struct bst_node *bst_new(unsigned char key, const void *data) {
     node->data = (void *) data;
     return node;
 }
-
 
 static struct bst_node *bst_rotate_right(struct bst_node *y) {
     struct bst_node *x = y->left;
@@ -58,7 +55,6 @@ static struct bst_node *bst_rotate_right(struct bst_node *y) {
     return x;
 }
 
-
 static struct bst_node *bst_rotate_left(struct bst_node *x) {
     struct bst_node *y = x->left;
     struct bst_node *t2 = y->right;
@@ -71,7 +67,6 @@ static struct bst_node *bst_rotate_left(struct bst_node *x) {
 
     return y;
 }
-
 
 static struct bst_node *bst_min(const struct bst_node *node) {
     const struct bst_node *curr = node;
@@ -176,7 +171,6 @@ struct bst_node *bst_search(const struct bst_node *node, unsigned char key) {
     else
         return bst_search(node->right, key);
 }
-
 
 struct bst_node *bst_delete(struct bst_node *node, unsigned char key) {
     if (!node)

@@ -30,12 +30,10 @@
 
 #include "iterator.h"
 
-
 struct list_node {
     void *data;
     struct list_node *next;
 };
-
 
 typedef struct list {
     struct list_node *head;
@@ -43,7 +41,6 @@ typedef struct list {
     unsigned long len;
     int (*destructor)(struct list_node *);
 } List;
-
 
 /*
  * Compare function, accept two void * arguments, generally referring a node
@@ -89,6 +86,5 @@ void list_remove(List *, struct list_node *, compare_func);
 struct list_node *list_remove_node(List *, void *, compare_func);
 
 void list_iter_next(struct iterator *);
-
 
 #endif

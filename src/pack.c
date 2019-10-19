@@ -32,7 +32,6 @@
 #include "pack.h"
 #include "util.h"
 
-
 /*
  * Return the length of the string without having to call strlen, thus this
  * works also with non-nul terminated string. The length of the string is in
@@ -43,14 +42,12 @@ size_t bstring_len(const bstring s) {
     return *((size_t *) (s - sizeof(size_t)));
 }
 
-
 bstring bstring_new(const unsigned char *init) {
     if (!init)
         return NULL;
     size_t len = strlen((const char *) init);
     return bstring_copy(init, len);
 }
-
 
 bstring bstring_copy(const unsigned char *init, size_t len) {
     /*
@@ -64,7 +61,6 @@ bstring bstring_copy(const unsigned char *init, size_t len) {
     return str;
 }
 
-
 bstring bstring_dup(const bstring src) {
     size_t len = bstring_len(src);
     return bstring_copy(src, len);
@@ -76,7 +72,6 @@ bstring bstring_empty(size_t len) {
     memset(str, 0x00, len);
     return str;
 }
-
 
 void bstring_destroy(bstring s) {
     /*
@@ -474,7 +469,6 @@ long long unpack_integer(unsigned char **buf, char size) {
     }
     return val;
 }
-
 
 unsigned char *unpack_bytes(unsigned char **buf, size_t len) {
     unsigned char *dest = sol_malloc(len + 1);

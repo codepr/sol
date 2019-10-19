@@ -34,7 +34,6 @@
 #include <sys/types.h>
 #include <sys/timerfd.h>
 
-
 // Socket families
 #define UNIX    0
 #define INET    1
@@ -95,7 +94,6 @@ ssize_t send_bytes(int, const unsigned char *, size_t);
  * store them in a buffer
  */
 ssize_t recv_bytes(int, unsigned char *, size_t);
-
 
 int add_cron_task(int, const struct itimerspec *);
 

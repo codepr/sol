@@ -29,18 +29,15 @@
 #ifndef HASHTABLE_H
 #define HASHTABLE_H
 
-
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include "iterator.h"
 
-
 #define HASHTABLE_OK   0
 #define HASHTABLE_ERR  1
 #define HASHTABLE_OOM  2
 #define HASHTABLE_FULL 3
-
 
 /* We need to keep keys and values */
 struct hashtable_entry {
@@ -101,6 +98,5 @@ int hashtable_map2(HashTable *,
         int (*func)(struct hashtable_entry *, void *), void *);
 
 void hashtable_iter_next(struct iterator *);
-
 
 #endif

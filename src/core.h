@@ -34,7 +34,6 @@
 #include "hashtable.h"
 #include "pack.h"
 
-
 #define MAX_INFLIGHT_MSGS 65535
 
 /*
@@ -50,7 +49,6 @@ struct pending_message {
     unsigned long size;
     union mqtt_packet *packet;
 };
-
 
 struct topic {
     const char *name;
@@ -73,7 +71,6 @@ struct sol {
     struct pending_message *pending_acks[MAX_INFLIGHT_MSGS];
 };
 
-
 struct session {
     List *subscriptions;
     // TODO add pending confirmed messages
@@ -91,13 +88,11 @@ struct sol_client {
     unsigned long last_action_time;
 };
 
-
 struct subscriber {
     unsigned qos;
     struct sol_client *client;
     unsigned long last_action_time;
 };
-
 
 struct pending_message *pending_message_new(int, union mqtt_packet *,
                                             int, size_t);
@@ -121,6 +116,5 @@ struct topic *sol_topic_get(struct sol *, const char *);
 
 /* Get or create a new topic if it doesn't exists */
 struct topic *sol_topic_get_or_create(struct sol *, const char *);
-
 
 #endif

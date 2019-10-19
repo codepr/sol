@@ -36,11 +36,9 @@
 #include "util.h"
 #include "config.h"
 
-
 static size_t memory = 0;
 
 static FILE *fh = NULL;
-
 
 void sol_log_init(const char *file) {
     assert(file);
@@ -50,14 +48,12 @@ void sol_log_init(const char *file) {
                (unsigned long) time(NULL), file);
 }
 
-
 void sol_log_close(void) {
     if (fh) {
         fflush(fh);
         fclose(fh);
     }
 }
-
 
 void sol_log(int level, const char *fmt, ...) {
 
@@ -116,7 +112,6 @@ int parse_int(const char *string) {
     return n;
 }
 
-
 char *remove_occur(char *str, char c) {
     char *p = str;
     char *pp = str;
@@ -130,7 +125,6 @@ char *remove_occur(char *str, char c) {
 
     return str;
 }
-
 
 char *update_integer_string(char *str, int num) {
 
@@ -175,7 +169,6 @@ int number_len(size_t number) {
     }
     return len;
 }
-
 
 int generate_uuid(char *uuid_placeholder) {
 
@@ -321,7 +314,6 @@ char *sol_strdup(const char *s) {
 
     return ds;
 }
-
 
 size_t memory_used(void) {
     return memory;

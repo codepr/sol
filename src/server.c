@@ -227,10 +227,12 @@ static int connect_handler(struct io_event *e) {
         c->payload.client_id = sol_malloc(UUID_LEN);
         generate_uuid((char *) c->payload.client_id);
     } else {
-        struct session *s = hashtable_get(sol.sessions, c->payload.client_id);
+        struct session *s = hashtable_get(sol.sessions,
+                                          (const char *) c->payload.client_id);
         if (s == NULL) {
             struct session *new_s = sol_session_new();
-            hashtable_put(sol.sessions, c->payload.client_id, new_s);
+            hashtable_put(sol.sessions,
+                          (const char *) c->payload.client_id, new_s);
         }
     }
 
@@ -389,7 +391,8 @@ static int subscribe_handler(struct io_event *e) {
         // Retained message? Publish it
         if (t->retained_msg) {
             ssize_t sent;
-            if ((sent = send_bytes(e->client->fd, t->retained_msg, bstring_len(t->retained_msg))) < 0)
+            if ((sent = send_bytes(e->client->fd, t->retained_msg,
+                                   bstring_len(t->retained_msg))) < 0)
                 sol_error("Error publishing to %s: %s",
                           e->client->client_id, strerror(errno));
 

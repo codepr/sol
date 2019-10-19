@@ -36,7 +36,6 @@
 #include "config.h"
 #include "server.h"
 
-
 // Stops epoll_wait loops by sending an event
 /* static void sigint_handler(int signum) { */
 /*     printf("%d \n", signum); */
@@ -45,7 +44,6 @@
 /*         usleep(1500); */
 /*     } */
 /* } */
-
 
 int main (int argc, char **argv) {
 

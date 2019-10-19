@@ -172,7 +172,6 @@ static int destroy_entry(struct hashtable_entry *entry) {
     return HASHTABLE_OK;
 }
 
-
 /*
  * Return an empty hashtable, or NULL on failure. The newly create HashTable is
  * dynamically allocated on the heap memory, so it must be released manually.
@@ -197,11 +196,9 @@ HashTable *hashtable_new(int (*destructor)(struct hashtable_entry *)) {
     return table;
 }
 
-
 size_t hashtable_size(const HashTable *table) {
     return table->size;
 }
-
 
 int hashtable_exists(HashTable *table, const char *key) {
     void *ret = hashtable_get(table, key);
@@ -238,7 +235,6 @@ int hashtable_put(HashTable *table, const char *key, void *val) {
     return HASHTABLE_OK;
 }
 
-
 /*
  * Get the value void pointer out of the hashtable associated to a key
  */
@@ -261,7 +257,6 @@ void *hashtable_get(HashTable *table, const char *key) {
     /* Not found */
     return NULL;
 }
-
 
 /*
  * Return the key-value pair represented by a key in the hashtable
@@ -287,7 +282,6 @@ struct hashtable_entry *hashtable_get_entry(HashTable *table,
     /* Not found */
     return NULL;
 }
-
 
 /*
  * Remove an element with that key from the hashtable
@@ -513,7 +507,6 @@ static unsigned long crc32(const uint8_t *s, unsigned int len) {
         crc32val = crc32_tab[(crc32val ^ s[i]) & 0xff] ^ (crc32val >> 8);
     return crc32val;
 }
-
 
 void hashtable_iter_next(struct iterator *it) {
 

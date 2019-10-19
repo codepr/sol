@@ -45,7 +45,6 @@ bool trie_is_free_node(const struct trie_node *node) {
     return !node->children ? true : false;
 }
 
-
 struct trie_node *trie_node_find(const struct trie_node *node,
                                  const char *prefix) {
 
@@ -70,7 +69,6 @@ struct trie_node *trie_node_find(const struct trie_node *node,
     return retnode;
 }
 
-
 static int trie_children_count(const struct bst_node *node) {
     if (!node)
         return 0;
@@ -78,7 +76,6 @@ static int trie_children_count(const struct bst_node *node) {
         + trie_children_count(node->left)
         + trie_children_count(node->right);
 }
-
 
 static int trie_node_count(const struct trie_node *node) {
     if (!node)
@@ -104,13 +101,11 @@ Trie *trie_new(trie_destructor *destructor) {
     return trie;
 }
 
-
 void trie_init(Trie *trie, trie_destructor *destructor) {
     trie->root = trie_create_node('\0');
     trie->size = 0;
     trie->destructor = destructor;
 }
-
 
 size_t trie_size(const Trie *trie) {
     return trie->size;
@@ -169,7 +164,6 @@ struct node_data *trie_insert(Trie *trie, const char *key, const void *data) {
 
     return cursor->data;
 }
-
 
 bool trie_delete(Trie *trie, const char *key) {
 
@@ -260,7 +254,6 @@ void trie_prefix_delete(Trie *trie, const char *prefix) {
     trie_delete(trie, prefix);
 }
 
-
 int trie_prefix_count(const Trie *trie, const char *prefix) {
 
     assert(trie && prefix);
@@ -280,7 +273,6 @@ int trie_prefix_count(const Trie *trie, const char *prefix) {
     return count;
 }
 
-
 static void children_prefix_find(const struct bst_node *node,
                                  char str[], int level, List *keys) {
     trie_node_prefix_find(node->data, str, level, keys);
@@ -289,7 +281,6 @@ static void children_prefix_find(const struct bst_node *node,
     if (node->right)
         children_prefix_find(node->right, str, level, keys);
 }
-
 
 static void trie_node_prefix_find(const struct trie_node *node,
                                   char str[], int level, List *keys) {
@@ -321,7 +312,6 @@ static void trie_node_prefix_find(const struct trie_node *node,
         children_prefix_find(node->children, str, level + 1, keys);
 }
 
-
 List *trie_prefix_find(const Trie *trie, const char *prefix) {
 
     assert(trie && prefix);
@@ -351,7 +341,6 @@ List *trie_prefix_find(const Trie *trie, const char *prefix) {
 
     return keys;
 }
-
 
 static void children_destroy(struct bst_node *node,
                              size_t *len, trie_destructor *destructor) {
@@ -393,7 +382,6 @@ void trie_node_destroy(struct trie_node *node,
         sol_free(node);
     }
 }
-
 
 void trie_destroy(Trie *trie) {
     if (!trie)
