@@ -277,9 +277,6 @@ static int connect_handler(struct io_event *e) {
         // I'm sure that the string will be NUL terminated by unpack function
         size_t msg_len = strlen((const char *) c->payload.will_message);
         size_t tpc_len = strlen((const char *) c->payload.will_topic);
-        /* e->client->lwt_msg = sol_malloc(msg_len + 1); */
-        /* strncpy((char *) e->client->lwt_msg, */
-        /*         (const char *) c->payload.will_message, msg_len); */
         // We must store the retained message in the topic
         if (c->bits.will_retain == 1) {
             struct mqtt_publish *p = sol_malloc(sizeof(*p));
