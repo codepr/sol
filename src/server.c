@@ -1302,6 +1302,20 @@ static int client_destructor(struct hashtable_entry *entry) {
 }
 
 /*
+ * Cleanup function to be passed in as destructor to the Hashtable for client
+ * sessions storing
+ */
+static int session_destructor(struct hashtable_entry *entry) {
+    if (!entry)
+        return -1;
+    struct session *s = entry->val;
+    if (s->subscriptions)
+        list_destroy(s->subscriptions, 1);
+    sol_free(s);
+    return 0;
+}
+
+/*
  * Helper function, return an itimerspec structure for creating custom timer
  * events to be triggered after being registered in an EPOLL loop
  */
@@ -1321,6 +1335,7 @@ int start_server(const char *addr, const char *port) {
     /* Initialize global Sol instance */
     trie_init(&sol.topics, NULL);
     sol.clients = hashtable_new(client_destructor);
+    sol.sessions = hashtable_new(session_destructor);
 
     pthread_spin_init(&spinlock, PTHREAD_PROCESS_SHARED);
 
@@ -1391,6 +1406,7 @@ int start_server(const char *addr, const char *port) {
         pthread_join(workers[i], NULL);
 
     hashtable_destroy(sol.clients);
+    hashtable_destroy(sol.sessions);
 
     pthread_spin_destroy(&spinlock);
 
