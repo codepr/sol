@@ -74,6 +74,11 @@ void sol_topic_del(struct sol *sol, const char *name) {
     trie_delete(&sol->topics, name);
 }
 
+bool sol_topic_exists(struct sol *sol, const char *name) {
+    struct topic *t = sol_topic_get(sol, name);
+    return t != NULL;
+}
+
 struct topic *sol_topic_get(struct sol *sol, const char *name) {
     struct topic *ret_topic;
     trie_find(&sol->topics, name, (void *) &ret_topic);

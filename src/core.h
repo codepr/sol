@@ -107,6 +107,8 @@ void topic_add_subscriber(struct topic *, struct sol_client *, unsigned, bool);
 
 void topic_del_subscriber(struct topic *, struct sol_client *, bool);
 
+bool sol_topic_exists(struct sol *, const char *);
+
 void sol_topic_put(struct sol *, struct topic *);
 
 void sol_topic_del(struct sol *, const char *);

@@ -265,6 +265,16 @@ static int connect_handler(struct io_event *e) {
     memcpy(e->client->client_id, c->payload.client_id, cid_len + 1);
     hashtable_put(sol.clients, e->client->client_id, e->client);
 
+    // Add LWT topic and message if present
+    if (c->bits.will) {
+        // TODO check for will_topic != NULL
+        struct topic *t =
+            sol_topic_get_or_create(&sol, (char *) c->payload.will_topic);
+        if (!sol_topic_exists(&sol, t->name))
+            sol_topic_put(&sol, t);
+
+    }
+
 #if WORKERPOOLSIZE > 1
     unlock();
 #endif
