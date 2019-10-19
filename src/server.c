@@ -226,6 +226,12 @@ static int connect_handler(struct io_event *e) {
     if (!c->payload.client_id) {
         c->payload.client_id = sol_malloc(UUID_LEN);
         generate_uuid((char *) c->payload.client_id);
+    } else {
+        struct session *s = hashtable_get(sol.sessions, c->payload.client_id);
+        if (s == NULL) {
+            struct session *new_s = sol_session_new();
+            hashtable_put(sol.sessions, c->payload.client_id, new_s);
+        }
     }
 
     // TODO just return error_code and handle it on `on_read`

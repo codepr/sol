@@ -114,6 +114,8 @@ void sol_topic_put(struct sol *, struct topic *);
 
 void sol_topic_del(struct sol *, const char *);
 
+struct session *sol_session_new(void);
+
 /* Find a topic by name and return it */
 struct topic *sol_topic_get(struct sol *, const char *);
 

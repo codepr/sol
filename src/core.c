@@ -29,20 +29,17 @@
 #include "util.h"
 #include "core.h"
 
-
 struct topic *topic_new(const char *name) {
     struct topic *t = sol_malloc(sizeof(*t));
     topic_init(t, name);
     return t;
 }
 
-
 void topic_init(struct topic *t, const char *name) {
     t->name = name;
     t->subscribers = hashtable_new(NULL);
     t->retained_msg = NULL;
 }
-
 
 void topic_add_subscriber(struct topic *t,
                           struct sol_client *client,
@@ -60,7 +57,6 @@ void topic_add_subscriber(struct topic *t,
 
 }
 
-
 void topic_del_subscriber(struct topic *t,
                           struct sol_client *client,
                           bool cleansession) {
@@ -70,23 +66,19 @@ void topic_del_subscriber(struct topic *t,
     // TODO remomve in case of cleansession == false
 }
 
-
 void sol_topic_put(struct sol *sol, struct topic *t) {
     trie_insert(&sol->topics, t->name, t);
 }
 
-
 void sol_topic_del(struct sol *sol, const char *name) {
     trie_delete(&sol->topics, name);
 }
-
 
 struct topic *sol_topic_get(struct sol *sol, const char *name) {
     struct topic *ret_topic;
     trie_find(&sol->topics, name, (void *) &ret_topic);
     return ret_topic;
 }
-
 
 struct topic *sol_topic_get_or_create(struct sol *sol, const char *name) {
     struct topic *t = sol_topic_get(sol, name);
@@ -97,7 +89,6 @@ struct topic *sol_topic_get_or_create(struct sol *sol, const char *name) {
     return t;
 }
 
-
 struct pending_message *pending_message_new(int fd, union mqtt_packet *p,
                                             int type, size_t size) {
     struct pending_message *pm = sol_malloc(sizeof(*pm));
@@ -107,4 +98,11 @@ struct pending_message *pending_message_new(int fd, union mqtt_packet *p,
     pm->type = type;
     pm->size = size;
     return pm;
+}
+
+struct session *sol_session_new(void) {
+    struct session *s = sol_malloc(sizeof(*s));
+    // TODO add a subscription destroyer
+    s->subscriptions = list_new(NULL);
+    return s;
 }
