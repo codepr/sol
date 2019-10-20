@@ -1273,17 +1273,59 @@ static void publish_stats(void) {
     char mem[number_len(memory)];
     sprintf(mem, "%lld", memory);
 
-    for (int i = 5; i < 14; i++) {
-        struct mqtt_publish p = {
-            .header = (union mqtt_header) { .byte = PUBLISH_B },
-            .pkt_id = 0,
-            .topiclen = strlen(sys_topics[i]),
-            .topic = (unsigned char *) sys_topics[i],
-            .payloadlen = strlen(utime),
-            .payload = (unsigned char *) &utime
-        };
-        publish_message(&p);
-    }
+    struct mqtt_publish p = {
+        .header = (union mqtt_header) { .byte = PUBLISH_B },
+        .pkt_id = 0,
+        .topiclen = strlen(sys_topics[5]),
+        .topic = (unsigned char *) sys_topics[5],
+        .payloadlen = strlen(utime),
+        .payload = (unsigned char *) &utime
+    };
+
+    publish_message(&p);
+
+    p.topiclen = strlen(sys_topics[6]);
+    p.topic = (unsigned char *) sys_topics[6];
+    p.payloadlen = strlen(sutime);
+    p.payload = (unsigned char *) &sutime;
+
+    publish_message(&p);
+
+    p.topiclen = strlen(sys_topics[7]);
+    p.topic = (unsigned char *) sys_topics[7];
+    p.payloadlen = strlen(cclients);
+    p.payload = (unsigned char *) &cclients;
+
+    publish_message(&p);
+
+    p.topiclen = strlen(sys_topics[9]);
+    p.topic = (unsigned char *) sys_topics[9];
+    p.payloadlen = strlen(bsent);
+    p.payload = (unsigned char *) &bsent;
+
+    publish_message(&p);
+
+    p.topiclen = strlen(sys_topics[11]);
+    p.topic = (unsigned char *) sys_topics[11];
+    p.payloadlen = strlen(msent);
+    p.payload = (unsigned char *) &msent;
+
+    publish_message(&p);
+
+    p.topiclen = strlen(sys_topics[12]);
+    p.topic = (unsigned char *) sys_topics[12];
+    p.payloadlen = strlen(mrecv);
+    p.payload = (unsigned char *) &mrecv;
+
+    publish_message(&p);
+
+    p.topiclen = strlen(sys_topics[13]);
+    p.topic = (unsigned char *) sys_topics[13];
+    p.payloadlen = strlen(mem);
+    p.payload = (unsigned char *) &mem;
+
+    publish_message(&p);
+
 }
 
 /*
