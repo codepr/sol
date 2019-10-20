@@ -231,6 +231,10 @@ static int connect_handler(struct io_event *e) {
     if (!c->payload.client_id && c->bits.clean_session == false)
         goto clientdc;
 
+    /*
+     * Check for client ID, if not present generate a UUID, otherwise add the
+     * client to the sessions map if not already present
+     */
     if (!c->payload.client_id) {
         c->payload.client_id = sol_malloc(UUID_LEN);
         generate_uuid((char *) c->payload.client_id);
@@ -307,6 +311,7 @@ static int connect_handler(struct io_event *e) {
             // We got a ready-to-be sent bytestring in the retained message
             // field
             t->retained_msg = payload;
+            sol_free(pub);
         }
     }
 
