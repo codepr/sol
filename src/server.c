@@ -142,7 +142,6 @@ struct epoll {
     int w_epollfd;
     int serverfd;
     int timerfd[2];
-    int busfd;
 };
 
 /*
@@ -358,7 +357,6 @@ static void rec_sub(struct trie_node *node, void *arg) {
     struct topic *t = node->data;
     struct subscriber *s = arg;
     sol_debug("Adding subscriber to topic %s", t->name);
-    /* t->subscribers = list_push(t->subscribers, arg); */
     hashtable_put(t->subscribers, s->client->client_id, s);
 }
 
@@ -1388,8 +1386,7 @@ int start_server(const char *addr, const char *port) {
     struct epoll epoll = {
         .io_epollfd = epoll_create1(0),
         .w_epollfd = epoll_create1(0),
-        .serverfd = sfd,
-        .busfd = -1
+        .serverfd = sfd
     };
 
     /* Start the expiration keys check routine */
