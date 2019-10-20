@@ -108,6 +108,14 @@ static void unlock(void) {
     pthread_spin_unlock(&spinlock);
 }
 
+#if WORKERPOOLSIZE > 1
+    #define LOCK do lock(); while (0);
+    #define UNLOCK do unlock(); while (0);
+#else
+    #define LOCK do (void) NULL; while (0);
+    #define UNLOCK do (void) NULL; while (0);
+#endif
+
 /*
  * IO event strucuture, it's the main information that will be communicated
  * between threads, every request packet will be wrapped into an IO event and
@@ -216,9 +224,7 @@ static handler *handlers[15] = {
 
 static int connect_handler(struct io_event *e) {
 
-#if WORKERPOOLSIZE > 1
-    lock();
-#endif
+    LOCK;
 
     struct mqtt_connect *c = &e->data->connect;
 
@@ -304,9 +310,7 @@ static int connect_handler(struct io_event *e) {
         }
     }
 
-#if WORKERPOOLSIZE > 1
-    unlock();
-#endif
+    UNLOCK;
 
     /* Respond with a connack */
     union mqtt_packet *response = sol_malloc(sizeof(*response));
@@ -338,9 +342,7 @@ clientdc:
     info.nclients--;
     info.nconnections--;
 
-#if WORKERPOOLSIZE > 1
-        unlock();
-#endif
+    UNLOCK;
 
     return CLIENTDC;
 }
@@ -359,9 +361,8 @@ static int disconnect_handler(struct io_event *e) {
 
     sol_debug("Received DISCONNECT from %s", e->client->client_id);
 
-#if WORKERPOOLSIZE > 1
-    lock();
-#endif
+    LOCK;
+
     /* Handle disconnection request from client */
     close(e->client->fd);
     hashtable_del(sol.clients, e->client->client_id);
@@ -369,9 +370,9 @@ static int disconnect_handler(struct io_event *e) {
     // Update stats
     info.nclients--;
     info.nconnections--;
-#if WORKERPOOLSIZE > 1
-    unlock();
-#endif
+
+    UNLOCK;
+
     // TODO remove from all topic where it subscribed
     return CLIENTDC;
 }
@@ -402,9 +403,9 @@ static int subscribe_handler(struct io_event *e) {
         char *topic = (char *) s->tuples[i].topic;
 
         sol_debug("\t%s (QoS %i)", topic, s->tuples[i].qos);
-#if WORKERPOOLSIZE > 1
-        lock();
-#endif
+
+        LOCK;
+
         /* Recursive subscribe to all children topics if the topic ends with "/#" */
         if (topic[s->tuples[i].topic_len - 1] == '#' &&
             topic[s->tuples[i].topic_len - 2] == '/') {
@@ -439,9 +440,8 @@ static int subscribe_handler(struct io_event *e) {
             info.bytes_sent += sent;
         }
 
-#if WORKERPOOLSIZE > 1
-        unlock();
-#endif
+        UNLOCK;
+
         if (alloced)
             sol_free(topic);
 
@@ -501,9 +501,7 @@ static int publish_handler(struct io_event *e) {
               p->topic,
               p->payloadlen);
 
-#if WORKERPOOLSIZE > 1
-    lock();
-#endif
+    LOCK;
 
     info.messages_recv++;
 
@@ -607,9 +605,7 @@ static int publish_handler(struct io_event *e) {
 
 exit:
 
-#if WORKERPOOLSIZE > 1
-    unlock();
-#endif
+    UNLOCK;
 
     /*
      * We're in the case of AT_MOST_ONCE QoS level, we don't need to sent out
@@ -624,18 +620,14 @@ static int puback_handler(struct io_event *e) {
 
     // TODO Remove from pending PUBACK clients map
 
-#if WORKERPOOLSIZE > 1
-    lock();
-#endif
+    LOCK;
 
     if (sol.out_pending_msgs[e->data->ack.pkt_id]) {
         sol_free(sol.out_pending_msgs[e->data->ack.pkt_id]);
         sol.out_pending_msgs[e->data->ack.pkt_id] = NULL;
     }
 
-#if WORKERPOOLSIZE > 1
-    unlock();
-#endif
+    UNLOCK;
 
     return REPLY;
 }
