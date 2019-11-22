@@ -205,6 +205,10 @@ static void add_config_value(const char *key, const char *value) {
         config.stats_pub_interval = read_time_with_mul(value);
     } else if (STREQ("keepalive", key, klen) == true) {
         config.keepalive = read_time_with_mul(value);
+    } else if (STREQ("certfile", key, klen) == true) {
+        strcpy(config.certfile, value);
+    } else if (STREQ("keyfile", key, klen) == true) {
+        strcpy(config.keyfile, value);
     }
 }
 
@@ -232,14 +236,14 @@ int config_load(const char *configpath) {
         return false;
     }
 
-    char line[0xff], key[0xff], value[0xff];
+    char line[0xFFF], key[0xFF], value[0xFFF];
     int linenr = 0;
     char *pline, *pkey, *pval;
 
-    while (fgets(line, 0xff, fh) != NULL) {
+    while (fgets(line, 0xFFF, fh) != NULL) {
 
-        memset(key, 0x00, 0xff);
-        memset(value, 0x00, 0xff);
+        memset(key, 0x00, 0xFF);
+        memset(value, 0x00, 0xFFF);
 
         linenr++;
 

@@ -57,7 +57,7 @@ struct config {
     /* Socket family (Unix domain or TCP) */
     int socket_family;
     /* Log file path */
-    char logpath[0xFF];
+    char logpath[0xFFF];
     /* Hostname to listen on */
     char hostname[0xFF];
     /* Port to open while listening, only if socket_family is INET,
@@ -79,9 +79,9 @@ struct config {
     size_t keepalive;
     /* SSL - Cert file location on filesystem. If NULL act as a flag, no SSL
      * required */
-    const char *certfile;
+    char certfile[0xFFF];
     /* SSL - Key file location on filesystem */
-    const char *keyfile;
+    char keyfile[0xFFF];
 };
 
 extern struct config *conf;
