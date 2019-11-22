@@ -318,6 +318,7 @@ void config_print(void) {
             sol_info("\tAddress: %s", config.hostname);
             sol_info("\tPort: %s", config.port);
             sol_info("\tTcp backlog: %d", config.tcp_backlog);
+            sol_info("\tKeepalive: %d", config.keepalive);
         }
         const char *human_rsize = memory_to_string(config.max_request_size);
         sol_info("\tMax request size: %s", human_rsize);
