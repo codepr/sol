@@ -31,6 +31,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <openssl/ssl.h>
 #include <sys/types.h>
 #include <sys/timerfd.h>
 
@@ -96,5 +97,23 @@ ssize_t send_bytes(int, const unsigned char *, size_t);
 ssize_t recv_bytes(int, unsigned char *, size_t);
 
 int add_cron_task(int, const struct itimerspec *);
+
+// Init SSL context
+SSL_CTX *create_ssl_context(void);
+
+/* Init openssl library */
+void openssl_init(void);
+
+/* Release resources allocated by openssl library */
+void openssl_cleanup(void);
+
+/* Load cert.pem and key.pem certfiles from filesystem */
+void load_certificates(SSL_CTX *, const char *, const char *);
+
+/* Send data like sendall but adding encryption SSL */
+ssize_t ssl_send_bytes(SSL *, const unsigned char *, size_t);
+
+/* Recv data like recvall but adding encryption SSL */
+ssize_t ssl_recv_bytes(SSL *, unsigned char *, ssize_t);
 
 #endif
