@@ -35,6 +35,7 @@
 #include <sys/socket.h>
 #include <sys/eventfd.h>
 #include <uuid/uuid.h>
+#include <openssl/err.h>
 #include "network.h"
 #include "mqtt.h"
 #include "util.h"
@@ -803,13 +804,12 @@ static void accept_loop(struct epoll *epoll) {
                     client->lwt_msg = NULL;
 
                     /* Check for SSL context to be instantiated */
-                    if (conf->certfile != NULL) {
-                        client->ssl = SSL_new(server->ssl_ctx);
-                        SSL_set_fd(client->ssl, clientsock);
+                    if (conf->use_ssl == true) {
+                        client->ssl = SSL_new(sol.ssl_ctx);
+                        SSL_set_fd(client->ssl, fd);
 
-                        if (SSL_accept(client->ssl) <= 0) {
+                        if (SSL_accept(client->ssl) <= 0)
                             ERR_print_errors_fp(stderr);
-                        }
                     }
 
                     /* Add it to the epoll loop */

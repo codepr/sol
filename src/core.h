@@ -72,6 +72,8 @@ struct sol {
     struct pending_message *in_pending_acks[MAX_INFLIGHT_MSGS];
     struct pending_message *out_pending_msgs[MAX_INFLIGHT_MSGS];
     struct pending_message *out_pending_acks[MAX_INFLIGHT_MSGS];
+    SSL_CTX *ssl_ctx;
+    SSL *ssl;
 };
 
 struct session {
