@@ -42,7 +42,7 @@
 #define DEFAULT_MAX_MEMORY          "2GB"
 #define DEFAULT_MAX_REQUEST_SIZE    "2MB"
 #define DEFAULT_STATS_INTERVAL      "10s"
-#define DEFAULT_KEEPALVIE           "60s"
+#define DEFAULT_KEEPALIVE           "60s"
 
 struct config {
     /* Sol version <MAJOR.MINOR.PATCH> */
@@ -77,6 +77,11 @@ struct config {
      * **CURRENTLY USED AS ACK TIMER AS WELL**
      */
     size_t keepalive;
+    /* SSL - Cert file location on filesystem. If NULL act as a flag, no SSL
+     * required */
+    const char *certfile;
+    /* SSL - Key file location on filesystem */
+    const char *keyfile;
 };
 
 extern struct config *conf;

@@ -296,6 +296,9 @@ void config_set_default(void) {
     config.max_request_size = read_memory_with_mul(DEFAULT_MAX_REQUEST_SIZE);
     config.tcp_backlog = SOMAXCONN;
     config.stats_pub_interval = read_time_with_mul(DEFAULT_STATS_INTERVAL);
+    config.keepalive = read_time_with_mul(DEFAULT_KEEPALIVE);
+    config.certfile = NULL;
+    config.keyfile = NULL;
 }
 
 void config_print(void) {
