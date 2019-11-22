@@ -1435,6 +1435,13 @@ int start_server(const char *addr, const char *port) {
     /* Start listening for new connections */
     int sfd = make_listen(addr, port, conf->socket_family);
 
+    /* Setup SSL in case of flag true */
+    if (conf->use_ssl == true) {
+        openssl_init();
+        sol.ssl_ctx = create_ssl_context();
+        load_certificates(sol.ssl_ctx, conf->certfile, conf->keyfile);
+    }
+
     struct epoll epoll = {
         .io_epollfd = epoll_create1(0),
         .w_epollfd = epoll_create1(0),
@@ -1495,6 +1502,13 @@ int start_server(const char *addr, const char *port) {
 
     hashtable_destroy(sol.clients);
     hashtable_destroy(sol.sessions);
+
+    /* Destroy SSL context, if any present */
+    if (conf->use_ssl == true) {
+        SSL_CTX_free(sol.ssl_ctx);
+        SSL_free(sol.ssl);
+        openssl_cleanup();
+    }
 
     pthread_spin_destroy(&spinlock);
 
