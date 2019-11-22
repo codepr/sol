@@ -29,6 +29,7 @@
 #define CONFIG_H
 
 #include <stdio.h>
+#include <stdbool.h>
 
 // Default parameters
 
@@ -77,8 +78,9 @@ struct config {
      * **CURRENTLY USED AS ACK TIMER AS WELL**
      */
     size_t keepalive;
-    /* SSL - Cert file location on filesystem. If NULL act as a flag, no SSL
-     * required */
+    /* SSL flag */
+    bool use_ssl;
+    /* SSL - Cert file location on filesystem */
     char certfile[0xFFF];
     /* SSL - Key file location on filesystem */
     char keyfile[0xFFF];

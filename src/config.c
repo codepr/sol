@@ -206,6 +206,7 @@ static void add_config_value(const char *key, const char *value) {
     } else if (STREQ("keepalive", key, klen) == true) {
         config.keepalive = read_time_with_mul(value);
     } else if (STREQ("certfile", key, klen) == true) {
+        config.use_ssl = true;
         strcpy(config.certfile, value);
     } else if (STREQ("keyfile", key, klen) == true) {
         strcpy(config.keyfile, value);
@@ -301,8 +302,7 @@ void config_set_default(void) {
     config.tcp_backlog = SOMAXCONN;
     config.stats_pub_interval = read_time_with_mul(DEFAULT_STATS_INTERVAL);
     config.keepalive = read_time_with_mul(DEFAULT_KEEPALIVE);
-    config.certfile = NULL;
-    config.keyfile = NULL;
+    config.use_ssl = false;
 }
 
 void config_print(void) {
@@ -323,6 +323,7 @@ void config_print(void) {
             sol_info("\tPort: %s", config.port);
             sol_info("\tTcp backlog: %d", config.tcp_backlog);
             sol_info("\tKeepalive: %d", config.keepalive);
+            sol_info("\tSSL: %d", config.use_ssl);
         }
         const char *human_rsize = memory_to_string(config.max_request_size);
         sol_info("\tMax request size: %s", human_rsize);

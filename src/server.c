@@ -802,6 +802,16 @@ static void accept_loop(struct epoll *epoll) {
                     /* LWT message placeholder */
                     client->lwt_msg = NULL;
 
+                    /* Check for SSL context to be instantiated */
+                    if (conf->certfile != NULL) {
+                        client->ssl = SSL_new(server->ssl_ctx);
+                        SSL_set_fd(client->ssl, clientsock);
+
+                        if (SSL_accept(client->ssl) <= 0) {
+                            ERR_print_errors_fp(stderr);
+                        }
+                    }
+
                     /* Add it to the epoll loop */
                     epoll_add(epoll->io_epollfd, fd,
                               EPOLLIN | EPOLLONESHOT, client);
