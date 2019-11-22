@@ -39,6 +39,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/eventfd.h>
+#include <openssl/err.h>
 #include "util.h"
 #include "config.h"
 #include "network.h"
@@ -256,7 +257,7 @@ ssize_t recv_bytes(int fd, unsigned char *buf, size_t bufsize) {
 
 err:
 
-    fprintf(stderr, "recv(2) - error reading data: %s", strerror(errno));
+    fprintf(stderr, "recv(2) - error reading data: %s\n", strerror(errno));
     return -1;
 }
 
@@ -312,5 +313,111 @@ int add_cron_task(int epollfd, const struct itimerspec *timervalue) {
 err:
 
     perror("add_cron_task");
+    return -1;
+}
+
+void openssl_init() {
+    SSL_load_error_strings();
+    OpenSSL_add_ssl_algorithms();
+}
+
+
+void openssl_cleanup() {
+    EVP_cleanup();
+}
+
+
+SSL_CTX *create_ssl_context() {
+
+    const SSL_METHOD *method;
+    SSL_CTX *ctx;
+
+    method = SSLv23_server_method();
+
+    ctx = SSL_CTX_new(method);
+    if (!ctx) {
+        perror("Unable to create SSL context");
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    return ctx;
+}
+
+void load_certificates(SSL_CTX *ctx, const char *cert, const char *key) {
+
+    SSL_CTX_set_ecdh_auto(ctx, 1);
+
+    /* Set the key and cert */
+    if (SSL_CTX_use_certificate_file(ctx, cert, SSL_FILETYPE_PEM) <= 0) {
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    if (SSL_CTX_use_PrivateKey_file(ctx, key, SSL_FILETYPE_PEM) <= 0 ) {
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    /* verify private key */
+    if (!SSL_CTX_check_private_key(ctx) ) {
+        fprintf(stderr, "Private key does not match the public certificate\n");
+        exit(EXIT_FAILURE);
+    }
+}
+
+ssize_t ssl_send_bytes(SSL *ssl, const unsigned char *buf, size_t len) {
+
+    size_t total = 0;
+    size_t bytesleft = len;
+    ssize_t n = 0;
+
+    while (total < len) {
+        n = SSL_write(ssl, buf + total, bytesleft);
+        if (n == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                break;
+            else
+                goto err;
+        }
+        total += n;
+        bytesleft -= n;
+    }
+
+    return total;
+
+err:
+
+    fprintf(stderr, "SSL_write(2) - error sending data: %s\n", strerror(errno));
+    return -1;
+}
+
+
+int ssl_recv(SSL *ssl, unsigned char *buf, size_t bufsize) {
+
+    ssize_t n = 0;
+    ssize_t total = 0;
+
+    while (total < (ssize_t) bufsize) {
+
+        if ((n = SSL_read(ssl, buf, bufsize - total)) < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                break;
+            } else
+                goto err;
+        }
+
+        if (n == 0)
+            return 0;
+
+        buf += n;
+        total += n;
+    }
+
+    return total;
+
+err:
+
+    fprintf(stderr, "SSL_read(2) - error reading data: %s\n", strerror(errno));
     return -1;
 }
