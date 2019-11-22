@@ -28,6 +28,7 @@
 #ifndef CORE_H
 #define CORE_H
 
+#include <openssl/ssl.h>
 #include "trie.h"
 #include "list.h"
 #include "network.h"
@@ -89,6 +90,9 @@ struct sol_client {
     struct session session;
     unsigned long last_action_time;
     struct mqtt_publish *lwt_msg;
+    // Just in case of SSL communication, otherwise unused
+    SSL_CTX *ssl_ctx;
+    SSL *ssl;
 };
 
 struct subscriber {
