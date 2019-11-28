@@ -672,7 +672,7 @@ static int pubrec_handler(struct io_event *e) {
         sol.out_pending_acks[e->data->ack.pkt_id] =
             pending_message_new(c->fd, e->data, PUBREL, acklen);
         if (conf->use_ssl == true)
-            sol.out_pending_acks[p->pkt_id]->ssl = c->ssl;
+            sol.out_pending_acks[e->data->ack.pkt_id]->ssl = c->ssl;
     }
 
     sol_debug("Sending PUBREL to %s", c->client_id);
@@ -1284,7 +1284,7 @@ static void publish_message(const struct mqtt_publish *p) {
         else
             sent = send_bytes(sc->fd, packed, len);
 
-        if (send < 0)
+        if (sent < 0)
             sol_error("Error publishing to %s: %s",
                       sc->client_id, strerror(errno));
 
