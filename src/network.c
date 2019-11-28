@@ -393,7 +393,7 @@ err:
 }
 
 
-int ssl_recv(SSL *ssl, unsigned char *buf, size_t bufsize) {
+ssize_t ssl_recv_bytes(SSL *ssl, unsigned char *buf, size_t bufsize) {
 
     ssize_t n = 0;
     ssize_t total = 0;

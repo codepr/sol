@@ -846,13 +846,19 @@ exit:
  * - flags -> flags pointer, copy the flag setting of the incoming packet,
  *            again for simplicity and convenience of the caller.
  */
-ssize_t recv_packet(int fd, unsigned char **buf, unsigned char *header) {
+static ssize_t recv_packet(struct sol_client *c, unsigned char **buf,
+                           unsigned char *header) {
 
     ssize_t nbytes = 0;
     unsigned char *tmpbuf = *buf;
 
     /* Read the first byte, it should contain the message type code */
-    if ((nbytes = recv_bytes(fd, *buf, 4)) <= 0)
+    if (conf->use_ssl == true)
+        nbytes = ssl_recv_bytes(c->ssl, *buf, 4);
+    else
+        nbytes = recv_bytes(c->fd, *buf, 4);
+
+    if (nbytes <= 0)
         return -ERRCLIENTDC;
 
     *header = *tmpbuf;
@@ -889,14 +895,23 @@ ssize_t recv_packet(int fd, unsigned char **buf, unsigned char *header) {
     unsigned long long remaining_bytes = tlen - offset;
 
     /* Read remaining bytes to complete the packet */
-    while (remaining_bytes > 0) {
-
-        if ((n = recv_bytes(fd, tmpbuf + offset, remaining_bytes)) < 0)
-            goto err;
-
-        remaining_bytes -= n;
-        nbytes += n;
-        offset += n;
+    if (conf->use_ssl == true) {
+        while (remaining_bytes > 0) {
+            n = ssl_recv_bytes(c->ssl, tmpbuf + offset, remaining_bytes);
+            if (n <= 0)
+                goto err;
+            remaining_bytes -= n;
+            nbytes += n;
+            offset += n;
+        }
+    } else {
+        while (remaining_bytes > 0) {
+            if ((n = recv_bytes(c->fd, tmpbuf + offset, remaining_bytes)) < 0)
+                goto err;
+            remaining_bytes -= n;
+            nbytes += n;
+            offset += n;
+        }
     }
 
     nbytes -= (pos + 1);
@@ -910,14 +925,15 @@ exit:
 err:
 
     // TODO move this out of the function (LWT handling)
-    close(fd);
+    close(c->fd);
 
     return nbytes;
 
 }
 
 /* Handle incoming requests, after being accepted or after a reply */
-static int read_data(int fd, unsigned char *buf, union mqtt_packet *pkt) {
+static int read_data(struct sol_client *c, unsigned char *buf,
+                     union mqtt_packet *pkt) {
 
     ssize_t bytes = 0;
     unsigned char header = 0;
@@ -928,7 +944,7 @@ static int read_data(int fd, unsigned char *buf, union mqtt_packet *pkt) {
      * send the size of the remaining packet as the second byte. By knowing it
      * we know if the packet is ready to be deserialized and used.
      */
-    bytes = recv_packet(fd, &buf, &header);
+    bytes = recv_packet(c, &buf, &header);
 
     /*
      * Looks like we got a client disconnection.
@@ -1031,7 +1047,7 @@ static void *io_worker(void *arg) {
                  * of an IO event we need to read the bytes and encoding the
                  * content according to the protocol
                  */
-                int rc = read_data(event->client->fd, buffer, event->data);
+                int rc = read_data(event->client, buffer, event->data);
                 if (rc == 0) {
                     /*
                      * All is ok, raise an event to the worker poll EPOLL and
