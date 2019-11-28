@@ -435,8 +435,14 @@ static int subscribe_handler(struct io_event *e) {
         // Retained message? Publish it
         if (t->retained_msg) {
             ssize_t sent;
-            if ((sent = send_bytes(e->client->fd, t->retained_msg,
-                                   bstring_len(t->retained_msg))) < 0)
+            if (conf->use_ssl == true)
+               sent = ssl_send_bytes(e->client->ssl, t->retained_msg,
+                                  bstring_len(t->retained_msg));
+            else
+                sent = send_bytes(e->client->fd, t->retained_msg,
+                                  bstring_len(t->retained_msg));
+
+            if (sent < 0)
                 sol_error("Error publishing to %s: %s",
                           e->client->client_id, strerror(errno));
 
@@ -560,10 +566,17 @@ static int publish_handler(struct io_event *e) {
                 publen += sizeof(uint16_t);
                 sol.out_pending_msgs[p->pkt_id] =
                     pending_message_new(sc->fd, e->data, PUBLISH, publen);
+                if (conf->use_ssl == true)
+                    sol.out_pending_acks[p->pkt_id]->ssl = c->ssl;
             }
 
             ssize_t sent;
-            if ((sent = send_bytes(sc->fd, payload, bstring_len(payload))) < 0)
+            if (conf->use_ssl == true)
+                sent = ssl_send_bytes(sc->ssl, payload, bstring_len(payload));
+            else
+                sent = send_bytes(sc->fd, payload, bstring_len(payload));
+
+            if (sent < 0)
                 sol_error("Error publishing to %s: %s",
                           sc->client_id, strerror(errno));
 
@@ -601,6 +614,8 @@ static int publish_handler(struct io_event *e) {
         ptype = PUBREC;
         sol.out_pending_acks[p->pkt_id] =
             pending_message_new(c->fd, e->data, ptype, acklen);
+        if (conf->use_ssl == true)
+            sol.out_pending_acks[p->pkt_id]->ssl = c->ssl;
     }
 
     unsigned char *packed = pack_mqtt_packet(e->data, ptype);
@@ -656,6 +671,8 @@ static int pubrec_handler(struct io_event *e) {
         sol_free(sol.out_pending_acks[e->data->ack.pkt_id]);
         sol.out_pending_acks[e->data->ack.pkt_id] =
             pending_message_new(c->fd, e->data, PUBREL, acklen);
+        if (conf->use_ssl == true)
+            sol.out_pending_acks[p->pkt_id]->ssl = c->ssl;
     }
 
     sol_debug("Sending PUBREL to %s", c->client_id);
@@ -1094,9 +1111,15 @@ static void *io_worker(void *arg) {
                  * worker thread routine. Just send out all bytes stored in the
                  * reply buffer to the reply file descriptor.
                  */
-                if ((sent = send_bytes(event->client->fd,
-                                       event->reply,
-                                       bstring_len(event->reply))) < 0) {
+                if (conf->use_ssl == true)
+                    sent = ssl_send_bytes(event->client->ssl,
+                                          event->reply,
+                                          bstring_len(event->reply));
+                else
+                    sent = send_bytes(event->client->fd,
+                                      event->reply,
+                                      bstring_len(event->reply));
+                if (sent <= 0) {
                     close(event->client->fd);
                 } else {
                     /*
@@ -1256,7 +1279,12 @@ static void publish_message(const struct mqtt_publish *p) {
 
         packed = pack_mqtt_packet(&pkt, PUBLISH);
 
-        if ((sent = send_bytes(sc->fd, packed, len)) < 0)
+        if (conf->use_ssl == true)
+            sent = ssl_send_bytes(sc->ssl, packed, len);
+        else
+            sent = send_bytes(sc->fd, packed, len);
+
+        if (send < 0)
             sol_error("Error publishing to %s: %s",
                       sc->client_id, strerror(errno));
 

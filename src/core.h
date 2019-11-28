@@ -48,6 +48,7 @@ struct pending_message {
     int type;
     time_t sent_timestamp;
     unsigned long size;
+    SSL *ssl;
     union mqtt_packet *packet;
 };
 

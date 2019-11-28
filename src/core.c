@@ -98,6 +98,7 @@ struct pending_message *pending_message_new(int fd, union mqtt_packet *p,
                                             int type, size_t size) {
     struct pending_message *pm = sol_malloc(sizeof(*pm));
     pm->fd = fd;
+    pm->ssl = NULL;
     pm->sent_timestamp = time(NULL);
     pm->packet = p;
     pm->type = type;
