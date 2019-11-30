@@ -5,6 +5,7 @@ Oversimplified MQTT broker written from scratch, which mimic mosquitto
 features. Implemented to learning how the protocol works, for now it supports
 almost all MQTT v3.1.1 commands on linux platform; it relies on EPOLL interface
 for multiplexing I/O. Development process is documented in this [series of posts](https://codepr.github.io/posts/sol-mqtt-broker).
+**Not for production use**.
 
 ## Build
 
@@ -65,6 +66,11 @@ tcp_backlog 128
 
 # Interval of time between one stats publish on $SOL topics and the subsequent
 stats_publish_interval 10s
+
+# SSL certs paths, certfile act as a flag as well to set TLS/SSL ON
+certfile /etc/sol/certs/cert.pem
+
+keyfile /etc/sol/certs/key.pem
 ```
 
 ## Features roadmap
