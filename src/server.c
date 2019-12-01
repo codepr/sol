@@ -126,6 +126,7 @@ static void unlock(void) {
  */
 struct io_event {
     int epollfd;
+    int rc;
     eventfd_t eventfd;
     bstring reply;
     struct sol_client *client;
@@ -228,8 +229,28 @@ static int connect_handler(struct io_event *e) {
 
     struct mqtt_connect *c = &e->data->connect;
 
+    /*
+     * If allow_anonymous is false we need to check for an existing
+     * username:password pair match in the authentications table
+     */
+    if (conf->allow_anonymous == false) {
+        if (c->bits.username == 0 || c->bits.password == 0)
+            goto bad_auth;
+        else {
+            void *salt = hashtable_get(sol.authentications,
+                                       (const char *) c->payload.username);
+            if (!salt)
+                goto bad_auth;
+
+            bool authenticated =
+                check_passwd((const char *) c->payload.password, salt);
+            if (authenticated == false)
+                goto bad_auth;
+        }
+    }
+
     if (!c->payload.client_id && c->bits.clean_session == false)
-        goto clientdc;
+        goto not_authorized;
 
     /*
      * Check for client ID, if not present generate a UUID, otherwise add the
@@ -350,6 +371,56 @@ clientdc:
     UNLOCK;
 
     return CLIENTDC;
+
+bad_auth:
+    {
+        /* Respond with a connack */
+        union mqtt_packet *response = sol_malloc(sizeof(*response));
+
+        response->connack = *mqtt_packet_connack(CONNACK_B, connect_flags,
+                                                 RC_BAD_USERNAME_OR_PASSSWORD);
+
+        e->reply = bstring_copy(pack_mqtt_packet(response, 2), MQTT_ACK_LEN);
+
+        sol_debug("Sending CONNACK to %s (%u, %u)",
+                  c->payload.client_id,
+                  session_present, rc);
+
+        sol_free(response);
+
+        // Update stats
+        info.nclients--;
+        info.nconnections--;
+
+        UNLOCK;
+
+        return RC_BAD_USERNAME_OR_PASSSWORD;
+    }
+
+not_authorized:
+    {
+        /* Respond with a connack */
+        union mqtt_packet *response = sol_malloc(sizeof(*response));
+
+        response->connack = *mqtt_packet_connack(CONNACK_B, connect_flags,
+                                                 RC_NOT_AUTHORIZED);
+
+        e->reply = bstring_copy(pack_mqtt_packet(response, 2), MQTT_ACK_LEN);
+
+        sol_debug("Sending CONNACK to %s (%u, %u)",
+                  c->payload.client_id,
+                  session_present, rc);
+
+        sol_free(response);
+
+        // Update stats
+        info.nclients--;
+        info.nconnections--;
+
+        UNLOCK;
+
+        return RC_NOT_AUTHORIZED;
+    }
 }
 
 static void rec_sub(struct trie_node *node, void *arg) {
@@ -1057,6 +1128,7 @@ static void *io_worker(void *arg) {
 
                 struct io_event *event = sol_malloc(sizeof(*event));
                 event->epollfd = epoll->io_epollfd;
+                event->rc = 0;
                 event->data = sol_malloc(sizeof(*event->data));
                 event->client = e_events[i].data.ptr;
                 /*
@@ -1119,7 +1191,8 @@ static void *io_worker(void *arg) {
                     sent = send_bytes(event->client->fd,
                                       event->reply,
                                       bstring_len(event->reply));
-                if (sent <= 0) {
+                if (sent <= 0 || event->rc == RC_NOT_AUTHORIZED
+                    || event->rc == RC_BAD_USERNAME_OR_PASSSWORD) {
                     close(event->client->fd);
                 } else {
                     /*
@@ -1217,7 +1290,11 @@ static void *worker(void *arg) {
                 int reply = handlers[event->data->header.bits.type](event);
                 if (reply == REPLY)
                     epoll_mod(event->epollfd, event->client->fd, EPOLLOUT, event);
-                else if (reply != CLIENTDC) {
+                else if (reply == RC_BAD_USERNAME_OR_PASSSWORD
+                         || reply == RC_NOT_AUTHORIZED) {
+                    event->rc = reply;
+                    epoll_mod(event->epollfd, event->client->fd, EPOLLOUT, event);
+                } else if (reply != CLIENTDC) {
                     epoll_mod(epoll->io_epollfd,
                               event->client->fd, EPOLLIN, event->client);
                     close(event->eventfd);
@@ -1469,6 +1546,7 @@ int start_server(const char *addr, const char *port) {
     trie_init(&sol.topics, NULL);
     sol.clients = hashtable_new(client_destructor);
     sol.sessions = hashtable_new(session_destructor);
+    sol.authentications = hashtable_new(NULL);  // TODO add destructor
 
     pthread_spin_init(&spinlock, PTHREAD_PROCESS_SHARED);
 
@@ -1546,6 +1624,7 @@ int start_server(const char *addr, const char *port) {
 
     hashtable_destroy(sol.clients);
     hashtable_destroy(sol.sessions);
+    hashtable_destroy(sol.authentications);
 
     /* Destroy SSL context, if any present */
     if (conf->use_ssl == true) {
