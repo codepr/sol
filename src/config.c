@@ -216,6 +216,8 @@ static void add_config_value(const char *key, const char *value) {
             config.allow_anonymous = true;
         else
             config.allow_anonymous = false;
+    } else if (STREQ("password_file", key, klen) == true) {
+        strcpy(config.password_file, value);
     }
 }
 
@@ -357,7 +359,7 @@ bool config_read_passwd_file(const char *path, HashTable *auth) {
 
     char line[0xFFF], username[0xFF], password[0xFFF];
     int linenr = 0;
-    char *pline, *puname, *ppwd;
+    char *pline, *puname;
 
     while (fgets(line, 0xFFF, fh) != NULL) {
         memset(username, 0x00, 0xFF);
@@ -372,6 +374,10 @@ bool config_read_passwd_file(const char *path, HashTable *auth) {
         puname = line;
         while (*puname != ':')
             username[i++] = *puname++;
+        while (*puname != '\0')
+            password[i++] = *puname++;
+
+        hashtable_put(auth, sol_strdup(username), sol_strdup(password));
     }
 
     return true;

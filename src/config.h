@@ -87,6 +87,8 @@ struct config {
     char keyfile[0xFFF];
     /* Authentication flag */
     bool allow_anonymous;
+    /* File path on the filesystem pointing to the password_file */
+    char password_file[0xFFF];
 };
 
 extern struct config *conf;
@@ -94,7 +96,7 @@ extern struct config *conf;
 void config_set_default(void);
 void config_print(void);
 int config_load(const char *);
-bool config_read_passwd_file(const char *, Hashtable *);
+bool config_read_passwd_file(const char *, HashTable *);
 
 char *time_to_string(size_t);
 char *memory_to_string(size_t);

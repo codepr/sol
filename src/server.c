@@ -376,6 +376,8 @@ bad_auth:
     {
         /* Respond with a connack */
         union mqtt_packet *response = sol_malloc(sizeof(*response));
+        unsigned char session_present = 0;
+        unsigned char connect_flags = 0 | (session_present & 0x1) << 0;
 
         response->connack = *mqtt_packet_connack(CONNACK_B, connect_flags,
                                                  RC_BAD_USERNAME_OR_PASSSWORD);
@@ -384,7 +386,7 @@ bad_auth:
 
         sol_debug("Sending CONNACK to %s (%u, %u)",
                   c->payload.client_id,
-                  session_present, rc);
+                  session_present, RC_BAD_USERNAME_OR_PASSSWORD);  // TODO check for session
 
         sol_free(response);
 
@@ -401,6 +403,8 @@ not_authorized:
     {
         /* Respond with a connack */
         union mqtt_packet *response = sol_malloc(sizeof(*response));
+        unsigned char session_present = 0;
+        unsigned char connect_flags = 0 | (session_present & 0x1) << 0;
 
         response->connack = *mqtt_packet_connack(CONNACK_B, connect_flags,
                                                  RC_NOT_AUTHORIZED);
@@ -409,7 +413,7 @@ not_authorized:
 
         sol_debug("Sending CONNACK to %s (%u, %u)",
                   c->payload.client_id,
-                  session_present, rc);
+                  session_present, RC_NOT_AUTHORIZED); // TODO check for session
 
         sol_free(response);
 
@@ -1560,6 +1564,9 @@ int start_server(const char *addr, const char *port) {
     sol.clients = hashtable_new(client_destructor);
     sol.sessions = hashtable_new(session_destructor);
     sol.authentications = hashtable_new(auth_destructor);
+
+    if (conf->allow_anonymous == false)
+        config_read_passwd_file(conf->password_file, sol.authentications);
 
     pthread_spin_init(&spinlock, PTHREAD_PROCESS_SHARED);
 
