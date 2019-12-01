@@ -26,6 +26,7 @@
  */
 
 #include <time.h>
+#include <crypt.h>
 #include <ctype.h>
 #include <errno.h>
 #include <assert.h>
@@ -178,6 +179,10 @@ int generate_uuid(char *uuid_placeholder) {
     uuid_unparse(binuuid, uuid_placeholder);
 
     return 0;
+}
+
+bool check_passwd(const char *passwd, const char *salt) {
+    return STREQ(crypt(passwd, salt), salt, strlen(salt));
 }
 
 /*
