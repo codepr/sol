@@ -1527,6 +1527,19 @@ static int session_destructor(struct hashtable_entry *entry) {
 }
 
 /*
+ * Cleanup function to be passed in as destructor to the Hashtable for
+ * authentication entries
+ */
+static int auth_destructor(struct hashtable_entry *entry) {
+
+    if (!entry)
+        return -1;
+    sol_free(entry->val);
+
+    return 0;
+}
+
+/*
  * Helper function, return an itimerspec structure for creating custom timer
  * events to be triggered after being registered in an EPOLL loop
  */
@@ -1546,7 +1559,7 @@ int start_server(const char *addr, const char *port) {
     trie_init(&sol.topics, NULL);
     sol.clients = hashtable_new(client_destructor);
     sol.sessions = hashtable_new(session_destructor);
-    sol.authentications = hashtable_new(NULL);  // TODO add destructor
+    sol.authentications = hashtable_new(auth_destructor);
 
     pthread_spin_init(&spinlock, PTHREAD_PROCESS_SHARED);
 

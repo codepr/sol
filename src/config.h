@@ -30,6 +30,7 @@
 
 #include <stdio.h>
 #include <stdbool.h>
+#include "hashtable.h"
 
 // Default parameters
 
@@ -93,6 +94,7 @@ extern struct config *conf;
 void config_set_default(void);
 void config_print(void);
 int config_load(const char *);
+bool config_read_passwd_file(const char *, Hashtable *);
 
 char *time_to_string(size_t);
 char *memory_to_string(size_t);

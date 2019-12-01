@@ -343,3 +343,36 @@ void config_print(void) {
         sol_free((char *) human_rsize);
     }
 }
+
+bool config_read_passwd_file(const char *path, HashTable *auth) {
+
+    assert(path);
+
+    FILE *fh = fopen(path, "r");
+
+    if (!fh) {
+        sol_warning("WARNING: Unable to open passwd file %s", path);
+        return false;
+    }
+
+    char line[0xFFF], username[0xFF], password[0xFFF];
+    int linenr = 0;
+    char *pline, *puname, *ppwd;
+
+    while (fgets(line, 0xFFF, fh) != NULL) {
+        memset(username, 0x00, 0xFF);
+        memset(password, 0x00, 0xFFF);
+
+        linenr++;
+
+        pline = line;
+        if (*pline == '\0') continue;
+
+        int i = 0;
+        puname = line;
+        while (*puname != ':')
+            username[i++] = *puname++;
+    }
+
+    return true;
+}
