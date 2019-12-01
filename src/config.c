@@ -213,9 +213,9 @@ static void add_config_value(const char *key, const char *value) {
     } else if (STREQ("allow_anonymous", key, klen) == true) {
         // TODO add strict checks
         if (STREQ(value, "false", 5) == true)
-            config.allow_anonymous = true;
-        else
             config.allow_anonymous = false;
+        else
+            config.allow_anonymous = true;
     } else if (STREQ("password_file", key, klen) == true) {
         strcpy(config.password_file, value);
     }
@@ -374,7 +374,8 @@ bool config_read_passwd_file(const char *path, HashTable *auth) {
         puname = line;
         while (*puname != ':')
             username[i++] = *puname++;
-        while (*puname != '\0')
+        i = 0;
+        while (*puname != '\n')
             password[i++] = *puname++;
 
         hashtable_put(auth, sol_strdup(username), sol_strdup(password));
