@@ -71,6 +71,25 @@ stats_publish_interval 10s
 certfile /etc/sol/certs/cert.pem
 
 keyfile /etc/sol/certs/key.pem
+
+# Authentication
+allow_anonymous false
+password_file /etc/sol/passwd
+```
+
+If `allow_anonymous` if false, a password file have to be specyfied. The
+password file follow the standard format of username:password line by line.
+To generate one just add all entries needed in a file and run passwd.py after
+it:
+
+```sh
+$ cat sample_passwd_file
+user1:pass1
+user2:pass2
+$ python passwd.py sample_passwd_file
+$ cat sample_passwd_file
+user1:$6$69qVAELLWuKXWQPQ$oO7lP/hNS4WPABTyK4nkJs4bcRLYFi365YX13cEc/QBJtQgqf2d5rOIUdqoUin.YVGXC3OXY9MSz7Z66ZDkCW/
+user2:$6$vtHdafhGhxpXwgBa$Y3Etz8koC1YPSYhXpTnhz.2vJTZvCUGk3xUdjyLr9z9XgE8asNwfYDRLIKN4Apz48KKwKz0YntjHsPRiE6r3g/
 ```
 
 ## Features roadmap
