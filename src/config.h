@@ -84,6 +84,8 @@ struct config {
     char certfile[0xFFF];
     /* SSL - Key file location on filesystem */
     char keyfile[0xFFF];
+    /* Authentication flag */
+    bool allow_anonymous;
 };
 
 extern struct config *conf;

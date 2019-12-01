@@ -210,6 +210,12 @@ static void add_config_value(const char *key, const char *value) {
         strcpy(config.certfile, value);
     } else if (STREQ("keyfile", key, klen) == true) {
         strcpy(config.keyfile, value);
+    } else if (STREQ("allow_anonymous", key, klen) == true) {
+        // TODO add strict checks
+        if (STREQ(value, "false", 5) == true)
+            config.allow_anonymous = true;
+        else
+            config.allow_anonymous = false;
     }
 }
 
@@ -303,6 +309,7 @@ void config_set_default(void) {
     config.stats_pub_interval = read_time_with_mul(DEFAULT_STATS_INTERVAL);
     config.keepalive = read_time_with_mul(DEFAULT_KEEPALIVE);
     config.use_ssl = false;
+    config.allow_anonymous = true;
 }
 
 void config_print(void) {
