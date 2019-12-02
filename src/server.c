@@ -1088,10 +1088,6 @@ static void *io_worker(void *arg) {
     /* Raw bytes buffer to handle input from client */
     unsigned char *buffer = sol_malloc(conf->max_request_size);
 
-    // UDP bus communication client handler
-    struct sockaddr_in node;
-    memset(&node, 0, sizeof(node)); ;
-
     while (1) {
 
         events = epoll_wait(epoll->io_epollfd, e_events,
