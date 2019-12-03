@@ -89,10 +89,14 @@ int main (int argc, char **argv) {
     // Try to load a configuration, if found
     config_load(confpath);
 
+    sol_log_init(conf->logpath);
+
     // Print configuration
     config_print();
 
     start_server(conf->hostname, conf->port);
+
+    sol_log_close();
 
     return 0;
 }
