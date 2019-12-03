@@ -177,7 +177,7 @@ static size_t unpack_mqtt_connect(unsigned char *raw,
     pkt->connect = connect;
 
     /*
-     * For now we ignore checks on protocol name and reserverd bits, just skip
+     * For now we ignore checks on protocol name and reserved bits, just skip
      * to the 8th byte
      */
     raw += 7;

@@ -352,7 +352,7 @@ static int connect_handler(struct io_event *e) {
 
     response->connack = *mqtt_packet_connack(CONNACK_B, connect_flags, rc);
 
-    e->reply = bstring_copy(pack_mqtt_packet(response, 2), MQTT_ACK_LEN);
+    e->reply = bstring_copy(pack_mqtt_packet(response, CONNACK), MQTT_ACK_LEN);
 
     sol_debug("Sending CONNACK to %s (%u, %u)",
               c->payload.client_id,
@@ -380,13 +380,14 @@ bad_auth:
         unsigned char connect_flags = 0 | (session_present & 0x1) << 0;
 
         response->connack = *mqtt_packet_connack(CONNACK_B, connect_flags,
-                                                 RC_BAD_USERNAME_OR_PASSSWORD);
+                                                 RC_USERNAME_OR_PASSWORD);
 
-        e->reply = bstring_copy(pack_mqtt_packet(response, 2), MQTT_ACK_LEN);
+        e->reply = bstring_copy(pack_mqtt_packet(response, CONNACK),
+                                MQTT_ACK_LEN);
 
         sol_debug("Sending CONNACK to %s (%u, %u)",
                   c->payload.client_id,
-                  session_present, RC_BAD_USERNAME_OR_PASSSWORD);  // TODO check for session
+                  session_present, RC_USERNAME_OR_PASSWORD);  // TODO check for session
 
         sol_free(response);
 
@@ -396,7 +397,7 @@ bad_auth:
 
         UNLOCK;
 
-        return RC_BAD_USERNAME_OR_PASSSWORD;
+        return RC_USERNAME_OR_PASSWORD;
     }
 
 not_authorized:
@@ -409,7 +410,8 @@ not_authorized:
         response->connack = *mqtt_packet_connack(CONNACK_B, connect_flags,
                                                  RC_NOT_AUTHORIZED);
 
-        e->reply = bstring_copy(pack_mqtt_packet(response, 2), MQTT_ACK_LEN);
+        e->reply = bstring_copy(pack_mqtt_packet(response, CONNACK),
+                                MQTT_ACK_LEN);
 
         sol_debug("Sending CONNACK to %s (%u, %u)",
                   c->payload.client_id,
@@ -1192,7 +1194,7 @@ static void *io_worker(void *arg) {
                                       event->reply,
                                       bstring_len(event->reply));
                 if (sent <= 0 || event->rc == RC_NOT_AUTHORIZED
-                    || event->rc == RC_BAD_USERNAME_OR_PASSSWORD) {
+                    || event->rc == RC_USERNAME_OR_PASSWORD) {
                     close(event->client->fd);
                 } else {
                     /*
@@ -1290,7 +1292,7 @@ static void *worker(void *arg) {
                 int reply = handlers[event->data->header.bits.type](event);
                 if (reply == REPLY)
                     epoll_mod(event->epollfd, event->client->fd, EPOLLOUT, event);
-                else if (reply == RC_BAD_USERNAME_OR_PASSSWORD
+                else if (reply == RC_USERNAME_OR_PASSWORD
                          || reply == RC_NOT_AUTHORIZED) {
                     event->rc = reply;
                     epoll_mod(event->epollfd, event->client->fd, EPOLLOUT, event);
