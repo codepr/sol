@@ -512,7 +512,7 @@ static int subscribe_handler(struct io_event *e) {
             ssize_t sent;
             if (conf->use_ssl == true)
                sent = ssl_send_bytes(e->client->ssl, t->retained_msg,
-                                  bstring_len(t->retained_msg));
+                                     bstring_len(t->retained_msg));
             else
                 sent = send_bytes(e->client->fd, t->retained_msg,
                                   bstring_len(t->retained_msg));

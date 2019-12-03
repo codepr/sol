@@ -374,6 +374,7 @@ bool config_read_passwd_file(const char *path, HashTable *auth) {
         puname = line;
         while (*puname != ':')
             username[i++] = *puname++;
+        puname++;
         i = 0;
         while (*puname != '\n')
             password[i++] = *puname++;
