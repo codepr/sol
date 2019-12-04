@@ -927,6 +927,7 @@ static void accept_loop(struct epoll *epoll) {
                     info.nclients++;
                     info.nconnections++;
 
+                    sol_info("Connection from %s", ip);
                 }
             }
         }
