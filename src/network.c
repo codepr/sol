@@ -26,6 +26,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <string.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <netdb.h>
@@ -175,7 +176,7 @@ int make_listen(const char *host, const char *port, int socket_family) {
     return sfd;
 }
 
-int accept_connection(int serversock) {
+int accept_connection(int serversock, char *ip) {
 
     int clientsock;
     struct sockaddr_in addr;
@@ -197,6 +198,9 @@ int accept_connection(int serversock) {
         close(clientsock);
         return -1;
     }
+
+    if (ip)
+        strncpy(ip, ip_buff, INET_ADDRSTRLEN + 1);
 
     return clientsock;
 }

@@ -880,7 +880,8 @@ static void accept_loop(struct epoll *epoll) {
                      * pointer passed as argument
                      */
 
-                    int fd = accept_connection(epoll->serverfd);
+                    char ip[INET_ADDRSTRLEN + 1];
+                    int fd = accept_connection(epoll->serverfd, ip);
                     if (fd < 0)
                         break;
 
@@ -902,6 +903,9 @@ static void accept_loop(struct epoll *epoll) {
 
                     /* LWT message placeholder */
                     client->lwt_msg = NULL;
+
+                    /* IP address */
+                    strncpy(client->ip_addr, ip, INET_ADDRSTRLEN + 1);
 
                     /* Check for SSL context to be instantiated */
                     if (conf->use_ssl == true) {
@@ -1201,12 +1205,14 @@ static void *io_worker(void *arg) {
                                       bstring_len(event->reply));
                 if (sent <= 0 || event->rc == RC_NOT_AUTHORIZED
                     || event->rc == RC_BAD_USERNAME_OR_PASSWORD) {
+                    sol_info("Closing connection with %s",
+                             event->client->ip_addr);
                     close(event->client->fd);
                 } else {
                     /*
-                     * Rearm descriptor, we're using EPOLLONESHOT feature to avoid
-                     * race condition and thundering herd issues on multithreaded
-                     * EPOLL
+                     * Rearm descriptor, we're using EPOLLONESHOT feature to
+                     * avoid race condition and thundering herd issues on
+                     * multithreaded EPOLL
                      */
                     epoll_mod(epoll->io_epollfd,
                               event->client->fd, EPOLLIN, event->client);

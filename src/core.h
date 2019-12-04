@@ -29,6 +29,7 @@
 #define CORE_H
 
 #include <openssl/ssl.h>
+#include <arpa/inet.h>
 #include "trie.h"
 #include "list.h"
 #include "network.h"
@@ -90,6 +91,7 @@ struct session {
 struct sol_client {
     bool online;  // just a boolean will be fine for now
     char *client_id;
+    char ip_addr[INET_ADDRSTRLEN + 1];
     int fd;
     struct session session;
     unsigned long last_action_time;

@@ -58,7 +58,7 @@ int create_and_bind(const char *, const char *, int);
 int make_listen(const char *, const char *, int);
 
 /* Accept a connection and add it to the right epollfd */
-int accept_connection(int);
+int accept_connection(int, char *);
 
 struct evloop *evloop_create(int, int);
 
