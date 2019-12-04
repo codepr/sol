@@ -35,12 +35,12 @@
 #define MQTT_ACK_LEN    4
 
 // Return codes for connect packet
-#define RC_CONNECTION_ACCEPTED           0x00
-#define RC_UNACCEPTABLE_PROTOCOL_VERSION 0x01
-#define RC_IDENTIFIER_REJECTED           0x02
-#define RC_SERVER_UNAVAILABLE            0x03
-#define RC_USERNAME_OR_PASSWORD          0x04
-#define RC_NOT_AUTHORIZED                0x05
+#define RC_CONNECTION_ACCEPTED              0x00
+#define RC_UNACCEPTABLE_PROTOCOL_VERSION    0x01
+#define RC_IDENTIFIER_REJECTED              0x02
+#define RC_SERVER_UNAVAILABLE               0x03
+#define RC_BAD_USERNAME_OR_PASSWORD         0x04
+#define RC_NOT_AUTHORIZED                   0x05
 
 /*
  * Stub bytes, useful for generic replies, these represent the first byte in
