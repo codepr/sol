@@ -1044,7 +1044,7 @@ static int read_data(struct sol_client *c, unsigned char *buf,
 
     /*
      * We must read all incoming bytes till an entire packet is received. This
-     * is achieved by following the TrieDB protocol specifications, which
+     * is achieved by following the MQTT protocol specifications, which
      * send the size of the remaining packet as the second byte. By knowing it
      * we know if the packet is ready to be deserialized and used.
      */
@@ -1073,7 +1073,7 @@ static int read_data(struct sol_client *c, unsigned char *buf,
     info.bytes_recv += bytes;
 
     /*
-     * Unpack received bytes into a triedb_request structure and execute the
+     * Unpack received bytes into a mqtt_packet structure and execute the
      * correct handler based on the type of the operation.
      */
     unpack_mqtt_packet(buf, pkt, header, bytes);

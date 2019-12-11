@@ -327,11 +327,9 @@ void openssl_init() {
     OpenSSL_add_ssl_algorithms();
 }
 
-
 void openssl_cleanup() {
     EVP_cleanup();
 }
-
 
 SSL_CTX *create_ssl_context() {
 
@@ -351,7 +349,7 @@ SSL_CTX *create_ssl_context() {
 
 static int client_certificate_verify(int preverify_ok, X509_STORE_CTX *ctx) {
 
-    (void) ctx;
+    (void) ctx;  // Unused
 
 	/* Preverify should check expiry, revocation. */
 	return preverify_ok;
@@ -426,7 +424,6 @@ err:
     fprintf(stderr, "SSL_write(2) - error sending data: %s\n", strerror(errno));
     return -1;
 }
-
 
 ssize_t ssl_recv_bytes(SSL *ssl, unsigned char *buf, size_t bufsize) {
 
