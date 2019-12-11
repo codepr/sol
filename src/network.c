@@ -407,6 +407,8 @@ ssize_t ssl_send_bytes(SSL *ssl, const unsigned char *buf, size_t len) {
         int err = SSL_get_error(ssl, n);
         if (err == SSL_ERROR_WANT_WRITE)
             continue;
+        if (err == SSL_ERROR_ZERO_RETURN || err == SSL_ERROR_SYSCALL)
+            return 0;  // Connection closed
         if (n == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
                 break;
@@ -440,7 +442,8 @@ ssize_t ssl_recv_bytes(SSL *ssl, unsigned char *buf, size_t bufsize) {
             int err = SSL_get_error(ssl, n);
             if (err == SSL_ERROR_WANT_READ)
                 continue;
-
+            if (err == SSL_ERROR_ZERO_RETURN || err == SSL_ERROR_SYSCALL)
+                return 0;  // Connection closed
             if (errno == EAGAIN || errno == EWOULDBLOCK)
                 break;
             else
