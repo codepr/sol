@@ -977,7 +977,7 @@ static ssize_t recv_packet(struct sol_client *c, unsigned char **buf,
      * bytes based on the size stored, so byte 2-5 is dedicated to the packet
      * length.
      */
-    int n = 0;
+    ssize_t n = 0;
 
     unsigned pos = 0;
     unsigned long long tlen = mqtt_decode_length(&tmpbuf, &pos);
@@ -994,7 +994,7 @@ static ssize_t recv_packet(struct sol_client *c, unsigned char **buf,
     if (tlen <= 4)
         goto exit;
 
-    int offset = 4 - pos -1;
+    ssize_t offset = 4 - pos -1;
 
     unsigned long long remaining_bytes = tlen - offset;
 
