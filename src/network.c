@@ -400,6 +400,8 @@ ssize_t ssl_send_bytes(SSL *ssl, const unsigned char *buf, size_t len) {
     size_t bytesleft = len;
     ssize_t n = 0;
 
+    ERR_clear_error();
+
     while (total < len) {
         n = SSL_write(ssl, buf + total, bytesleft);
         int err = SSL_get_error(ssl, n);
