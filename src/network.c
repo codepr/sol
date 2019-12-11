@@ -337,7 +337,7 @@ SSL_CTX *create_ssl_context() {
 
     SSL_CTX *ctx;
 
-    ctx = SSL_CTX_new(SSLv23_server_method());
+    ctx = SSL_CTX_new(TLS_method());
     if (!ctx) {
         perror("Unable to create SSL context");
         ERR_print_errors_fp(stderr);

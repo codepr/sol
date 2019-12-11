@@ -527,5 +527,4 @@ void hashtable_iter_next(struct iterator *it) {
             break;
         }
     }
-
 }

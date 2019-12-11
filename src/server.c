@@ -265,7 +265,7 @@ static int connect_handler(struct io_event *e) {
         if (s == NULL) {
             struct session *new_s = sol_session_new();
             hashtable_put(sol.sessions,
-                          (const char *) c->payload.client_id, new_s);
+                          sol_strdup((char *) c->payload.client_id), new_s);
         }
     }
 
@@ -636,9 +636,11 @@ static int publish_handler(struct io_event *e) {
 
         struct iterator *it = iter_new(t->subscribers, hashtable_iter_next);
 
-        while (it) {
+        do {
+            // first run check
+            if (!it->ptr)
+                break;
 
-            /* struct subscriber *sub = cur->data; */
             struct subscriber *sub = it->ptr;
             struct sol_client *sc = sub->client;
 
@@ -676,8 +678,7 @@ static int publish_handler(struct io_event *e) {
                       p->pkt_id,
                       p->topic,
                       p->payloadlen);
-            it = iter_next(it);
-        }
+        } while ((it = iter_next(it)) && it->ptr != NULL);
     }
 
     if (qos == AT_MOST_ONCE)
@@ -1354,7 +1355,10 @@ static void publish_message(const struct mqtt_publish *p) {
     struct iterator *it = iter_new(t->subscribers, hashtable_iter_next);
     ssize_t sent = 0L;
 
-    while (it->ptr) {
+    do {
+        // first run check
+        if (!it->ptr)
+            break;
 
         struct subscriber *sub = it->ptr;
         struct sol_client *sc = sub->client;
@@ -1396,8 +1400,7 @@ static void publish_message(const struct mqtt_publish *p) {
         info.messages_sent++;
 
         sol_free(packed);
-        it = iter_next(it);
-    }
+    } while ((it = iter_next(it)) && it->ptr != NULL);
 }
 
 /*
