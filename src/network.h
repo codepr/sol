@@ -108,7 +108,7 @@ void openssl_init(void);
 void openssl_cleanup(void);
 
 /* Load cert.pem and key.pem certfiles from filesystem */
-void load_certificates(SSL_CTX *, const char *, const char *);
+void load_certificates(SSL_CTX *, const char *, const char *, const char *);
 
 /* Send data like sendall but adding encryption SSL */
 ssize_t ssl_send_bytes(SSL *, const unsigned char *, size_t);

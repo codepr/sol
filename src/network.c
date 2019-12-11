@@ -321,6 +321,8 @@ err:
 }
 
 void openssl_init() {
+    SSL_library_init();
+    ERR_load_crypto_strings();
     SSL_load_error_strings();
     OpenSSL_add_ssl_algorithms();
 }
@@ -333,27 +335,41 @@ void openssl_cleanup() {
 
 SSL_CTX *create_ssl_context() {
 
-    const SSL_METHOD *method;
     SSL_CTX *ctx;
 
-    method = SSLv23_server_method();
-
-    ctx = SSL_CTX_new(method);
+    ctx = SSL_CTX_new(SSLv23_server_method());
     if (!ctx) {
         perror("Unable to create SSL context");
         ERR_print_errors_fp(stderr);
         exit(EXIT_FAILURE);
     }
 
+    SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
+
     return ctx;
 }
 
-void load_certificates(SSL_CTX *ctx, const char *cert, const char *key) {
+static int client_certificate_verify(int preverify_ok, X509_STORE_CTX *ctx) {
 
+    (void) ctx;
+
+	/* Preverify should check expiry, revocation. */
+	return preverify_ok;
+}
+
+void load_certificates(SSL_CTX *ctx, const char *ca,
+                       const char *cert, const char *key) {
+
+    if (SSL_CTX_load_verify_locations(ctx, ca, NULL) <= 0) {
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    SSL_CTX_set_mode(ctx, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+	SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, client_certificate_verify);
     SSL_CTX_set_ecdh_auto(ctx, 1);
 
-    /* Set the key and cert */
-    if (SSL_CTX_use_certificate_file(ctx, cert, SSL_FILETYPE_PEM) <= 0) {
+	if (SSL_CTX_use_certificate_chain_file(ctx, cert) <= 0) {
         ERR_print_errors_fp(stderr);
         exit(EXIT_FAILURE);
     }
@@ -378,6 +394,9 @@ ssize_t ssl_send_bytes(SSL *ssl, const unsigned char *buf, size_t len) {
 
     while (total < len) {
         n = SSL_write(ssl, buf + total, bytesleft);
+        int err = SSL_get_error(ssl, n);
+        if (err == SSL_ERROR_WANT_WRITE)
+            continue;
         if (n == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
                 break;
@@ -402,12 +421,19 @@ ssize_t ssl_recv_bytes(SSL *ssl, unsigned char *buf, size_t bufsize) {
     ssize_t n = 0;
     ssize_t total = 0;
 
+    ERR_clear_error();
+
     while (total < (ssize_t) bufsize) {
 
         if ((n = SSL_read(ssl, buf, bufsize - total)) < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+
+            int err = SSL_get_error(ssl, n);
+            if (err == SSL_ERROR_WANT_READ)
+                continue;
+
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
                 break;
-            } else
+            else
                 goto err;
         }
 

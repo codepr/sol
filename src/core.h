@@ -99,6 +99,8 @@ struct sol_client {
     // Just in case of SSL communication, otherwise unused
     SSL_CTX *ssl_ctx;
     SSL *ssl;
+    BIO *bio_in;
+    BIO *bio_out;
 };
 
 struct subscriber {

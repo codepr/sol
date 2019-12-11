@@ -81,6 +81,8 @@ struct config {
     size_t keepalive;
     /* SSL flag */
     bool use_ssl;
+    /* Certificate authority file path */
+    char cafile[0xFFF];
     /* SSL - Cert file location on filesystem */
     char certfile[0xFFF];
     /* SSL - Key file location on filesystem */

@@ -205,8 +205,10 @@ static void add_config_value(const char *key, const char *value) {
         config.stats_pub_interval = read_time_with_mul(value);
     } else if (STREQ("keepalive", key, klen) == true) {
         config.keepalive = read_time_with_mul(value);
-    } else if (STREQ("certfile", key, klen) == true) {
+    } else if (STREQ("cafile", key, klen) == true) {
         config.use_ssl = true;
+        strcpy(config.cafile, value);
+    } else if (STREQ("certfile", key, klen) == true) {
         strcpy(config.certfile, value);
     } else if (STREQ("keyfile", key, klen) == true) {
         strcpy(config.keyfile, value);

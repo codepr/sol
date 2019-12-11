@@ -911,7 +911,8 @@ static void accept_loop(struct epoll *epoll) {
                     if (conf->use_ssl == true) {
                         client->ssl = SSL_new(sol.ssl_ctx);
                         SSL_set_fd(client->ssl, fd);
-
+                        SSL_set_accept_state(client->ssl);
+                        ERR_clear_error();
                         if (SSL_accept(client->ssl) <= 0)
                             ERR_print_errors_fp(stderr);
                     }
@@ -963,6 +964,9 @@ static ssize_t recv_packet(struct sol_client *c, unsigned char **buf,
     else
         nbytes = recv_bytes(c->fd, *buf, 4);
 
+    if (conf->use_ssl && (nbytes == SSL_ERROR_WANT_READ))
+        return nbytes;
+
     if (nbytes <= 0)
         return -ERRCLIENTDC;
 
@@ -1003,7 +1007,7 @@ static ssize_t recv_packet(struct sol_client *c, unsigned char **buf,
     if (conf->use_ssl == true) {
         while (remaining_bytes > 0) {
             n = ssl_recv_bytes(c->ssl, tmpbuf + offset, remaining_bytes);
-            if (n <= 0)
+            if (n < 0)
                 goto err;
             remaining_bytes -= n;
             nbytes += n;
@@ -1050,6 +1054,9 @@ static int read_data(struct sol_client *c, unsigned char *buf,
      * we know if the packet is ready to be deserialized and used.
      */
     bytes = recv_packet(c, &buf, &header);
+
+    if (conf->use_ssl && bytes == SSL_ERROR_WANT_READ)
+        return SSL_ERROR_WANT_READ;
 
     /*
      * Looks like we got a client disconnection.
@@ -1150,7 +1157,11 @@ static void *io_worker(void *arg) {
                  * content according to the protocol
                  */
                 int rc = read_data(event->client, buffer, event->data);
-                if (rc == 0) {
+                if (conf->use_ssl && rc == SSL_ERROR_WANT_READ) {
+                    epoll_mod(epoll->io_epollfd,
+                              event->client->fd, EPOLLIN, event->client);
+                    printf("Rearming\n");
+                } else if (rc == 0) {
                     /*
                      * All is ok, raise an event to the worker poll EPOLL and
                      * link it with the IO event containing the decode payload
@@ -1175,7 +1186,7 @@ static void *io_worker(void *arg) {
                      * free resources allocated such as io_event structure and
                      * paired payload
                      */
-                    sol_error("Dropping client");
+                    sol_error("Dropping client: %d", rc);
                     // Publish, if present, LWT message
                     if (event->client->lwt_msg)
                         publish_message(event->client->lwt_msg);
@@ -1592,7 +1603,8 @@ int start_server(const char *addr, const char *port) {
     if (conf->use_ssl == true) {
         openssl_init();
         sol.ssl_ctx = create_ssl_context();
-        load_certificates(sol.ssl_ctx, conf->certfile, conf->keyfile);
+        load_certificates(sol.ssl_ctx, conf->cafile,
+                          conf->certfile, conf->keyfile);
     }
 
     struct epoll epoll = {

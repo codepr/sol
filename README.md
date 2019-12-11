@@ -68,9 +68,11 @@ tcp_backlog 128
 stats_publish_interval 10s
 
 # SSL certs paths, certfile act as a flag as well to set TLS/SSL ON
-certfile /etc/sol/certs/cert.pem
+cafile /etc/sol/certs/ca.crt
 
-keyfile /etc/sol/certs/key.pem
+certfile /etc/sol/certs/cert.crt
+
+keyfile /etc/sol/certs/cert.key
 
 # Authentication
 allow_anonymous false
