@@ -67,7 +67,7 @@ tcp_backlog 128
 # Interval of time between one stats publish on $SOL topics and the subsequent
 stats_publish_interval 10s
 
-# SSL certs paths, certfile act as a flag as well to set TLS/SSL ON
+# SSL certs paths, cafile act as a flag as well to set TLS/SSL ON
 cafile /etc/sol/certs/ca.crt
 
 certfile /etc/sol/certs/cert.crt
@@ -109,8 +109,8 @@ features expected from an MQTT broker.
 - [ ] Wildcards (+) on subscriptions
 - [ ] QoS 2 tracking of pending clients and re-send
 - [ ] Session present check and handling
-- [ ] Authentication
-- [ ] SSL/TLS connections
+- [X] Authentication
+- [X] SSL/TLS connections
 - [ ] Last will & Testament
 - [ ] Check on max memory used
 
