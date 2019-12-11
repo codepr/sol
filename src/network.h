@@ -116,4 +116,6 @@ ssize_t ssl_send_bytes(SSL *, const unsigned char *, size_t);
 /* Recv data like recvall but adding encryption SSL */
 ssize_t ssl_recv_bytes(SSL *, unsigned char *, size_t);
 
+SSL *ssl_accept(SSL_CTX *, int);
+
 #endif

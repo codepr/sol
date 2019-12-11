@@ -386,6 +386,16 @@ void load_certificates(SSL_CTX *ctx, const char *ca,
     }
 }
 
+SSL *ssl_accept(SSL_CTX *ctx, int fd) {
+    SSL *ssl = SSL_new(ctx);
+    SSL_set_fd(ssl, fd);
+    SSL_set_accept_state(ssl);
+    ERR_clear_error();
+    if (SSL_accept(ssl) <= 0)
+        ERR_print_errors_fp(stderr);
+    return ssl;
+}
+
 ssize_t ssl_send_bytes(SSL *ssl, const unsigned char *buf, size_t len) {
 
     size_t total = 0;

@@ -909,14 +909,8 @@ static void accept_loop(struct epoll *epoll) {
                     strncpy(client->ip_addr, ip, INET_ADDRSTRLEN + 1);
 
                     /* Check for SSL context to be instantiated */
-                    if (conf->use_ssl == true) {
-                        client->ssl = SSL_new(sol.ssl_ctx);
-                        SSL_set_fd(client->ssl, fd);
-                        SSL_set_accept_state(client->ssl);
-                        ERR_clear_error();
-                        if (SSL_accept(client->ssl) <= 0)
-                            ERR_print_errors_fp(stderr);
-                    }
+                    if (conf->use_ssl == true)
+                        client->ssl = ssl_accept(sol.ssl_ctx, fd);
 
                     /* Add it to the epoll loop */
                     epoll_add(epoll->io_epollfd, fd,
