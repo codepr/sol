@@ -306,7 +306,7 @@ int add_cron_task(int epollfd, const struct itimerspec *timervalue) {
     // Add the timer to the event loop
     struct epoll_event ev;
     ev.data.fd = timerfd;
-    ev.events = EPOLLIN;
+    ev.events = EPOLLIN|EPOLLONESHOT;
 
     if (epoll_ctl(epollfd, EPOLL_CTL_ADD, timerfd, &ev) < 0)
         goto err;
@@ -406,7 +406,8 @@ ssize_t ssl_send_bytes(SSL *ssl, const unsigned char *buf, size_t len) {
         int err = SSL_get_error(ssl, n);
         if (err == SSL_ERROR_WANT_WRITE)
             continue;
-        if (err == SSL_ERROR_ZERO_RETURN || err == SSL_ERROR_SYSCALL)
+        if (err == SSL_ERROR_ZERO_RETURN
+            || (err == SSL_ERROR_SYSCALL && !errno))
             return 0;  // Connection closed
         if (n == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -463,8 +464,58 @@ err:
     return -1;
 }
 
-struct connection *connection_new(const SSL_CTX *ssl_ctx) {
+/*
+ * Main connection functions, meant to be set as function pointer to a struct
+ * connection handle
+ */
+static int conn_accept(struct connection *c, int fd) {
+    int ret = accept_connection(fd, c->ip);
+    c->fd = ret;
+    return ret;
+}
+
+static ssize_t conn_send(struct connection *c,
+                         const unsigned char *buf, size_t len) {
+    return send_bytes(c->fd, buf, len);
+}
+
+static ssize_t conn_recv(struct connection *c,
+                         unsigned char *buf, size_t len) {
+    return recv_bytes(c->fd, buf, len);
+}
+
+static void conn_close(struct connection *c) {
+    close(c->fd);
+}
+
+// TLS version of the connection functions
+// XXX Not so neat, improve later
+static int conn_tls_accept(struct connection *c, int serverfd) {
+    int fd = accept_connection(serverfd, c->ip);
+    c->ssl = ssl_accept(c->ctx, fd);
+    c->fd = fd;
+    return fd;
+}
+
+static ssize_t conn_tls_send(struct connection *c,
+                             const unsigned char *buf, size_t len) {
+    return ssl_send_bytes(c->ssl, buf, len);
+}
+
+static ssize_t conn_tls_recv(struct connection *c,
+                             unsigned char *buf, size_t len) {
+    return ssl_recv_bytes(c->ssl, buf, len);
+}
+
+static void conn_tls_close(struct connection *c) {
+    SSL_free(c->ssl);
+    close(c->fd);
+}
+
+struct connection *conn_new(const SSL_CTX *ssl_ctx) {
     struct connection *conn = sol_malloc(sizeof(*conn));
+    if (!conn)
+        return NULL;
     conn->fd = -1;
     conn->ssl = NULL; // Will be filled in case of TLS connection on accept
     conn->ctx = (SSL_CTX *) ssl_ctx;
@@ -483,44 +534,18 @@ struct connection *connection_new(const SSL_CTX *ssl_ctx) {
     return conn;
 }
 
-int conn_accept(struct connection *c, int fd) {
-    int ret = accept_connection(fd, c->ip);
-    c->fd = ret;
-    return ret;
+int accept_conn(struct connection *c, int fd) {
+    return c->accept(c, fd);
 }
 
-ssize_t conn_send(struct connection *c, const unsigned char *buf, size_t len) {
-    return send_bytes(c->fd, buf, len);
+ssize_t send_data(struct connection *c, const unsigned char *buf, size_t len) {
+    return c->send(c, buf, len);
 }
 
-ssize_t conn_recv(struct connection *c, unsigned char *buf, size_t len) {
-    return recv_bytes(c->fd, buf, len);
+ssize_t recv_data(struct connection *c, unsigned char *buf, size_t len) {
+    return c->recv(c, buf, len);
 }
 
-void conn_close(struct connection *c) {
-    close(c->fd);
+void close_conn(struct connection *c) {
+    c->close(c);
 }
-
-// TLS version of the connection functions
-// XXX Not so neat, improve later
-int conn_tls_accept(struct connection *c, int fd) {
-    int ret = accept_connection(fd, c->ip);
-    if (ret < 0)
-        return ret;
-    c->ssl = ssl_accept(c->ctx, fd);
-    return 0;
-}
-
-ssize_t conn_tls_send(struct connection *c, const unsigned char *buf, size_t len) {
-    return ssl_send_bytes(c->ssl, buf, len);
-}
-
-ssize_t conn_tls_recv(struct connection *c, unsigned char *buf, size_t len) {
-    return ssl_recv_bytes(c->ssl, buf, len);
-}
-
-void conn_tls_close(struct connection *c) {
-    SSL_free(c->ssl);
-    close(c->fd);
-}
-

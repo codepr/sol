@@ -76,7 +76,6 @@ struct sol {
     struct pending_message *out_pending_msgs[MAX_INFLIGHT_MSGS];
     struct pending_message *out_pending_acks[MAX_INFLIGHT_MSGS];
     SSL_CTX *ssl_ctx;
-    SSL *ssl;
 };
 
 struct session {
@@ -91,15 +90,10 @@ struct session {
 struct sol_client {
     bool online;  // just a boolean will be fine for now
     char *client_id;
-    char ip_addr[INET_ADDRSTRLEN + 1];
-    int fd;
     struct connection *conn;
     struct session session;
     unsigned long last_action_time;
     struct mqtt_publish *lwt_msg;
-    // Just in case of SSL communication, otherwise unused
-    SSL_CTX *ssl_ctx;
-    SSL *ssl;
 };
 
 struct subscriber {

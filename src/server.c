@@ -101,21 +101,24 @@ static struct sol sol;
 static pthread_spinlock_t spinlock;
 
 static void lock(void) {
+#if WORKERPOOLSIZE > 1
     pthread_spin_lock(&spinlock);
+#else
+    (void) NULL;
+#endif
 }
 
 
 static void unlock(void) {
+#if WORKERPOOLSIZE > 1
     pthread_spin_unlock(&spinlock);
+#else
+    (void) NULL;
+#endif
 }
 
-#if WORKERPOOLSIZE > 1
-    #define LOCK do lock(); while (0);
-    #define UNLOCK do unlock(); while (0);
-#else
-    #define LOCK do (void) NULL; while (0);
-    #define UNLOCK do (void) NULL; while (0);
-#endif
+#define LOCK do lock(); while (0);
+#define UNLOCK do unlock(); while (0);
 
 /*
  * IO event strucuture, it's the main information that will be communicated
@@ -278,7 +281,8 @@ static int connect_handler(struct io_event *e) {
         sol_info("Received double CONNECT from %s, disconnecting client",
                  c->payload.client_id);
 
-        close(e->client->fd);
+        e->client->online = false;
+        close_conn(e->client->conn);
         hashtable_del(sol.clients, (const char *) c->payload.client_id);
 
         goto clientdc;
@@ -451,7 +455,7 @@ static int disconnect_handler(struct io_event *e) {
     LOCK;
 
     /* Handle disconnection request from client */
-    close(e->client->fd);
+    close_conn(e->client->conn);
     hashtable_del(sol.clients, e->client->client_id);
 
     // Update stats
@@ -517,13 +521,14 @@ static int subscribe_handler(struct io_event *e) {
 
         // Retained message? Publish it
         if (t->retained_msg) {
-            ssize_t sent;
-            if (conf->use_ssl == true)
-               sent = ssl_send_bytes(e->client->ssl, t->retained_msg,
+            ssize_t sent = send_data(e->client->conn, t->retained_msg,
                                      bstring_len(t->retained_msg));
-            else
-                sent = send_bytes(e->client->fd, t->retained_msg,
-                                  bstring_len(t->retained_msg));
+            /* if (conf->use_ssl == true) */
+            /*    sent = ssl_send_bytes(e->client->ssl, t->retained_msg, */
+            /*                          bstring_len(t->retained_msg)); */
+            /* else */
+            /*     sent = send_bytes(e->client->fd, t->retained_msg, */
+            /*                       bstring_len(t->retained_msg)); */
 
             if (sent < 0)
                 sol_error("Error publishing to %s: %s",
@@ -643,23 +648,26 @@ static int publish_handler(struct io_event *e) {
 
             struct subscriber *sub = it->ptr;
             struct sol_client *sc = sub->client;
+            struct connection *conn = sc->conn;
 
             /* Update QoS according to subscriber's one */
             p->header.bits.qos = sub->qos;
 
+            // TODO add conn instead of FDs
             if (p->header.bits.qos > AT_MOST_ONCE) {
                 publen += sizeof(uint16_t);
                 sol.out_pending_msgs[p->pkt_id] =
-                    pending_message_new(sc->fd, e->data, PUBLISH, publen);
+                    pending_message_new(conn->fd, e->data, PUBLISH, publen);
                 if (conf->use_ssl == true)
-                    sol.out_pending_acks[p->pkt_id]->ssl = c->ssl;
+                    sol.out_pending_acks[p->pkt_id]->ssl = conn->ssl;
             }
 
-            ssize_t sent;
-            if (conf->use_ssl == true)
-                sent = ssl_send_bytes(sc->ssl, payload, bstring_len(payload));
-            else
-                sent = send_bytes(sc->fd, payload, bstring_len(payload));
+            // TODO subscriber connection instead of FD
+            ssize_t sent = send_data(conn, payload, bstring_len(payload));
+            /* if (conf->use_ssl == true) */
+            /*     sent = ssl_send_bytes(sc->ssl, payload, bstring_len(payload)); */
+            /* else */
+            /*     sent = send_bytes(sc->fd, payload, bstring_len(payload)); */
 
             if (sent < 0)
                 sol_error("Error publishing to %s: %s",
@@ -697,9 +705,9 @@ static int publish_handler(struct io_event *e) {
         e->data->ack = *mqtt_packet_ack(PUBREC_B, p->pkt_id);
         ptype = PUBREC;
         sol.out_pending_acks[p->pkt_id] =
-            pending_message_new(c->fd, e->data, ptype, acklen);
+            pending_message_new(c->conn->fd, e->data, ptype, acklen);
         if (conf->use_ssl == true)
-            sol.out_pending_acks[p->pkt_id]->ssl = c->ssl;
+            sol.out_pending_acks[p->pkt_id]->ssl = c->conn->ssl;
     }
 
     unsigned char *packed = pack_mqtt_packet(e->data, ptype);
@@ -754,9 +762,9 @@ static int pubrec_handler(struct io_event *e) {
     if (sol.out_pending_acks[e->data->ack.pkt_id]) {
         sol_free(sol.out_pending_acks[e->data->ack.pkt_id]);
         sol.out_pending_acks[e->data->ack.pkt_id] =
-            pending_message_new(c->fd, e->data, PUBREL, acklen);
+            pending_message_new(c->conn->fd, e->data, PUBREL, acklen);
         if (conf->use_ssl == true)
-            sol.out_pending_acks[e->data->ack.pkt_id]->ssl = c->ssl;
+            sol.out_pending_acks[e->data->ack.pkt_id]->ssl = c->conn->ssl;
     }
 
     sol_debug("Sending PUBREL to %s", c->client_id);
@@ -880,37 +888,18 @@ static void accept_loop(struct epoll *epoll) {
                      * and socket descriptor to the connection structure
                      * pointer passed as argument
                      */
-
-                    char ip[INET_ADDRSTRLEN + 1];
-                    int fd = accept_connection(epoll->serverfd, ip);
-                    if (fd < 0)
-                        break;
-
+                    struct connection *conn =
+                        conf->use_ssl ? conn_new(sol.ssl_ctx) : conn_new(NULL);
                     /*
                      * Create a client structure to handle his context
                      * connection
                      */
-                    struct sol_client *client = sol_malloc(sizeof(*client));
-                    if (!client)
+                    struct sol_client *client = sol_client_new(conn);
+                    if (!conn || !client)
                         return;
-
-                    client->online = true;
-
-                    /* Populate client structure */
-                    client->fd = fd;
-
-                    /* Record last action as of now */
-                    client->last_action_time = time(NULL);
-
-                    /* LWT message placeholder */
-                    client->lwt_msg = NULL;
-
-                    /* IP address */
-                    strncpy(client->ip_addr, ip, INET_ADDRSTRLEN + 1);
-
-                    /* Check for SSL context to be instantiated */
-                    if (conf->use_ssl == true)
-                        client->ssl = ssl_accept(sol.ssl_ctx, fd);
+                    int fd = accept_conn(conn, epoll->serverfd);
+                    if (fd < 0)
+                        break;
 
                     /* Add it to the epoll loop */
                     epoll_add(epoll->io_epollfd, fd,
@@ -923,7 +912,7 @@ static void accept_loop(struct epoll *epoll) {
                     info.nclients++;
                     info.nconnections++;
 
-                    sol_info("Connection from %s", ip);
+                    sol_info("Connection from %s", conn->ip);
                 }
             }
         }
@@ -947,17 +936,14 @@ exit:
  * - flags -> flags pointer, copy the flag setting of the incoming packet,
  *            again for simplicity and convenience of the caller.
  */
-static ssize_t recv_packet(struct sol_client *c, unsigned char **buf,
+static ssize_t recv_packet(struct connection *c, unsigned char **buf,
                            unsigned char *header) {
 
     ssize_t nbytes = 0;
     unsigned char *tmpbuf = *buf;
 
     /* Read the first byte, it should contain the message type code */
-    if (conf->use_ssl == true)
-        nbytes = ssl_recv_bytes(c->ssl, *buf, 4);
-    else
-        nbytes = recv_bytes(c->fd, *buf, 4);
+    nbytes = recv_data(c, *buf, 4);
 
     if (conf->use_ssl && (nbytes == SSL_ERROR_WANT_READ))
         return nbytes;
@@ -999,23 +985,13 @@ static ssize_t recv_packet(struct sol_client *c, unsigned char **buf,
     unsigned long long remaining_bytes = tlen - offset;
 
     /* Read remaining bytes to complete the packet */
-    if (conf->use_ssl == true) {
-        while (remaining_bytes > 0) {
-            n = ssl_recv_bytes(c->ssl, tmpbuf + offset, remaining_bytes);
-            if (n < 0)
-                goto err;
-            remaining_bytes -= n;
-            nbytes += n;
-            offset += n;
-        }
-    } else {
-        while (remaining_bytes > 0) {
-            if ((n = recv_bytes(c->fd, tmpbuf + offset, remaining_bytes)) < 0)
-                goto err;
-            remaining_bytes -= n;
-            nbytes += n;
-            offset += n;
-        }
+    while (remaining_bytes > 0) {
+        n = recv_data(c, tmpbuf + offset, remaining_bytes);
+        if (n < 0)
+            goto err;
+        remaining_bytes -= n;
+        nbytes += n;
+        offset += n;
     }
 
     nbytes -= (pos + 1);
@@ -1029,14 +1005,14 @@ exit:
 err:
 
     // TODO move this out of the function (LWT handling)
-    close(c->fd);
+    close_conn(c);
 
     return nbytes;
 
 }
 
 /* Handle incoming requests, after being accepted or after a reply */
-static int read_data(struct sol_client *c, unsigned char *buf,
+static int read_data(struct connection *c, unsigned char *buf,
                      union mqtt_packet *pkt) {
 
     ssize_t bytes = 0;
@@ -1151,11 +1127,11 @@ static void *io_worker(void *arg) {
                  * of an IO event we need to read the bytes and encoding the
                  * content according to the protocol
                  */
-                int rc = read_data(event->client, buffer, event->data);
+                struct connection *c = event->client->conn;
+                int rc = read_data(c, buffer, event->data);
                 if (conf->use_ssl && rc == SSL_ERROR_WANT_READ) {
                     epoll_mod(epoll->io_epollfd,
-                              event->client->fd, EPOLLIN, event->client);
-                    printf("Rearming\n");
+                              c->fd, EPOLLIN, event->client);
                 } else if (rc == 0) {
                     /*
                      * All is ok, raise an event to the worker poll EPOLL and
@@ -1181,13 +1157,15 @@ static void *io_worker(void *arg) {
                      * free resources allocated such as io_event structure and
                      * paired payload
                      */
-                    sol_error("Dropping client: %d", rc);
+                    sol_error("Closing connection with %s: %d",
+                              event->client->conn->ip, rc); // TODO add strerr
                     // Publish, if present, LWT message
                     if (event->client->lwt_msg)
                         publish_message(event->client->lwt_msg);
                     event->client->online = false;
-                    close(event->client->fd);
-                    /* hashtable_del(sol.clients, event->client->client_id); */
+                    // Clean resources
+                    close_conn(event->client->conn);
+                    hashtable_del(sol.clients, event->client->client_id);
                     info.nclients--;
                     info.nconnections--;
                     sol_free(event->data);
@@ -1202,19 +1180,12 @@ static void *io_worker(void *arg) {
                  * worker thread routine. Just send out all bytes stored in the
                  * reply buffer to the reply file descriptor.
                  */
-                if (conf->use_ssl == true)
-                    sent = ssl_send_bytes(event->client->ssl,
-                                          event->reply,
-                                          bstring_len(event->reply));
-                else
-                    sent = send_bytes(event->client->fd,
-                                      event->reply,
-                                      bstring_len(event->reply));
+                struct connection *c = event->client->conn;
+                sent = send_data(c, event->reply, bstring_len(event->reply));
                 if (sent <= 0 || event->rc == RC_NOT_AUTHORIZED
                     || event->rc == RC_BAD_USERNAME_OR_PASSWORD) {
-                    sol_info("Closing connection with %s",
-                             event->client->ip_addr);
-                    close(event->client->fd);
+                    sol_info("Closing connection with %s", c->ip);
+                    close_conn(c);
                 } else {
                     /*
                      * Rearm descriptor, we're using EPOLLONESHOT feature to
@@ -1222,7 +1193,7 @@ static void *io_worker(void *arg) {
                      * multithreaded EPOLL
                      */
                     epoll_mod(epoll->io_epollfd,
-                              event->client->fd, EPOLLIN, event->client);
+                              c->fd, EPOLLIN, event->client);
                 }
 
                 // Update information stats
@@ -1230,11 +1201,8 @@ static void *io_worker(void *arg) {
 
                 /* Free resource, ACKs will be free'd closing the server */
                 bstring_destroy(event->reply);
-
                 mqtt_packet_release(event->data, event->data->header.bits.type);
-
                 close(event->eventfd);
-
                 sol_free(event);
             }
         }
@@ -1299,25 +1267,27 @@ static void *worker(void *arg) {
                 (void) read(e_events[i].data.fd, &timers, sizeof(timers));
                 // Check for keys about to expire out
                 publish_stats();
+                epoll_mod(epoll->w_epollfd, e_events[i].data.fd, EPOLLIN, NULL);
             } else if (e_events[i].data.fd == epoll->timerfd[1]) {
                 (void) read(e_events[i].data.fd, &timers, sizeof(timers));
                 // Check for keys about to expire out
                 pending_message_check();
+                epoll_mod(epoll->w_epollfd, e_events[i].data.fd, EPOLLIN, NULL);
             } else if (e_events[i].events & EPOLLIN) {
                 struct io_event *event = e_events[i].data.ptr;
                 eventfd_read(event->eventfd, &val);
                 // TODO free client and remove it from the global map in case
                 // of QUIT command (check return code)
+                struct connection *c = event->client->conn;
                 int reply = handlers[event->data->header.bits.type](event);
                 if (reply == REPLY)
-                    epoll_mod(event->epollfd, event->client->fd, EPOLLOUT, event);
+                    epoll_mod(event->epollfd, c->fd, EPOLLOUT, event);
                 else if (reply == RC_BAD_USERNAME_OR_PASSWORD
                          || reply == RC_NOT_AUTHORIZED) {
                     event->rc = reply;
-                    epoll_mod(event->epollfd, event->client->fd, EPOLLOUT, event);
+                    epoll_mod(event->epollfd, c->fd, EPOLLOUT, event);
                 } else if (reply != CLIENTDC) {
-                    epoll_mod(epoll->io_epollfd,
-                              event->client->fd, EPOLLIN, event->client);
+                    epoll_mod(epoll->io_epollfd, c->fd, EPOLLIN, event->client);
                     close(event->eventfd);
                 }
             }
@@ -1349,10 +1319,11 @@ static void publish_message(const struct mqtt_publish *p) {
     struct iterator *it = iter_new(t->subscribers, hashtable_iter_next);
     ssize_t sent = 0L;
 
+    // first run check
+    if (!it->ptr)
+        return;
+
     do {
-        // first run check
-        if (!it->ptr)
-            break;
 
         struct subscriber *sub = it->ptr;
         struct sol_client *sc = sub->client;
@@ -1380,11 +1351,7 @@ static void publish_message(const struct mqtt_publish *p) {
 
         packed = pack_mqtt_packet(&pkt, PUBLISH);
 
-        if (conf->use_ssl == true)
-            sent = ssl_send_bytes(sc->ssl, packed, len);
-        else
-            sent = send_bytes(sc->fd, packed, len);
-
+        sent = send_data(sc->conn, packed, len);
         if (sent < 0)
             sol_error("Error publishing to %s: %s",
                       sc->client_id, strerror(errno));
@@ -1530,6 +1497,9 @@ static int client_destructor(struct hashtable_entry *entry) {
     if (client->client_id)
         sol_free(client->client_id);
 
+    if (client->conn)
+        sol_free(client->conn);
+
     sol_free(client);
 
     return 0;
@@ -1669,7 +1639,6 @@ int start_server(const char *addr, const char *port) {
     /* Destroy SSL context, if any present */
     if (conf->use_ssl == true) {
         SSL_CTX_free(sol.ssl_ctx);
-        SSL_free(sol.ssl);
         openssl_cleanup();
     }
 

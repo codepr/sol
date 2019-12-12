@@ -54,29 +54,15 @@ struct connection {
     void (*close) (struct connection *);
 };
 
-struct connection *connection_new(const SSL_CTX *);
+struct connection *conn_new(const SSL_CTX *);
 
-/*
- * Main connection functions, meant to be set as function pointer to a struct
- * connection handle
- */
-int conn_accept(struct connection *, int);
+int accept_conn(struct connection *, int);
 
-ssize_t conn_send(struct connection *, const unsigned char *, size_t);
+ssize_t send_data(struct connection *, const unsigned char *, size_t);
 
-ssize_t conn_recv(struct connection *, unsigned char *, size_t);
+ssize_t recv_data(struct connection *, unsigned char *, size_t);
 
-void conn_close(struct connection *);
-
-// TLS version of the connection functions
-
-int conn_tls_accept(struct connection *, int);
-
-ssize_t conn_tls_send(struct connection *, const unsigned char *, size_t);
-
-ssize_t conn_tls_recv(struct connection *, unsigned char *, size_t);
-
-void conn_tls_close(struct connection *);
+void close_conn(struct connection *);
 
 /* Set non-blocking socket */
 int set_nonblocking(int);

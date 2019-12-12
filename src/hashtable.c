@@ -503,7 +503,7 @@ static unsigned long crc32_tab[] = {
 /* Return a 32-bit CRC of the contents of the buffer. */
 static unsigned long crc32(const uint8_t *s, unsigned int len) {
     uint64_t crc32val = 0LL;
-    for (unsigned int i = 0;  i < len;  i ++)
+    for (unsigned int i = 0;  i < len;  i++)
         crc32val = crc32_tab[(crc32val ^ s[i]) & 0xff] ^ (crc32val >> 8);
     return crc32val;
 }
@@ -514,16 +514,16 @@ void hashtable_iter_next(struct iterator *it) {
 
     HashTable *table = (HashTable *) it->iterable;
 
+    it->ptr = NULL;
+
     /* On empty hashmap, return immediately */
     if (!table || table->size <= 0 || it->index >= table->table_size)
         return;
 
-    it->ptr = NULL;
-
-    for (size_t i = it->index + 1; i < table->table_size; i++) {
+    for (size_t i = it->index; i < table->table_size; i++) {
         if (table->entries[i].taken == true) {
             it->ptr = table->entries[i].val;
-            it->index = i;
+            it->index = i + 1;
             break;
         }
     }
