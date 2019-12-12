@@ -36,6 +36,7 @@ struct sol_client *sol_client_new(struct connection *c) {
     client->client_id = NULL;
     client->last_action_time = time(NULL);
     client->lwt_msg = NULL;
+    client->session = sol_session_new();
     return client;
 }
 
@@ -62,8 +63,8 @@ void topic_add_subscriber(struct topic *t,
 
     // It must be added to the session if cleansession is false
     if (!cleansession)
-        client->session.subscriptions =
-            list_push(client->session.subscriptions, t);
+        client->session->subscriptions =
+            list_push(client->session->subscriptions, t);
 
 }
 
@@ -73,7 +74,7 @@ void topic_del_subscriber(struct topic *t,
     cleansession = (bool) cleansession; // temporary placeholder for compiler
     hashtable_del(t->subscribers, client->client_id);
 
-    // TODO remomve in case of cleansession == false
+    // TODO remove in case of cleansession == false
 }
 
 void sol_topic_put(struct sol *sol, struct topic *t) {

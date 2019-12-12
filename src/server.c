@@ -348,7 +348,7 @@ static int connect_handler(struct io_event *e) {
     // TODO check for session already present
 
     if (c->bits.clean_session == false)
-        e->client->session.subscriptions = list_new(NULL);
+        e->client->session->subscriptions = list_new(NULL);
 
     unsigned char session_present = 0;
     unsigned char connect_flags = 0 | (session_present & 0x1) << 0;
@@ -444,8 +444,10 @@ static void rec_sub(struct trie_node *node, void *arg) {
         return;
     struct topic *t = node->data;
     struct subscriber *s = arg;
-    sol_debug("Adding subscriber to topic %s", t->name);
+    sol_debug("Adding subscriber %s to topic %s",
+              s->client->client_id, t->name);
     hashtable_put(t->subscribers, s->client->client_id, s);
+    list_push(s->client->session->subscriptions, t);
 }
 
 static int disconnect_handler(struct io_event *e) {
@@ -517,19 +519,12 @@ static int subscribe_handler(struct io_event *e) {
         }
 
         // Clean session true for now
-        topic_add_subscriber(t, e->client, s->tuples[i].qos, true);
+        topic_add_subscriber(t, e->client, s->tuples[i].qos, false);
 
         // Retained message? Publish it
         if (t->retained_msg) {
             ssize_t sent = send_data(e->client->conn, t->retained_msg,
                                      bstring_len(t->retained_msg));
-            /* if (conf->use_ssl == true) */
-            /*    sent = ssl_send_bytes(e->client->ssl, t->retained_msg, */
-            /*                          bstring_len(t->retained_msg)); */
-            /* else */
-            /*     sent = send_bytes(e->client->fd, t->retained_msg, */
-            /*                       bstring_len(t->retained_msg)); */
-
             if (sent < 0)
                 sol_error("Error publishing to %s: %s",
                           e->client->client_id, strerror(errno));
@@ -664,11 +659,6 @@ static int publish_handler(struct io_event *e) {
 
             // TODO subscriber connection instead of FD
             ssize_t sent = send_data(conn, payload, bstring_len(payload));
-            /* if (conf->use_ssl == true) */
-            /*     sent = ssl_send_bytes(sc->ssl, payload, bstring_len(payload)); */
-            /* else */
-            /*     sent = send_bytes(sc->fd, payload, bstring_len(payload)); */
-
             if (sent < 0)
                 sol_error("Error publishing to %s: %s",
                           sc->client_id, strerror(errno));
@@ -1157,6 +1147,7 @@ static void *io_worker(void *arg) {
                      * free resources allocated such as io_event structure and
                      * paired payload
                      */
+                    LOCK;
                     sol_error("Closing connection with %s: %d",
                               event->client->conn->ip, rc); // TODO add strerr
                     // Publish, if present, LWT message
@@ -1165,11 +1156,19 @@ static void *io_worker(void *arg) {
                     event->client->online = false;
                     // Clean resources
                     close_conn(event->client->conn);
+                    // Remove from subscriptions for now
+                    struct list *subs = event->client->session->subscriptions;
+                    struct iterator *it = iter_new(subs, list_iter_next);
+                    if (it->ptr)
+                        do {
+                            topic_del_subscriber(it->ptr, event->client, false);
+                        } while ((it = iter_next(it)) && it->ptr);
                     hashtable_del(sol.clients, event->client->client_id);
                     info.nclients--;
                     info.nconnections--;
                     sol_free(event->data);
                     sol_free(event);
+                    UNLOCK;
                 }
             } else if (e_events[i].events & EPOLLOUT) {
 
@@ -1325,6 +1324,7 @@ static void publish_message(const struct mqtt_publish *p) {
 
     do {
 
+        LOCK;
         struct subscriber *sub = it->ptr;
         struct sol_client *sc = sub->client;
 
@@ -1361,6 +1361,7 @@ static void publish_message(const struct mqtt_publish *p) {
         info.messages_sent++;
 
         sol_free(packed);
+        UNLOCK;
     } while ((it = iter_next(it)) && it->ptr != NULL);
 }
 
@@ -1499,6 +1500,11 @@ static int client_destructor(struct hashtable_entry *entry) {
 
     if (client->conn)
         sol_free(client->conn);
+
+    if (client->session) {
+        list_destroy(client->session->subscriptions, 0);
+        sol_free(client->session);
+    }
 
     sol_free(client);
 

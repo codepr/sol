@@ -91,7 +91,7 @@ struct sol_client {
     bool online;  // just a boolean will be fine for now
     char *client_id;
     struct connection *conn;
-    struct session session;
+    struct session *session;
     unsigned long last_action_time;
     struct mqtt_publish *lwt_msg;
 };
