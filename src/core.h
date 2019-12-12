@@ -93,14 +93,13 @@ struct sol_client {
     char *client_id;
     char ip_addr[INET_ADDRSTRLEN + 1];
     int fd;
+    struct connection *conn;
     struct session session;
     unsigned long last_action_time;
     struct mqtt_publish *lwt_msg;
     // Just in case of SSL communication, otherwise unused
     SSL_CTX *ssl_ctx;
     SSL *ssl;
-    BIO *bio_in;
-    BIO *bio_out;
 };
 
 struct subscriber {
@@ -108,6 +107,8 @@ struct subscriber {
     struct sol_client *client;
     unsigned long last_action_time;
 };
+
+struct sol_client sol_client_new(void);
 
 struct pending_message *pending_message_new(int, union mqtt_packet *,
                                             int, size_t);

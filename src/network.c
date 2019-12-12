@@ -463,6 +463,26 @@ err:
     return -1;
 }
 
+struct connection *connection_new(const SSL_CTX *ssl_ctx) {
+    struct connection *conn = sol_malloc(sizeof(*conn));
+    conn->fd = -1;
+    conn->ssl = NULL; // Will be filled in case of TLS connection on accept
+    conn->ctx = (SSL_CTX *) ssl_ctx;
+    if (ssl_ctx) {
+        // We need a TLS connection
+        conn->accept = conn_tls_accept;
+        conn->send = conn_tls_send;
+        conn->recv = conn_tls_recv;
+        conn->close = conn_tls_close;
+    } else {
+        conn->accept = conn_accept;
+        conn->send = conn_send;
+        conn->recv = conn_recv;
+        conn->close = conn_close;
+    }
+    return conn;
+}
+
 int conn_accept(struct connection *c, int fd) {
     int ret = accept_connection(fd, c->ip);
     c->fd = ret;

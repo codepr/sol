@@ -54,6 +54,8 @@ struct connection {
     void (*close) (struct connection *);
 };
 
+struct connection *connection_new(const SSL_CTX *);
+
 /*
  * Main connection functions, meant to be set as function pointer to a struct
  * connection handle
