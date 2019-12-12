@@ -29,6 +29,16 @@
 #include "util.h"
 #include "core.h"
 
+struct sol_client *sol_client_new(struct connection *c) {
+    struct sol_client *client = sol_malloc(sizeof(*client));
+    client->conn = c;
+    client->online = true;
+    client->client_id = NULL;
+    client->last_action_time = time(NULL);
+    client->lwt_msg = NULL;
+    return client;
+}
+
 struct topic *topic_new(const char *name) {
     struct topic *t = sol_malloc(sizeof(*t));
     topic_init(t, name);

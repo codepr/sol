@@ -108,7 +108,7 @@ struct subscriber {
     unsigned long last_action_time;
 };
 
-struct sol_client sol_client_new(void);
+struct sol_client *sol_client_new(struct connection *);
 
 struct pending_message *pending_message_new(int, union mqtt_packet *,
                                             int, size_t);
