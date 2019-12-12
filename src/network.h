@@ -30,8 +30,8 @@
 #define NETWORK_H
 
 #include <stdio.h>
-#include <stdint.h>
 #include <openssl/ssl.h>
+#include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/timerfd.h>
 
@@ -46,7 +46,9 @@
 struct connection {
     int fd;
     SSL *ssl;
-    int (*accept) (struct connection *);
+    SSL_CTX *ctx;
+    char ip[INET_ADDRSTRLEN + 1];
+    int (*accept) (struct connection *, int);
     ssize_t (*send) (struct connection *, const unsigned char *, size_t);
     ssize_t (*recv) (struct connection *, unsigned char *, size_t);
     void (*close) (struct connection *);
@@ -56,7 +58,7 @@ struct connection {
  * Main connection functions, meant to be set as function pointer to a struct
  * connection handle
  */
-int conn_accept(struct connection *);
+int conn_accept(struct connection *, int);
 
 ssize_t conn_send(struct connection *, const unsigned char *, size_t);
 
@@ -66,7 +68,7 @@ void conn_close(struct connection *);
 
 // TLS version of the connection functions
 
-int conn_tls_accept(struct connection *);
+int conn_tls_accept(struct connection *, int);
 
 ssize_t conn_tls_send(struct connection *, const unsigned char *, size_t);
 

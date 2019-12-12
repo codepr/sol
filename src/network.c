@@ -32,7 +32,6 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <arpa/inet.h>
 #include <sys/un.h>
 #include <sys/epoll.h>
 #include <netinet/in.h>
@@ -463,3 +462,45 @@ err:
     fprintf(stderr, "SSL_read(2) - error reading data: %s\n", strerror(errno));
     return -1;
 }
+
+int conn_accept(struct connection *c, int fd) {
+    int ret = accept_connection(fd, c->ip);
+    c->fd = ret;
+    return ret;
+}
+
+ssize_t conn_send(struct connection *c, const unsigned char *buf, size_t len) {
+    return send_bytes(c->fd, buf, len);
+}
+
+ssize_t conn_recv(struct connection *c, unsigned char *buf, size_t len) {
+    return recv_bytes(c->fd, buf, len);
+}
+
+void conn_close(struct connection *c) {
+    close(c->fd);
+}
+
+// TLS version of the connection functions
+// XXX Not so neat, improve later
+int conn_tls_accept(struct connection *c, int fd) {
+    int ret = accept_connection(fd, c->ip);
+    if (ret < 0)
+        return ret;
+    c->ssl = ssl_accept(c->ctx, fd);
+    return 0;
+}
+
+ssize_t conn_tls_send(struct connection *c, const unsigned char *buf, size_t len) {
+    return ssl_send_bytes(c->ssl, buf, len);
+}
+
+ssize_t conn_tls_recv(struct connection *c, unsigned char *buf, size_t len) {
+    return ssl_recv_bytes(c->ssl, buf, len);
+}
+
+void conn_tls_close(struct connection *c) {
+    SSL_free(c->ssl);
+    close(c->fd);
+}
+
