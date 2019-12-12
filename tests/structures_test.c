@@ -117,9 +117,8 @@ static char *test_list_iterator(void) {
     char *x = "abc";
     l = list_push(l, x);
     struct iterator *it = iter_new(l, list_iter_next);
-    struct list_node *n = it->ptr;
     ASSERT("[! list_iter_next]: next iterator didn't point to the right item",
-           strcmp(n->data, x) == 0);
+           strcmp(it->ptr, x) == 0);
     list_destroy(l, 0);
     iter_destroy(it);
     printf(" [list::list_iterator]: OK\n");

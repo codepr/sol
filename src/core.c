@@ -46,9 +46,21 @@ struct topic *topic_new(const char *name) {
     return t;
 }
 
+static int subscriber_destroy(struct hashtable_entry *entry) {
+
+    if (!entry)
+        return -HASHTABLE_ERR;
+
+    // free value field
+    if (entry->val)
+        sol_free(entry->val);
+
+    return HASHTABLE_OK;
+}
+
 void topic_init(struct topic *t, const char *name) {
     t->name = name;
-    t->subscribers = hashtable_new(NULL);
+    t->subscribers = hashtable_new(subscriber_destroy);
     t->retained_msg = NULL;
 }
 
