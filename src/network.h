@@ -39,6 +39,19 @@
 #define UNIX    0
 #define INET    1
 
+/*
+ * Connection abstraction struct, provide a transparent interface for
+ * connection handling
+ */
+struct connection {
+    int fd;
+    SSL *ssl;
+    int (*accept) (struct connection *);
+    ssize_t (*send) (struct connection *, const unsigned char *, size_t);
+    ssize_t (*recv) (struct connection *, unsigned char *, size_t);
+    void (*close) (struct connection *);
+};
+
 /* Set non-blocking socket */
 int set_nonblocking(int);
 
