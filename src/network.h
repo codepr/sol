@@ -52,6 +52,28 @@ struct connection {
     void (*close) (struct connection *);
 };
 
+/*
+ * Main connection functions, meant to be set as function pointer to a struct
+ * connection handle
+ */
+int conn_accept(struct connection *);
+
+ssize_t conn_send(struct connection *, const unsigned char *, size_t);
+
+ssize_t conn_recv(struct connection *, unsigned char *, size_t);
+
+void conn_close(struct connection *);
+
+// TLS version of the connection functions
+
+int conn_tls_accept(struct connection *);
+
+ssize_t conn_tls_send(struct connection *, const unsigned char *, size_t);
+
+ssize_t conn_tls_recv(struct connection *, unsigned char *, size_t);
+
+void conn_tls_close(struct connection *);
+
 /* Set non-blocking socket */
 int set_nonblocking(int);
 
