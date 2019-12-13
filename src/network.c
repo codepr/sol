@@ -334,7 +334,7 @@ SSL_CTX *create_ssl_context() {
 
     SSL_CTX *ctx;
 
-    ctx = SSL_CTX_new(TLS_method());
+    ctx = SSL_CTX_new(TLS_server_method());
     if (!ctx) {
         perror("Unable to create SSL context");
         ERR_print_errors_fp(stderr);
@@ -402,14 +402,13 @@ ssize_t ssl_send_bytes(SSL *ssl, const unsigned char *buf, size_t len) {
     ERR_clear_error();
 
     while (total < len) {
-        n = SSL_write(ssl, buf + total, bytesleft);
-        int err = SSL_get_error(ssl, n);
-        if (err == SSL_ERROR_WANT_WRITE)
-            continue;
-        if (err == SSL_ERROR_ZERO_RETURN
-            || (err == SSL_ERROR_SYSCALL && !errno))
-            return 0;  // Connection closed
-        if (n == -1) {
+        if ((n = SSL_write(ssl, buf + total, bytesleft)) <= 0) {
+            int err = SSL_get_error(ssl, n);
+            if (err == SSL_ERROR_WANT_WRITE || SSL_ERROR_NONE)
+                continue;
+            if (err == SSL_ERROR_ZERO_RETURN
+                || (err == SSL_ERROR_SYSCALL && !errno))
+                return 0;  // Connection closed
             if (errno == EAGAIN || errno == EWOULDBLOCK)
                 break;
             else
@@ -436,12 +435,12 @@ ssize_t ssl_recv_bytes(SSL *ssl, unsigned char *buf, size_t bufsize) {
 
     while (total < (ssize_t) bufsize) {
 
-        if ((n = SSL_read(ssl, buf, bufsize - total)) < 0) {
-
+        if ((n = SSL_read(ssl, buf, bufsize - total)) <= 0) {
             int err = SSL_get_error(ssl, n);
-            if (err == SSL_ERROR_WANT_READ)
+            if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_NONE)
                 continue;
-            if (err == SSL_ERROR_ZERO_RETURN || err == SSL_ERROR_SYSCALL)
+            if (err == SSL_ERROR_ZERO_RETURN
+                || (err == SSL_ERROR_SYSCALL && !errno))
                 return 0;  // Connection closed
             if (errno == EAGAIN || errno == EWOULDBLOCK)
                 break;

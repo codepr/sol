@@ -308,6 +308,7 @@ int hashtable_del(HashTable *table, const char *key) {
 
                 /* Destroy the entry */
                 table->destructor(&table->entries[curr]);
+                table->entries[curr].val = NULL;
 
                 return HASHTABLE_OK;
             }
@@ -521,7 +522,7 @@ void hashtable_iter_next(struct iterator *it) {
         return;
 
     for (size_t i = it->index; i < table->table_size; i++) {
-        if (table->entries[i].taken == true) {
+        if (table->entries[i].taken == true && table->entries[i].val) {
             it->ptr = table->entries[i].val;
             it->index = i + 1;
             break;

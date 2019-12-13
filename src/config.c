@@ -318,7 +318,7 @@ void config_set_default(void) {
 
 void config_print(void) {
     if (config.loglevel < WARNING) {
-        const char *sfamily = config.socket_family == UNIX ? "Unix" : "Tcp";
+        const char *sfamily = config.socket_family == UNIX ? "UNIX" : "TCP";
         const char *llevel = NULL;
         for (int i = 0; i < 4; i++) {
             if (lmap[i].loglevel == config.loglevel)

@@ -457,7 +457,19 @@ static int disconnect_handler(struct io_event *e) {
     LOCK;
 
     /* Handle disconnection request from client */
+    e->client->online = false;
+    // Clean resources
     close_conn(e->client->conn);
+    // Remove from subscriptions for now
+    struct list *subs = e->client->session->subscriptions;
+    struct iterator *it = iter_new(subs, list_iter_next);
+    if (it->ptr)
+        do {
+            sol_debug("Deleting %s from topic %s",
+                      e->client->client_id, ((struct topic *) it->ptr)->name);
+            topic_del_subscriber(it->ptr, e->client, false);
+        } while ((it = iter_next(it)) && it->ptr);
+
     hashtable_del(sol.clients, e->client->client_id);
 
     // Update stats
@@ -897,24 +909,29 @@ exit:
 static ssize_t recv_packet(struct connection *c, unsigned char **buf,
                            unsigned char *header) {
 
-    ssize_t nbytes = 0;
-    unsigned char *tmpbuf = *buf;
+    ssize_t ret = 0;
+    unsigned char *bufptr = *buf;
 
     /* Read the first byte, it should contain the message type code */
-    nbytes = recv_data(c, *buf, 4);
+    ret = recv_data(c, *buf, 2);
 
-    if (conf->use_ssl && (nbytes == SSL_ERROR_WANT_READ))
-        return nbytes;
 
-    if (nbytes <= 0)
+    if (ret <= 0)
         return -ERRCLIENTDC;
 
-    *header = *tmpbuf;
-    tmpbuf++;
+    *header = *bufptr;
+    bufptr++;
+    unsigned opcode = *header >> 4;
+    unsigned pos = 0;
 
     /* Check for OPCODE, if an unknown OPCODE is received return an error */
-    if (DISCONNECT < (*header >> 4) || CONNECT > (*header >> 4))
+    if (DISCONNECT < opcode || CONNECT > opcode)
         return -ERRPACKETERR;
+
+    if (opcode > UNSUBSCRIBE)
+        goto exit;
+
+    ret += recv_data(c, *buf + 2, 2);
 
     /*
      * Read remaning length bytes which starts at byte 2 and can be long to 4
@@ -922,16 +939,14 @@ static ssize_t recv_packet(struct connection *c, unsigned char **buf,
      * length.
      */
     ssize_t n = 0;
-
-    unsigned pos = 0;
-    unsigned long long tlen = mqtt_decode_length(&tmpbuf, &pos);
+    unsigned long long tlen = mqtt_decode_length(&bufptr, &pos);
 
     /*
      * Set return code to -ERRMAXREQSIZE in case the total packet len exceeds
      * the configuration limit `max_request_size`
      */
     if (tlen > conf->max_request_size) {
-        nbytes = -ERRMAXREQSIZE;
+        ret = -ERRMAXREQSIZE;
         goto exit;
     }
 
@@ -944,28 +959,28 @@ static ssize_t recv_packet(struct connection *c, unsigned char **buf,
 
     /* Read remaining bytes to complete the packet */
     while (remaining_bytes > 0) {
-        n = recv_data(c, tmpbuf + offset, remaining_bytes);
+        n = recv_data(c, bufptr + offset, remaining_bytes);
         if (n < 0)
             goto err;
         remaining_bytes -= n;
-        nbytes += n;
+        ret += n;
         offset += n;
     }
 
-    nbytes -= (pos + 1);
+    ret -= (pos + 1);
 
 exit:
 
     *buf += pos + 1;
 
-    return nbytes;
+    return ret;
 
 err:
 
     // TODO move this out of the function (LWT handling)
     close_conn(c);
 
-    return nbytes;
+    return ret;
 
 }
 
@@ -983,9 +998,6 @@ static int read_data(struct connection *c, unsigned char *buf,
      * we know if the packet is ready to be deserialized and used.
      */
     bytes = recv_packet(c, &buf, &header);
-
-    if (conf->use_ssl && bytes == SSL_ERROR_WANT_READ)
-        return SSL_ERROR_WANT_READ;
 
     /*
      * Looks like we got a client disconnection.
@@ -1087,10 +1099,7 @@ static void *io_worker(void *arg) {
                  */
                 struct connection *c = event->client->conn;
                 int rc = read_data(c, buffer, event->data);
-                if (conf->use_ssl && rc == SSL_ERROR_WANT_READ) {
-                    epoll_mod(epoll->io_epollfd,
-                              c->fd, EPOLLIN, event->client);
-                } else if (rc == 0) {
+                if (rc == 0) {
                     /*
                      * All is ok, raise an event to the worker poll EPOLL and
                      * link it with the IO event containing the decode payload
