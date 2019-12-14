@@ -100,6 +100,7 @@ struct subscriber {
     unsigned qos;
     struct sol_client *client;
     unsigned long last_action_time;
+    unsigned refs;
 };
 
 struct sol_client *sol_client_new(struct connection *);

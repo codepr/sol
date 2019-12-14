@@ -52,8 +52,13 @@ static int subscriber_destroy(struct hashtable_entry *entry) {
         return -HASHTABLE_ERR;
 
     // free value field
-    if (entry->val)
-        sol_free(entry->val);
+    if (entry->val) {
+        struct subscriber *sub = entry->val;
+        if (sub->refs == 1)
+            sol_free(entry->val);
+        else
+            sub->refs--;
+    }
 
     return HASHTABLE_OK;
 }
@@ -71,6 +76,7 @@ void topic_add_subscriber(struct topic *t,
     struct subscriber *sub = sol_malloc(sizeof(*sub));
     sub->client = client;
     sub->qos = qos;
+    sub->refs = 1;
     hashtable_put(t->subscribers, sub->client->client_id, sub);
 
     // It must be added to the session if cleansession is false

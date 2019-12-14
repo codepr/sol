@@ -444,7 +444,8 @@ static void rec_sub(struct trie_node *node, void *arg) {
         return;
     struct topic *t = node->data;
     struct subscriber *s = arg;
-    sol_debug("Adding subscriber %s to topic %s",
+    s->refs++;
+    sol_debug("Removing subscriber %s to topic %s",
               s->client->client_id, t->name);
     hashtable_put(t->subscribers, s->client->client_id, s);
     list_push(s->client->session->subscriptions, t);
@@ -527,6 +528,7 @@ static int subscribe_handler(struct io_event *e) {
             struct subscriber *sub = sol_malloc(sizeof(*sub));
             sub->client = e->client;
             sub->qos = s->tuples[i].qos;
+            sub->refs = 1;
             trie_prefix_map(sol.topics.root, topic, rec_sub, sub);
         }
 
