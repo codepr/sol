@@ -74,9 +74,6 @@ void sol_log(int level, const char *fmt, ...) {
     memcpy(msg + MAX_LOG_SIZE, "...", 3);
     msg[MAX_LOG_SIZE + 3] = '\0';
 
-    // Distinguish message level prefix
-    const char *mark = "#i*!";
-
     // Open two handler, one for standard output and a second for the
     // persistent log file
     FILE *fp = stdout;
@@ -84,9 +81,9 @@ void sol_log(int level, const char *fmt, ...) {
     if (!fp)
         return;
 
-    fprintf(fp, "%lu %c %s\n", (unsigned long) time(NULL), mark[level], msg);
+    fprintf(fp, "%lu %s\n", (unsigned long) time(NULL), msg);
     if (fh)
-        fprintf(fh, "%lu %c %s\n", (unsigned long) time(NULL), mark[level], msg);
+        fprintf(fh, "%lu %s\n", (unsigned long) time(NULL), msg);
 
     fflush(fp);
     if (fh)
