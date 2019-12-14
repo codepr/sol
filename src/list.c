@@ -265,15 +265,14 @@ struct list_node *list_remove_node(List *list, void *data, compare_func cmp) {
 void list_iter_next(struct iterator *it) {
     if (!it)
         return;
-    void *data = NULL;
     if (!it->ptr)
         it->ptr = ((List *) it->iterable)->head->data;
     else {
-        data = ((struct list_node *) it->ptr)->next;
-        if (data)
-            it->ptr = ((struct list_node *) data)->data;
-        else
-            it->ptr = NULL;
+        int count = 0;
+        struct list_node *cursor = ((List *) it->iterable)->head;
+        while (count++ < it->index && cursor)
+            cursor = cursor->next;
+        it->ptr = cursor ? cursor->data : NULL;
     }
     it->index++;
 }
