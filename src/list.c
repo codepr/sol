@@ -265,7 +265,7 @@ struct list_node *list_remove_node(List *list, void *data, compare_func cmp) {
 void list_iter_next(struct iterator *it) {
     if (!it)
         return;
-    if (!it->ptr)
+    if (!it->ptr && ((List *) it->iterable)->head)
         it->ptr = ((List *) it->iterable)->head->data;
     else {
         int count = 0;

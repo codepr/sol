@@ -356,7 +356,9 @@ static int connect_handler(struct io_event *e) {
 
     response->connack = *mqtt_packet_connack(CONNACK_B, connect_flags, rc);
 
-    e->reply = bstring_copy(pack_mqtt_packet(response, CONNACK), MQTT_ACK_LEN);
+    unsigned char *packed = pack_mqtt_packet(response, CONNACK);
+    e->reply = bstring_copy(packed, MQTT_ACK_LEN);
+    sol_free(packed);
 
     log_debug("Sending CONNACK to %s (%u, %u)",
               c->payload.client_id,
@@ -470,7 +472,7 @@ static int disconnect_handler(struct io_event *e) {
                       e->client->client_id, ((struct topic *) it->ptr)->name);
             topic_del_subscriber(it->ptr, e->client, false);
         } while ((it = iter_next(it)) && it->ptr);
-
+    iter_destroy(it);
     hashtable_del(sol.clients, e->client->client_id);
 
     // Update stats
@@ -692,6 +694,7 @@ static int publish_handler(struct io_event *e) {
                           p->payloadlen);
             } while ((it = iter_next(it)) && it->ptr != NULL);
         }
+        iter_destroy(it);
     }
 
     if (qos == AT_MOST_ONCE)
@@ -1146,6 +1149,7 @@ static void *io_worker(void *arg) {
                                       event->client->client_id, ((struct topic *) it->ptr)->name);
                             topic_del_subscriber(it->ptr, event->client, false);
                         } while ((it = iter_next(it)) && it->ptr);
+                    iter_destroy(it);
                     /* hashtable_del(sol.clients, event->client->client_id); */
                     info.nclients--;
                     info.nconnections--;
