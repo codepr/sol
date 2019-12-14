@@ -704,6 +704,7 @@ static int publish_handler(struct io_event *e) {
     }
 
     sol_free(payload);
+    mqtt_packet_release(e->data, PUBLISH);
 
     if (qos == AT_MOST_ONCE)
         goto exit;
@@ -729,9 +730,11 @@ static int publish_handler(struct io_event *e) {
     unsigned char *packed = pack_mqtt_packet(e->data, ptype);
     e->reply = bstring_copy(packed, MQTT_ACK_LEN);
     sol_free(packed);
+
     rc = REPLY;
 
 exit:
+    sol_free(e->data);
 
     UNLOCK;
 
@@ -1177,6 +1180,7 @@ static void *io_worker(void *arg) {
                 if (sent <= 0 || event->rc == RC_NOT_AUTHORIZED
                     || event->rc == RC_BAD_USERNAME_OR_PASSWORD) {
                     log_info("Closing connection with %s", c->ip);
+                    event->client->online = false;
                     close_conn(c);
                 } else {
                     /*
@@ -1314,8 +1318,10 @@ static void publish_message(const struct mqtt_publish *p) {
     ssize_t sent = 0L;
 
     // first run check
-    if (!it->ptr)
+    if (!it->ptr) {
+        iter_destroy(it);
         return;
+    }
 
     LOCK;
     do {
@@ -1496,8 +1502,11 @@ static int client_destructor(struct hashtable_entry *entry) {
     if (client->client_id)
         sol_free(client->client_id);
 
-    if (client->conn)
+    if (client->conn) {
+        if (client->online == true)
+            close_conn(client->conn);
         sol_free(client->conn);
+    }
 
     if (client->session) {
         list_destroy(client->session->subscriptions, 0);
