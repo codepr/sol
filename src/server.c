@@ -278,7 +278,7 @@ static int connect_handler(struct io_event *e) {
         // Already connected client, 2 CONNECT packet should be interpreted as
         // a violation of the protocol, causing disconnection of the client
 
-        sol_info("Received double CONNECT from %s, disconnecting client",
+        log_info("Received double CONNECT from %s, disconnecting client",
                  c->payload.client_id);
 
         e->client->online = false;
@@ -288,7 +288,7 @@ static int connect_handler(struct io_event *e) {
         goto clientdc;
     }
 
-    sol_info("New client connected as %s (c%i, k%u)",
+    log_info("New client connected as %s (c%i, k%u)",
              c->payload.client_id,
              c->bits.clean_session,
              c->payload.keepalive);
@@ -358,7 +358,7 @@ static int connect_handler(struct io_event *e) {
 
     e->reply = bstring_copy(pack_mqtt_packet(response, CONNACK), MQTT_ACK_LEN);
 
-    sol_debug("Sending CONNACK to %s (%u, %u)",
+    log_debug("Sending CONNACK to %s (%u, %u)",
               c->payload.client_id,
               session_present, rc);
 
@@ -392,7 +392,7 @@ bad_auth:
         e->reply = bstring_copy(pack_mqtt_packet(response, CONNACK),
                                 MQTT_ACK_LEN);
 
-        sol_debug("Sending CONNACK to %s (%u, %u)",
+        log_debug("Sending CONNACK to %s (%u, %u)",
                   c->payload.client_id,
                   session_present, RC_BAD_USERNAME_OR_PASSWORD);  // TODO check for session
 
@@ -423,7 +423,7 @@ not_authorized:
         e->reply = bstring_copy(pack_mqtt_packet(response, CONNACK),
                                 MQTT_ACK_LEN);
 
-        sol_debug("Sending CONNACK to %s (%u, %u)",
+        log_debug("Sending CONNACK to %s (%u, %u)",
                   c->payload.client_id,
                   session_present, RC_NOT_AUTHORIZED); // TODO check for session
 
@@ -445,7 +445,7 @@ static void rec_sub(struct trie_node *node, void *arg) {
     struct topic *t = node->data;
     struct subscriber *s = arg;
     s->refs++;
-    sol_debug("Removing subscriber %s to topic %s",
+    log_debug("Adding subscriber %s to topic %s",
               s->client->client_id, t->name);
     hashtable_put(t->subscribers, s->client->client_id, s);
     list_push(s->client->session->subscriptions, t);
@@ -453,7 +453,7 @@ static void rec_sub(struct trie_node *node, void *arg) {
 
 static int disconnect_handler(struct io_event *e) {
 
-    sol_debug("Received DISCONNECT from %s", e->client->client_id);
+    log_debug("Received DISCONNECT from %s", e->client->client_id);
 
     LOCK;
 
@@ -466,7 +466,7 @@ static int disconnect_handler(struct io_event *e) {
     struct iterator *it = iter_new(subs, list_iter_next);
     if (it->ptr)
         do {
-            sol_debug("Deleting %s from topic %s",
+            log_debug("Removing %s from topic %s",
                       e->client->client_id, ((struct topic *) it->ptr)->name);
             topic_del_subscriber(it->ptr, e->client, false);
         } while ((it = iter_next(it)) && it->ptr);
@@ -500,7 +500,7 @@ static int subscribe_handler(struct io_event *e) {
     /* Subscribe packets contains a list of topics and QoS tuples */
     for (unsigned i = 0; i < s->tuples_len; i++) {
 
-        sol_debug("Received SUBSCRIBE from %s", c->client_id);
+        log_debug("Received SUBSCRIBE from %s", c->client_id);
 
         /*
          * Check if the topic exists already or in case create it and store in
@@ -508,7 +508,7 @@ static int subscribe_handler(struct io_event *e) {
          */
         char *topic = (char *) s->tuples[i].topic;
 
-        sol_debug("\t%s (QoS %i)", topic, s->tuples[i].qos);
+        log_debug("\t%s (QoS %i)", topic, s->tuples[i].qos);
 
         LOCK;
 
@@ -540,7 +540,7 @@ static int subscribe_handler(struct io_event *e) {
             ssize_t sent = send_data(e->client->conn, t->retained_msg,
                                      bstring_len(t->retained_msg));
             if (sent < 0)
-                sol_error("Error publishing to %s: %s",
+                log_error("Error publishing to %s: %s",
                           e->client->client_id, strerror(errno));
 
             info.messages_sent++;
@@ -562,7 +562,7 @@ static int subscribe_handler(struct io_event *e) {
     unsigned char *packed = pack_mqtt_packet(&pkt, SUBACK);
     size_t len = MQTT_HEADER_LEN + sizeof(uint16_t) + s->tuples_len;
 
-    sol_debug("Sending SUBACK to %s", c->client_id);
+    log_debug("Sending SUBACK to %s", c->client_id);
 
     e->reply = bstring_copy(packed, len);
     sol_free(packed);
@@ -574,7 +574,7 @@ static int unsubscribe_handler(struct io_event *e) {
 
     struct sol_client *c = e->client;
 
-    sol_debug("Received UNSUBSCRIBE from %s", c->client_id);
+    log_debug("Received UNSUBSCRIBE from %s", c->client_id);
 
     struct topic *t = NULL;
     for (int i = 0; i < e->data->unsubscribe.tuples_len; ++i) {
@@ -587,7 +587,7 @@ static int unsubscribe_handler(struct io_event *e) {
     e->data->ack = *mqtt_packet_ack(UNSUBACK_B, e->data->unsubscribe.pkt_id);
     unsigned char *packed = pack_mqtt_packet(e->data, UNSUBACK);
 
-    sol_debug("Sending UNSUBACK to %s", c->client_id);
+    log_debug("Sending UNSUBACK to %s", c->client_id);
 
     e->reply = bstring_copy(packed, MQTT_ACK_LEN);
     sol_free(packed);
@@ -601,7 +601,7 @@ static int publish_handler(struct io_event *e) {
     struct sol_client *c = e->client;
     struct mqtt_publish *p = &e->data->publish;
 
-    sol_debug("Received PUBLISH from %s (d%i, q%u, r%i, m%u, %s, ... (%llu bytes))",
+    log_debug("Received PUBLISH from %s (d%i, q%u, r%i, m%u, %s, ... (%llu bytes))",
               c->client_id,
               p->header.bits.dup,
               p->header.bits.qos,
@@ -674,7 +674,7 @@ static int publish_handler(struct io_event *e) {
                 // TODO subscriber connection instead of FD
                 ssize_t sent = send_data(conn, payload, bstring_len(payload));
                 if (sent < 0)
-                    sol_error("Error publishing to %s: %s",
+                    log_error("Error publishing to %s: %s",
                               sc->client_id, strerror(errno));
 
                 info.messages_sent++;
@@ -682,7 +682,7 @@ static int publish_handler(struct io_event *e) {
                 // Update information stats
                 info.bytes_sent += sent;
 
-                sol_debug("Sending PUBLISH to %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
+                log_debug("Sending PUBLISH to %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
                           sc->client_id,
                           p->header.bits.dup,
                           p->header.bits.qos,
@@ -701,12 +701,12 @@ static int publish_handler(struct io_event *e) {
     size_t acklen = MQTT_HEADER_LEN + sizeof(uint16_t) + sizeof(uint8_t);
 
     if (qos == AT_LEAST_ONCE) {
-        sol_debug("Sending PUBACK to %s", c->client_id);
+        log_debug("Sending PUBACK to %s", c->client_id);
         e->data->ack = *mqtt_packet_ack(PUBACK_B, p->pkt_id);
         ptype = PUBACK;
     } else if (qos == EXACTLY_ONCE) {
         // TODO add to a hashtable to track PUBREC clients last
-        sol_debug("Sending PUBREC to %s", c->client_id);
+        log_debug("Sending PUBREC to %s", c->client_id);
         e->data->ack = *mqtt_packet_ack(PUBREC_B, p->pkt_id);
         ptype = PUBREC;
         sol.out_pending_acks[p->pkt_id] =
@@ -733,7 +733,7 @@ exit:
 
 static int puback_handler(struct io_event *e) {
 
-    sol_debug("Received PUBACK from %s", e->client->client_id);
+    log_debug("Received PUBACK from %s", e->client->client_id);
 
     // TODO Remove from pending PUBACK clients map
 
@@ -751,7 +751,7 @@ static int puback_handler(struct io_event *e) {
 
 static int pubrec_handler(struct io_event *e) {
     struct sol_client *c = e->client;
-    sol_debug("Received PUBREC from %s", c->client_id);
+    log_debug("Received PUBREC from %s", c->client_id);
     mqtt_pubrel *pubrel = mqtt_packet_ack(PUBREL_B, e->data->ack.pkt_id);
     e->data->ack = *pubrel;
     unsigned char *packed = pack_mqtt_packet(e->data, PUBREC);
@@ -767,17 +767,17 @@ static int pubrec_handler(struct io_event *e) {
             sol.out_pending_acks[e->data->ack.pkt_id]->ssl = c->conn->ssl;
     }
 
-    sol_debug("Sending PUBREL to %s", c->client_id);
+    log_debug("Sending PUBREL to %s", c->client_id);
 
     return REPLY;
 }
 
 static int pubrel_handler(struct io_event *e) {
-    sol_debug("Received PUBREL from %s", e->client->client_id);
+    log_debug("Received PUBREL from %s", e->client->client_id);
     mqtt_pubcomp *pubcomp = mqtt_packet_ack(PUBCOMP_B, e->data->ack.pkt_id);
     e->data->ack = *pubcomp;
     unsigned char *packed = pack_mqtt_packet(e->data, PUBCOMP);
-    sol_debug("Sending PUBCOMP to %s", e->client->client_id);
+    log_debug("Sending PUBCOMP to %s", e->client->client_id);
     e->reply = bstring_copy(packed, MQTT_ACK_LEN);
     sol_free(packed);
     return REPLY;
@@ -788,18 +788,18 @@ static int pubrel_handler(struct io_event *e) {
                          (!(e.events & EPOLLIN) && !(e.events & EPOLLOUT)))
 
 static int pubcomp_handler(struct io_event *e) {
-    sol_debug("Received PUBCOMP from %s", e->client->client_id);
+    log_debug("Received PUBCOMP from %s", e->client->client_id);
     // TODO Remove from pending PUBACK clients map
     return NOREPLY;
 }
 
 static int pingreq_handler(struct io_event *e) {
-    sol_debug("Received PINGREQ from %s", e->client->client_id);
+    log_debug("Received PINGREQ from %s", e->client->client_id);
     e->data->ack.header.byte = PINGRESP_B;
     unsigned char *packed = pack_mqtt_packet(e->data, PINGRESP);
     e->reply = bstring_copy(packed, MQTT_HEADER_LEN);
     sol_free(packed);
-    sol_debug("Sending PINGRESP to %s", e->client->client_id);
+    log_debug("Sending PINGRESP to %s", e->client->client_id);
     return REPLY;
 }
 
@@ -848,7 +848,7 @@ static void accept_loop(struct epoll *epoll) {
                 /* And quit event after that */
                 eventfd_t val;
                 eventfd_read(conf->run, &val);
-                sol_debug("Stopping epoll loop. Thread %p exiting.",
+                log_debug("Stopping epoll loop. Thread %p exiting.",
                           (void *) pthread_self());
                 epoll_mod(epollfd, conf->run, EPOLLIN, NULL);
                 goto exit;
@@ -885,7 +885,7 @@ static void accept_loop(struct epoll *epoll) {
                     info.nclients++;
                     info.nconnections++;
 
-                    sol_info("Connection from %s", conn->ip);
+                    log_info("Connection from %s", conn->ip);
                 }
             }
         }
@@ -1083,7 +1083,7 @@ static void *io_worker(void *arg) {
                 eventfd_t val;
                 eventfd_read(conf->run, &val);
 
-                sol_debug("Stopping epoll loop. Thread %p exiting.",
+                log_debug("Stopping epoll loop. Thread %p exiting.",
                           (void *) pthread_self());
 
                 epoll_mod(epoll->io_epollfd, conf->run, EPOLLIN, NULL);
@@ -1129,7 +1129,7 @@ static void *io_worker(void *arg) {
                      * paired payload
                      */
                     LOCK;
-                    sol_error("Closing connection with %s: %d",
+                    log_error("Closing connection with %s: %d",
                               event->client->conn->ip, rc); // TODO add strerr
                     // Publish, if present, LWT message
                     if (event->client->lwt_msg)
@@ -1142,7 +1142,7 @@ static void *io_worker(void *arg) {
                     struct iterator *it = iter_new(subs, list_iter_next);
                     if (it->ptr)
                         do {
-                            sol_debug("Deleting %s from topic %s",
+                            log_debug("Deleting %s from topic %s",
                                       event->client->client_id, ((struct topic *) it->ptr)->name);
                             topic_del_subscriber(it->ptr, event->client, false);
                         } while ((it = iter_next(it)) && it->ptr);
@@ -1166,7 +1166,7 @@ static void *io_worker(void *arg) {
                 sent = send_data(c, event->reply, bstring_len(event->reply));
                 if (sent <= 0 || event->rc == RC_NOT_AUTHORIZED
                     || event->rc == RC_BAD_USERNAME_OR_PASSWORD) {
-                    sol_info("Closing connection with %s", c->ip);
+                    log_info("Closing connection with %s", c->ip);
                     close_conn(c);
                 } else {
                     /*
@@ -1240,7 +1240,7 @@ static void *worker(void *arg) {
                 /* And quit event after that */
                 eventfd_read(conf->run, &val);
 
-                sol_debug("Stopping epoll loop. Thread %p exiting.",
+                log_debug("Stopping epoll loop. Thread %p exiting.",
                           (void *) pthread_self());
 
                 epoll_mod(epoll->w_epollfd, conf->run, EPOLLIN, NULL);
@@ -1317,7 +1317,7 @@ static void publish_message(const struct mqtt_publish *p) {
         if (!sub->client || sc->online == false)
             continue;
 
-        sol_debug("Sending PUBLISH (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
+        log_debug("Sending PUBLISH (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
                   pkt.publish.header.bits.dup,
                   pkt.publish.header.bits.qos,
                   pkt.publish.header.bits.retain,
@@ -1338,7 +1338,7 @@ static void publish_message(const struct mqtt_publish *p) {
 
         sent = send_data(sc->conn, packed, len);
         if (sent < 0)
-            sol_error("Error publishing to %s: %s",
+            log_error("Error publishing to %s: %s",
                       sc->client_id, strerror(errno));
 
         // Update information stats
@@ -1460,7 +1460,7 @@ static void pending_message_check(void) {
             bstring payload = bstring_copy(pub, sol.out_pending_msgs[i]->size);
             if ((sent = send_bytes(sol.out_pending_msgs[i]->fd,
                                    payload, bstring_len(payload))) < 0)
-                sol_error("Error re-sending %s", strerror(errno));
+                log_error("Error re-sending %s", strerror(errno));
 
             // Update information stats
             info.messages_sent++;
@@ -1604,7 +1604,7 @@ int start_server(const char *addr, const char *port) {
     for (int i = 0; i < WORKERPOOLSIZE; ++i)
         pthread_create(&workers[i], NULL, &worker, &epoll);
 
-    sol_info("Server start");
+    log_info("Server start");
     info.start_time = time(NULL);
 
     // Main thread for accept new connections
@@ -1635,7 +1635,7 @@ int start_server(const char *addr, const char *port) {
 
     pthread_spin_destroy(&spinlock);
 
-    sol_info("Sol v%s exiting", VERSION);
+    log_info("Sol v%s exiting", VERSION);
 
     return 0;
 }

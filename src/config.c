@@ -242,8 +242,8 @@ int config_load(const char *configpath) {
     FILE *fh = fopen(configpath, "r");
 
     if (!fh) {
-        sol_warning("WARNING: Unable to open conf file %s", configpath);
-        sol_warning("To specify a config file run sol -c /path/to/conf");
+        log_warning("WARNING: Unable to open conf file %s", configpath);
+        log_warning("To specify a config file run sol -c /path/to/conf");
         return false;
     }
 
@@ -276,7 +276,7 @@ int config_load(const char *configpath) {
 
         // Ignore eventually incomplete configuration, but notify it
         if (line[0] == '\0') {
-            sol_warning("WARNING: Incomplete configuration '%s' at line %d. "
+            log_warning("WARNING: Incomplete configuration '%s' at line %d. "
                         "Fallback to default.", key, linenr);
             continue;
         }
@@ -324,25 +324,25 @@ void config_print(void) {
             if (lmap[i].loglevel == config.loglevel)
                 llevel = lmap[i].lname;
         }
-        sol_info("Sol v%s is starting", VERSION);
-        sol_info("Network settings:");
-        sol_info("\tSocket family: %s", sfamily);
+        log_info("Sol v%s is starting", VERSION);
+        log_info("Network settings:");
+        log_info("\tSocket family: %s", sfamily);
         if (config.socket_family == UNIX) {
-            sol_info("\tUnix socket: %s", config.hostname);
+            log_info("\tUnix socket: %s", config.hostname);
         } else {
-            sol_info("\tAddress: %s", config.hostname);
-            sol_info("\tPort: %s", config.port);
-            sol_info("\tTcp backlog: %d", config.tcp_backlog);
-            sol_info("\tKeepalive: %d", config.keepalive);
-            sol_info("\tSSL: %d", config.use_ssl);
+            log_info("\tAddress: %s", config.hostname);
+            log_info("\tPort: %s", config.port);
+            log_info("\tTcp backlog: %d", config.tcp_backlog);
+            log_info("\tKeepalive: %d", config.keepalive);
+            log_info("\tSSL: %d", config.use_ssl);
         }
         const char *human_rsize = memory_to_string(config.max_request_size);
-        sol_info("\tMax request size: %s", human_rsize);
-        sol_info("Logging:");
-        sol_info("\tlevel: %s", llevel);
-        sol_info("\tlogpath: %s", config.logpath);
+        log_info("\tMax request size: %s", human_rsize);
+        log_info("Logging:");
+        log_info("\tlevel: %s", llevel);
+        log_info("\tlogpath: %s", config.logpath);
         const char *human_memory = memory_to_string(config.max_memory);
-        sol_info("Max memory: %s", human_memory);
+        log_info("Max memory: %s", human_memory);
         sol_free((char *) human_memory);
         sol_free((char *) human_rsize);
     }
@@ -355,7 +355,7 @@ bool config_read_passwd_file(const char *path, HashTable *auth) {
     FILE *fh = fopen(path, "r");
 
     if (!fh) {
-        sol_warning("WARNING: Unable to open passwd file %s", path);
+        log_warning("WARNING: Unable to open passwd file %s", path);
         return false;
     }
 
