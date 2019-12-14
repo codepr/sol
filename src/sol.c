@@ -37,18 +37,18 @@
 #include "server.h"
 
 // Stops epoll_wait loops by sending an event
-/* static void sigint_handler(int signum) { */
-/*     printf("%d \n", signum); */
-/*     for (int i = 0; i < IOPOOLSIZE + WORKERPOOLSIZE + 1; ++i) { */
-/*         eventfd_write(conf->run, 1); */
-/*         usleep(1500); */
-/*     } */
-/* } */
+static void sigint_handler(int signum) {
+    printf("%d \n", signum);
+    for (int i = 0; i < IOPOOLSIZE + WORKERPOOLSIZE + 1; ++i) {
+        eventfd_write(conf->run, 1);
+        usleep(1500);
+    }
+}
 
 int main (int argc, char **argv) {
 
-    /* signal(SIGINT, sigint_handler); */
-    /* signal(SIGTERM, sigint_handler); */
+    signal(SIGINT, sigint_handler);
+    signal(SIGTERM, sigint_handler);
 
     char *addr = DEFAULT_HOSTNAME;
     char *port = DEFAULT_PORT;

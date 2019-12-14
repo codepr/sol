@@ -850,6 +850,7 @@ static void accept_loop(struct epoll *epoll) {
                 eventfd_read(conf->run, &val);
                 sol_debug("Stopping epoll loop. Thread %p exiting.",
                           (void *) pthread_self());
+                epoll_mod(epollfd, conf->run, EPOLLIN, NULL);
                 goto exit;
             } else if (e_events[i].data.fd == epoll->serverfd) {
 
@@ -1085,6 +1086,7 @@ static void *io_worker(void *arg) {
                 sol_debug("Stopping epoll loop. Thread %p exiting.",
                           (void *) pthread_self());
 
+                epoll_mod(epoll->io_epollfd, conf->run, EPOLLIN, NULL);
                 goto exit;
 
             } else if (e_events[i].events & EPOLLIN) {
@@ -1241,6 +1243,7 @@ static void *worker(void *arg) {
                 sol_debug("Stopping epoll loop. Thread %p exiting.",
                           (void *) pthread_self());
 
+                epoll_mod(epoll->w_epollfd, conf->run, EPOLLIN, NULL);
                 goto exit;
 
             } else if (e_events[i].data.fd == epoll->timerfd[0]) {
