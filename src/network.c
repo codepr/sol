@@ -508,6 +508,7 @@ static ssize_t conn_tls_recv(struct connection *c,
 
 static void conn_tls_close(struct connection *c) {
     SSL_free(c->ssl);
+    SSL_CTX_free(c->ctx);
     close(c->fd);
 }
 

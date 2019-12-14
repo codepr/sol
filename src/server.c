@@ -568,6 +568,8 @@ static int subscribe_handler(struct io_event *e) {
 
     e->reply = bstring_copy(packed, len);
     sol_free(packed);
+    mqtt_packet_release(&pkt, SUBACK);
+    sol_free(suback);
 
     return REPLY;
 }
@@ -639,9 +641,13 @@ static int publish_handler(struct io_event *e) {
     unsigned char *pub = pack_mqtt_packet(e->data, PUBLISH);
     size_t publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
         p->topiclen + p->payloadlen;
+
     if (p->header.bits.qos > AT_MOST_ONCE)
         publen += sizeof(uint16_t);
+
     bstring payload = bstring_copy(pub, publen);
+
+    sol_free(pub);
 
     if (p->header.bits.retain == 1)
         t->retained_msg = bstring_dup(payload);
@@ -696,6 +702,8 @@ static int publish_handler(struct io_event *e) {
         }
         iter_destroy(it);
     }
+
+    sol_free(payload);
 
     if (qos == AT_MOST_ONCE)
         goto exit;
@@ -878,8 +886,7 @@ static void accept_loop(struct epoll *epoll) {
                         break;
 
                     /* Add it to the epoll loop */
-                    epoll_add(epoll->io_epollfd, fd,
-                              EPOLLIN | EPOLLONESHOT, client);
+                    epoll_add(epoll->io_epollfd, fd, EPOLLIN, client);
 
                     /* Rearm server fd to accept new connections */
                     epoll_mod(epollfd, epoll->serverfd, EPOLLIN, NULL);
@@ -1114,8 +1121,7 @@ static void *io_worker(void *arg) {
                      */
                     eventfd_t ev = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
                     event->eventfd = ev;
-                    epoll_add(epoll->w_epollfd, ev,
-                              EPOLLIN | EPOLLONESHOT, event);
+                    epoll_add(epoll->w_epollfd, ev, EPOLLIN, event);
 
                     /* Record last action as of now */
                     event->client->last_action_time = time(NULL);
@@ -1351,6 +1357,9 @@ static void publish_message(const struct mqtt_publish *p) {
 
         sol_free(packed);
     } while ((it = iter_next(it)) && it->ptr != NULL);
+
+    iter_destroy(it);
+
     UNLOCK;
 }
 
@@ -1507,6 +1516,7 @@ static int client_destructor(struct hashtable_entry *entry) {
 static int session_destructor(struct hashtable_entry *entry) {
     if (!entry)
         return -1;
+    sol_free((void *) entry->key);
     struct session *s = entry->val;
     if (s->subscriptions)
         list_destroy(s->subscriptions, 1);
