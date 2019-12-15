@@ -33,7 +33,7 @@ struct sol_client *sol_client_new(struct connection *c) {
     struct sol_client *client = sol_malloc(sizeof(*client));
     client->conn = c;
     client->online = true;
-    client->client_id = NULL;
+    client->client_id[0] = '\0';
     client->last_action_time = time(NULL);
     client->lwt_msg = NULL;
     client->session = sol_session_new();

@@ -196,8 +196,11 @@ static size_t unpack_mqtt_connect(unsigned char *raw,
     raw += 5;
 
     /* Read the client id */
-    if (cid_len > 0)
-        pkt->connect.payload.client_id = unpack_bytes(&raw, cid_len);
+    if (cid_len > 0) {
+        memcpy(pkt->connect.payload.client_id, raw, cid_len);
+        pkt->connect.payload.client_id[cid_len] = '\0';
+        raw += cid_len;
+    }
 
     /* Read the will topic and message if will is set on flags */
     if (pkt->connect.bits.will == 1) {
@@ -564,7 +567,6 @@ void mqtt_packet_release(union mqtt_packet *pkt, unsigned type) {
 
     switch (type) {
         case CONNECT:
-            sol_free(pkt->connect.payload.client_id);
             if (pkt->connect.bits.username == 1)
                 sol_free(pkt->connect.payload.username);
             if (pkt->connect.bits.password == 1)

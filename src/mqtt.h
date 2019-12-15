@@ -31,8 +31,9 @@
 #include <stdio.h>
 #include "pack.h"
 
-#define MQTT_HEADER_LEN 2
-#define MQTT_ACK_LEN    4
+#define MQTT_HEADER_LEN     2
+#define MQTT_ACK_LEN        4
+#define MQTT_CLIENT_ID_LEN  24  // including nul char
 
 // Return codes for connect packet
 #define RC_CONNECTION_ACCEPTED              0x00
@@ -103,7 +104,7 @@ struct mqtt_connect {
     };
     struct {
         unsigned short keepalive;
-        unsigned char *client_id;
+        unsigned char client_id[MQTT_CLIENT_ID_LEN];
         unsigned char *username;
         unsigned char *password;
         unsigned char *will_topic;

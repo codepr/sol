@@ -32,6 +32,7 @@
 #include <arpa/inet.h>
 #include "trie.h"
 #include "list.h"
+#include "mqtt.h"
 #include "network.h"
 #include "hashtable.h"
 #include "pack.h"
@@ -89,7 +90,7 @@ struct session {
  */
 struct sol_client {
     bool online;  // just a boolean will be fine for now
-    char *client_id;
+    char client_id[MQTT_CLIENT_ID_LEN];
     struct connection *conn;
     struct session *session;
     unsigned long last_action_time;

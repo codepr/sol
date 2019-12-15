@@ -295,16 +295,15 @@ static int connect_handler(struct io_event *e) {
         }
     }
 
-    if (!c->payload.client_id && c->bits.clean_session == false)
+    if (!c->payload.client_id[0] && c->bits.clean_session == false)
         goto not_authorized;
 
     /*
      * Check for client ID, if not present generate a UUID, otherwise add the
      * client to the sessions map if not already present
      */
-    if (!c->payload.client_id) {
-        c->payload.client_id = sol_malloc(UUID_LEN);
-        generate_uuid((char *) c->payload.client_id);
+    if (!c->payload.client_id[0]) {
+        generate_random_id((char *) c->payload.client_id);
     } else {
         struct session *s = hashtable_get(sol.sessions,
                                           (const char *) c->payload.client_id);
@@ -341,7 +340,6 @@ static int connect_handler(struct io_event *e) {
      * connected, kick him out accordingly to the MQTT v3.1.1 specs.
      */
     size_t cid_len = strlen((const char *) c->payload.client_id);
-    e->client->client_id = sol_malloc(cid_len + 1);
     memcpy(e->client->client_id, c->payload.client_id, cid_len + 1);
     hashtable_put(sol.clients, e->client->client_id, e->client);
 
@@ -1507,9 +1505,6 @@ static int client_destructor(struct hashtable_entry *entry) {
         return -1;
 
     struct sol_client *client = entry->val;
-
-    if (client->client_id)
-        sol_free(client->client_id);
 
     if (client->conn) {
         if (client->online == true)

@@ -38,6 +38,8 @@
 
 #define MAX_LOG_SIZE 119
 
+#define SOL_PREFIX   "sol"
+
 
 enum log_level { DEBUG, INFORMATION, WARNING, ERROR };
 
@@ -46,6 +48,7 @@ bool is_integer(const char *);
 int parse_int(const char *);
 int number_len(size_t);
 int generate_uuid(char *);
+void generate_random_id(char *);
 
 /* Logging */
 void sol_log_init(const char *);
