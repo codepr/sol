@@ -188,7 +188,6 @@ unsigned long unix_time_ns(void) {
 void generate_random_id(char *dest) {
     unsigned long utime_ns = unix_time_ns();
     snprintf(dest, MQTT_CLIENT_ID_LEN - 1, "%s-%lu", SOL_PREFIX, utime_ns);
-    dest[MQTT_CLIENT_ID_LEN] = '\0';
 }
 
 bool check_passwd(const char *passwd, const char *salt) {

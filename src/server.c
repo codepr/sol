@@ -262,11 +262,12 @@ static void set_payload_connack(struct io_event *e, unsigned char rc) {
     unsigned char *packed = pack_mqtt_packet(&response, CONNACK);
     e->reply = bstring_copy(packed, MQTT_ACK_LEN);
     sol_free(packed);
-    if (rc != RC_CONNECTION_ACCEPTED)
+    if (rc != RC_CONNECTION_ACCEPTED) {
         if (e->client->session) {
             list_destroy(e->client->session->subscriptions, 0);
             sol_free(e->client->session);
         }
+    }
 }
 
 static int connect_handler(struct io_event *e) {
@@ -589,6 +590,7 @@ static int unsubscribe_handler(struct io_event *e) {
 
     e->reply = bstring_copy(packed, MQTT_ACK_LEN);
     sol_free(packed);
+    mqtt_packet_release(e->data, UNSUBACK);
 
     return REPLY;
 }
@@ -931,9 +933,11 @@ static ssize_t recv_packet(struct connection *c, unsigned char **buf,
     ssize_t ret = 0;
     unsigned char *bufptr = *buf;
 
-    /* Read the first byte, it should contain the message type code */
+    /*
+     * Read the first two bytes, the first should contain the message type
+     * code
+     */
     ret = recv_data(c, *buf, 2);
-
 
     if (ret <= 0)
         return -ERRCLIENTDC;
@@ -950,6 +954,10 @@ static ssize_t recv_packet(struct connection *c, unsigned char **buf,
     if (opcode > UNSUBSCRIBE)
         goto exit;
 
+    /*
+     * Read 2 extra bytes, because the first 4 bytes could countain the total
+     * size in bytes of the entire packet
+     */
     ret += recv_data(c, *buf + 2, 2);
 
     /*
@@ -1056,6 +1064,13 @@ errdc:
     return -ERRCLIENTDC;
 }
 
+/*
+ * IO worker function, wait for events on a dedicated epoll descriptor which
+ * is shared among multiple threads for input and output only, following the
+ * normal EPOLL semantic, EPOLLIN for incoming bytes to be unpacked and
+ * processed by a worker thread, EPOLLOUT for bytes incoming from a worker
+ * thread, ready to be delivered out.
+ */
 static void *io_worker(void *arg) {
 
     struct epoll *epoll = arg;
@@ -1158,7 +1173,8 @@ static void *io_worker(void *arg) {
                     if (it->ptr)
                         do {
                             log_debug("Deleting %s from topic %s",
-                                      event->client->client_id, ((struct topic *) it->ptr)->name);
+                                      event->client->client_id,
+                                      ((struct topic *) it->ptr)->name);
                             topic_del_subscriber(it->ptr, event->client, false);
                         } while ((it = iter_next(it)) && it->ptr);
                     iter_destroy(it);
@@ -1218,6 +1234,12 @@ exit:
     return NULL;
 }
 
+/*
+ * Worker function, like io_worker, wait for events on a dedicated epoll
+ * descriptor, shared among multiple threads, awaits for events incoming from
+ * the IO workers to be processed and schedule them back to the IO side for
+ * the answer.
+ */
 static void *worker(void *arg) {
 
     struct epoll *epoll = arg;
