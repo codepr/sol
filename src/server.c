@@ -764,9 +764,11 @@ static int puback_handler(struct io_event *e) {
         sol.out_pending_msgs[e->data->ack.pkt_id] = NULL;
     }
 
+    sol_free(e->data);
+
     UNLOCK;
 
-    return REPLY;
+    return NOREPLY;
 }
 
 static int pubrec_handler(struct io_event *e) {

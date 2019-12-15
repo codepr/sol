@@ -99,7 +99,6 @@ struct sol_client {
 struct subscriber {
     unsigned qos;
     struct sol_client *client;
-    unsigned long last_action_time;
     unsigned refs;
 };
 
