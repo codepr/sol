@@ -239,10 +239,11 @@ static void set_payload_connack(struct io_event *e, unsigned char rc) {
     unsigned char *packed = pack_mqtt_packet(&response, CONNACK);
     e->reply = bstring_copy(packed, MQTT_ACK_LEN);
     sol_free(packed);
-    if (e->client->session) {
-        list_destroy(e->client->session->subscriptions, 0);
-        sol_free(e->client->session);
-    }
+    if (rc != RC_CONNECTION_ACCEPTED)
+        if (e->client->session) {
+            list_destroy(e->client->session->subscriptions, 0);
+            sol_free(e->client->session);
+        }
 }
 
 static int connect_handler(struct io_event *e) {
