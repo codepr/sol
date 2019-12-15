@@ -361,29 +361,15 @@ static int connect_handler(struct io_event *e) {
 
     UNLOCK;
 
-    /* Respond with a connack */
-    union mqtt_packet *response = sol_malloc(sizeof(*response));
-
     // TODO check for session already present
 
     if (c->bits.clean_session == false)
         e->client->session->subscriptions = list_new(NULL);
 
-    unsigned char session_present = 0;
-    unsigned char connect_flags = 0 | (session_present & 0x1) << 0;
-    unsigned char rc = 0;  // 0 means connection accepted
+    set_payload_connack(e, RC_CONNECTION_ACCEPTED);
 
-    response->connack = *mqtt_packet_connack(CONNACK_B, connect_flags, rc);
-
-    unsigned char *packed = pack_mqtt_packet(response, CONNACK);
-    e->reply = bstring_copy(packed, MQTT_ACK_LEN);
-    sol_free(packed);
-
-    log_debug("Sending CONNACK to %s (%u, %u)",
-              c->payload.client_id,
-              session_present, rc);
-
-    sol_free(response);
+    log_debug("Sending CONNACK to %s r=%u",
+              c->payload.client_id, RC_CONNECTION_ACCEPTED);
 
     return REPLY;
 
@@ -1175,11 +1161,9 @@ static void *io_worker(void *arg) {
                 if (sent <= 0 || event->rc == RC_NOT_AUTHORIZED
                     || event->rc == RC_BAD_USERNAME_OR_PASSWORD) {
                     log_info("Closing connection with %s", c->ip);
-                    /* event->client->online = false; */
                     close_conn(c);
                     sol_free(event->client->conn);
                     sol_free(event->client);
-                    /* hashtable_del(sol.clients, event->client->client_id); */
                 } else {
                     /*
                      * Rearm descriptor, we're using EPOLLONESHOT feature to
