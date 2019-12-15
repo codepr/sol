@@ -268,7 +268,7 @@ void list_iter_next(struct iterator *it) {
     if (!it->ptr && ((List *) it->iterable)->head)
         it->ptr = ((List *) it->iterable)->head->data;
     else {
-        int count = 0;
+        size_t count = 0;
         struct list_node *cursor = ((List *) it->iterable)->head;
         while (count++ < it->index && cursor)
             cursor = cursor->next;
