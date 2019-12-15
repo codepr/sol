@@ -172,7 +172,6 @@ static const char *sys_topics[SYS_TOPICS] = {
     "$SOL/broker/memory/used"
 };
 
-
 static void publish_stats(void);
 
 static void publish_message(const struct mqtt_publish *);
@@ -221,6 +220,30 @@ static handler *handlers[15] = {
     NULL,
     disconnect_handler
 };
+
+/* Simple error_code to string function, to be refined */
+static const char *solerr(int rc) {
+    switch (rc) {
+        case -ERRCLIENTDC:
+            return "Client disconnected";
+        case -ERRPACKETERR:
+            return "Error reading packet";
+        case -ERRMAXREQSIZE:
+            return "Packet sent exceeds max size accepted";
+        case RC_UNACCEPTABLE_PROTOCOL_VERSION:
+            return "[MQTT] Unknown protocol version";
+        case RC_IDENTIFIER_REJECTED:
+            return "[MQTT] Wrong identifier";
+        case RC_SERVER_UNAVAILABLE:
+            return "[MQTT] Server unavailable";
+        case RC_BAD_USERNAME_OR_PASSWORD:
+            return "[MQTT] Bad username or password";
+        case RC_NOT_AUTHORIZED:
+            return "[MQTT] Not authorized";
+        default:
+            return "Unknown error";
+    }
+}
 
 /*
  * Command handlers
@@ -1123,8 +1146,8 @@ static void *io_worker(void *arg) {
                      * paired payload
                      */
                     LOCK;
-                    log_error("Closing connection with %s: %d",
-                              event->client->conn->ip, rc); // TODO add strerr
+                    log_error("Closing connection with %s: %s",
+                              event->client->conn->ip, solerr(rc));
                     // Publish, if present, LWT message
                     if (event->client->lwt_msg)
                         publish_message(event->client->lwt_msg);
@@ -1161,7 +1184,8 @@ static void *io_worker(void *arg) {
                 sent = send_data(c, event->reply, bstring_len(event->reply));
                 if (sent <= 0 || event->rc == RC_NOT_AUTHORIZED
                     || event->rc == RC_BAD_USERNAME_OR_PASSWORD) {
-                    log_info("Closing connection with %s", c->ip);
+                    log_info("Closing connection with %s: %s",
+                             c->ip, solerr(event->rc));
                     close_conn(c);
                     sol_free(event->client->conn);
                     sol_free(event->client);
