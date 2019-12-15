@@ -226,6 +226,25 @@ static handler *handlers[15] = {
  * Command handlers
  */
 
+static void set_payload_connack(struct io_event *e, unsigned char rc) {
+    union mqtt_packet response;
+    unsigned char session_present = 0;
+    unsigned char connect_flags = 0 | (session_present & 0x1) << 0;
+
+    response.connack = (struct mqtt_connack) {
+        .header = { .byte = CONNACK_B },
+            .byte = connect_flags,
+            .rc = rc
+    };
+    unsigned char *packed = pack_mqtt_packet(&response, CONNACK);
+    e->reply = bstring_copy(packed, MQTT_ACK_LEN);
+    sol_free(packed);
+    if (e->client->session) {
+        list_destroy(e->client->session->subscriptions, 0);
+        sol_free(e->client->session);
+    }
+}
+
 static int connect_handler(struct io_event *e) {
 
     LOCK;
@@ -379,66 +398,30 @@ clientdc:
     return CLIENTDC;
 
 bad_auth:
-    {
-        /* Respond with a connack */
-        union mqtt_packet *response = sol_malloc(sizeof(*response));
-        unsigned char session_present = 0;
-        unsigned char connect_flags = 0 | (session_present & 0x1) << 0;
+    log_debug("Sending CONNACK to %s rc=%u",
+              c->payload.client_id, RC_BAD_USERNAME_OR_PASSWORD);  // TODO check for session
+    set_payload_connack(e, RC_BAD_USERNAME_OR_PASSWORD);
 
-        response->connack = (struct mqtt_connack) {
-            .header = { .byte = CONNACK_B },
-            .byte = connect_flags,
-            .rc = RC_BAD_USERNAME_OR_PASSWORD
-        };
+    // Update stats
+    info.nclients--;
+    info.nconnections--;
 
-        e->reply = bstring_copy(pack_mqtt_packet(response, CONNACK),
-                                MQTT_ACK_LEN);
+    UNLOCK;
 
-        log_debug("Sending CONNACK to %s (%u, %u)",
-                  c->payload.client_id,
-                  session_present, RC_BAD_USERNAME_OR_PASSWORD);  // TODO check for session
-
-        sol_free(response);
-
-        // Update stats
-        info.nclients--;
-        info.nconnections--;
-
-        UNLOCK;
-
-        return RC_BAD_USERNAME_OR_PASSWORD;
-    }
+    return RC_BAD_USERNAME_OR_PASSWORD;
 
 not_authorized:
-    {
-        /* Respond with a connack */
-        union mqtt_packet *response = sol_malloc(sizeof(*response));
-        unsigned char session_present = 0;
-        unsigned char connect_flags = 0 | (session_present & 0x1) << 0;
+    log_debug("Sending CONNACK to %s rc=%u",
+              c->payload.client_id, RC_NOT_AUTHORIZED); // TODO check for session
+    set_payload_connack(e, RC_NOT_AUTHORIZED);
 
-        response->connack = (struct mqtt_connack) {
-            .header = { .byte = CONNACK_B },
-            .byte = connect_flags,
-            .rc = RC_NOT_AUTHORIZED
-        };
+    // Update stats
+    info.nclients--;
+    info.nconnections--;
 
-        e->reply = bstring_copy(pack_mqtt_packet(response, CONNACK),
-                                MQTT_ACK_LEN);
+    UNLOCK;
 
-        log_debug("Sending CONNACK to %s (%u, %u)",
-                  c->payload.client_id,
-                  session_present, RC_NOT_AUTHORIZED); // TODO check for session
-
-        sol_free(response);
-
-        // Update stats
-        info.nclients--;
-        info.nconnections--;
-
-        UNLOCK;
-
-        return RC_NOT_AUTHORIZED;
-    }
+    return RC_NOT_AUTHORIZED;
 }
 
 static void rec_sub(struct trie_node *node, void *arg) {
@@ -1192,9 +1175,11 @@ static void *io_worker(void *arg) {
                 if (sent <= 0 || event->rc == RC_NOT_AUTHORIZED
                     || event->rc == RC_BAD_USERNAME_OR_PASSWORD) {
                     log_info("Closing connection with %s", c->ip);
-                    event->client->online = false;
+                    /* event->client->online = false; */
                     close_conn(c);
-                    hashtable_del(sol.clients, event->client->client_id);
+                    sol_free(event->client->conn);
+                    sol_free(event->client);
+                    /* hashtable_del(sol.clients, event->client->client_id); */
                 } else {
                     /*
                      * Rearm descriptor, we're using EPOLLONESHOT feature to
@@ -1556,6 +1541,7 @@ static int auth_destructor(struct hashtable_entry *entry) {
 
     if (!entry)
         return -1;
+    sol_free((void *) entry->key);
     sol_free(entry->val);
 
     return 0;
