@@ -491,6 +491,8 @@ static void conn_close(struct connection *c) {
 // XXX Not so neat, improve later
 static int conn_tls_accept(struct connection *c, int serverfd) {
     int fd = accept_connection(serverfd, c->ip);
+    if (fd < 0)
+        return fd;
     c->ssl = ssl_accept(c->ctx, fd);
     c->fd = fd;
     return fd;
@@ -507,9 +509,10 @@ static ssize_t conn_tls_recv(struct connection *c,
 }
 
 static void conn_tls_close(struct connection *c) {
-    SSL_free(c->ssl);
-    SSL_CTX_free(c->ctx);
-    close(c->fd);
+    if (c->ssl)
+        SSL_free(c->ssl);
+    if (c->fd > 0)
+        close(c->fd);
 }
 
 struct connection *conn_new(const SSL_CTX *ssl_ctx) {

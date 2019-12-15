@@ -475,6 +475,9 @@ static int disconnect_handler(struct io_event *e) {
     iter_destroy(it);
     hashtable_del(sol.clients, e->client->client_id);
 
+    sol_free(e->data);
+    sol_free(e);
+
     // Update stats
     info.nclients--;
     info.nconnections--;
@@ -530,7 +533,7 @@ static int subscribe_handler(struct io_event *e) {
             struct subscriber *sub = sol_malloc(sizeof(*sub));
             sub->client = e->client;
             sub->qos = s->tuples[i].qos;
-            sub->refs = 1;
+            sub->refs = 0;
             trie_prefix_map(sol.topics.root, topic, rec_sub, sub);
         }
 
@@ -732,6 +735,9 @@ static int publish_handler(struct io_event *e) {
     sol_free(packed);
 
     rc = REPLY;
+    UNLOCK;
+
+    return rc;
 
 exit:
     sol_free(e->data);
@@ -832,7 +838,7 @@ static void accept_loop(struct epoll *epoll) {
      * We want to watch for events incoming on the server descriptor (e.g. new
      * connections)
      */
-    epoll_add(epollfd, epoll->serverfd, EPOLLIN | EPOLLONESHOT, NULL);
+    epoll_add(epollfd, epoll->serverfd, EPOLLIN, NULL);
 
     /*
      * And also to the global event fd, this one is useful to gracefully
@@ -877,6 +883,12 @@ static void accept_loop(struct epoll *epoll) {
                      */
                     struct connection *conn =
                         conf->use_ssl ? conn_new(sol.ssl_ctx) : conn_new(NULL);
+                    int fd = accept_conn(conn, epoll->serverfd);
+                    if (fd < 0) {
+                        close_conn(conn);
+                        sol_free(conn);
+                        break;
+                    }
                     /*
                      * Create a client structure to handle his context
                      * connection
@@ -884,9 +896,6 @@ static void accept_loop(struct epoll *epoll) {
                     struct sol_client *client = sol_client_new(conn);
                     if (!conn || !client)
                         return;
-                    int fd = accept_conn(conn, epoll->serverfd);
-                    if (fd < 0)
-                        break;
 
                     /* Add it to the epoll loop */
                     epoll_add(epoll->io_epollfd, fd, EPOLLIN, client);
@@ -1182,6 +1191,7 @@ static void *io_worker(void *arg) {
                     log_info("Closing connection with %s", c->ip);
                     event->client->online = false;
                     close_conn(c);
+                    hashtable_del(sol.clients, event->client->client_id);
                 } else {
                     /*
                      * Rearm descriptor, we're using EPOLLONESHOT feature to
@@ -1199,6 +1209,7 @@ static void *io_worker(void *arg) {
                 bstring_destroy(event->reply);
                 mqtt_packet_release(event->data, event->data->header.bits.type);
                 close(event->eventfd);
+                sol_free(event->data);
                 sol_free(event);
             }
         }
@@ -1287,6 +1298,7 @@ static void *worker(void *arg) {
                 } else if (reply != CLIENTDC) {
                     epoll_mod(epoll->io_epollfd, c->fd, EPOLLIN, event->client);
                     close(event->eventfd);
+                    sol_free(event);
                 }
             }
         }
