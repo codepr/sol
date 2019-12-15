@@ -811,6 +811,7 @@ static int pubrel_handler(struct io_event *e) {
 
 static int pubcomp_handler(struct io_event *e) {
     log_debug("Received PUBCOMP from %s", e->client->client_id);
+    sol_free(e->data);
     // TODO Remove from pending PUBACK clients map
     return NOREPLY;
 }
