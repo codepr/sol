@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/codepr/sol.svg?branch=master)](https://travis-ci.org/codepr/sol)
+
 Sol
 ===
 
@@ -6,6 +8,36 @@ features. Implemented to learning how the protocol works, for now it supports
 almost all MQTT v3.1.1 commands on linux platform; it relies on EPOLL interface
 for multiplexing I/O. Development process is documented in this [series of posts](https://codepr.github.io/posts/sol-mqtt-broker).
 **Not for production use**.
+
+### Features
+
+It's still a work in progress but it already handles the most of the basic
+features expected from an MQTT broker. It does not leak memory as of now,
+there's probably some corner cases, not deeply investigated yet.
+
+- QoS 0, 1, 2 are correctly parsed, 0 and 1 working
+- Retained messages
+- Periodic stats publishing
+- Wildcards (#) on subscriptions
+- Authentication
+- SSL/TLS connections (almost ready)
+- Multiplexing IO shared on multiple threads with separation between accepting,
+  IO operations and processing.
+
+### To be implemented
+
+- QoS 2 tracking of pending clients and re-send, already started
+- Session present check and handling, already started
+- Last will & Testament, already started
+- Wildcards (+) on subscriptions
+- Persistence
+- Check on max memory used
+
+### Maybe
+
+- MQTT 5.0 support
+- Porting for BSD/MAC osx
+- Scaling (feeling brave?)
 
 ## Build
 
@@ -39,13 +71,13 @@ most common parameters, default path is located to `/etc/sol/sol.conf`:
 
 # Network configuration
 
-# Uncomment ip_address and ip_port to set socket family to TCP, if unix_socket
-# is set, UNIX family socket will be used
+# Comment ip_address and ip_port, set unix_socket and
+# UNIX family socket will be used instead
 
-# ip_address 127.0.0.1
-# ip_port 9090
+ip_address 127.0.0.1
+ip_port 8883
 
-unix_socket /tmp/sol.sock
+# unix_socket /tmp/sol.sock
 
 # Logging configuration
 
@@ -93,29 +125,6 @@ $ cat sample_passwd_file
 user1:$6$69qVAELLWuKXWQPQ$oO7lP/hNS4WPABTyK4nkJs4bcRLYFi365YX13cEc/QBJtQgqf2d5rOIUdqoUin.YVGXC3OXY9MSz7Z66ZDkCW/
 user2:$6$vtHdafhGhxpXwgBa$Y3Etz8koC1YPSYhXpTnhz.2vJTZvCUGk3xUdjyLr9z9XgE8asNwfYDRLIKN4Apz48KKwKz0YntjHsPRiE6r3g/
 ```
-
-## Features roadmap
-
-It's still a work in progress but it already handles the most of the basic
-features expected from an MQTT broker.
-
-- [X] Unix/TCP sockets
-- [X] Pub/Sub working fine
-- [X] QoS 0, 1, 2 are correctly parsed, 0 and 1 handled as well
-- [X] Retained messages
-- [X] Trie as underlying structure to handle topic hierarchies
-- [X] Periodic tasks like stats publishing
-- [X] Wildcards (#) on subscriptions
-- [ ] Wildcards (+) on subscriptions
-- [ ] QoS 2 tracking of pending clients and re-send
-- [ ] Session present check and handling
-- [X] Authentication
-- [X] SSL/TLS connections
-- [ ] Last will & Testament
-- [ ] Check on max memory used
-
-It apparently not leak memory as of now, there's probably some corner cases,
-not deeply investigated yet.
 
 ## Contributing
 
