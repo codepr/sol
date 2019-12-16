@@ -33,7 +33,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
-#include <uuid/uuid.h>
+#include <sys/time.h>
 #include "util.h"
 #include "mqtt.h"
 #include "config.h"
@@ -167,16 +167,6 @@ int number_len(size_t number) {
         number /= 10;
     }
     return len;
-}
-
-int generate_uuid(char *uuid_placeholder) {
-
-    /* Generate random uuid */
-    uuid_t binuuid;
-    uuid_generate_random(binuuid);
-    uuid_unparse(binuuid, uuid_placeholder);
-
-    return 0;
 }
 
 unsigned long unix_time_ns(void) {

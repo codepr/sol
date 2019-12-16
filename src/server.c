@@ -34,7 +34,6 @@
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <sys/eventfd.h>
-#include <uuid/uuid.h>
 #include <openssl/err.h>
 #include "network.h"
 #include "mqtt.h"

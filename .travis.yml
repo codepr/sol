@@ -17,8 +17,10 @@ before_script:
   - cmake .
 
 script:
-  - make sol
-  - make sol_test
+  - gcc -Wall -Wunused -Werror -Wextra -Wno-unused-result -pedantic -std=c11 -O3 -D_DEFAULT_SOURCE -lpthread -lssl -lcrypto -lcrypt src/*.c -o sol
+  - gcc -Wall -Wunused -Werror -Wextra -Wno-unused-result -pedantic -std=c11 -O3 -D_DEFAULT_SOURCE -lpthread -lssl -lcrypto -lcrypt src/hashtable.c src/bst.c src/config.c src/list.c src/trie.c src/util.c src/iterator.c tests/*.c -o sol_test
+  - ./sol_test
+  - python3 tests/integration/run.py
 
 addons:
   apt:
