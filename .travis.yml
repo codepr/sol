@@ -12,6 +12,8 @@ before_script:
   - sudo apt-get update -qq
   - sudo apt-get install -y libssl-dev python-all python3-all uuid-dev openssl
   - sudo pip install paho-mqtt
+  - ln -s /usr/bin/gcc-9 /usr/local/bin/gcc
+  - export CC=/usr/bin/gcc-9
   - cmake .
 
 script:
