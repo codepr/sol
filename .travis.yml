@@ -14,7 +14,9 @@ before_script:
   - sudo pip install paho-mqtt
   - cmake .
 
-script: make
+script:
+  - make sol
+  - make sol_test
 
 addons:
   apt:
