@@ -1,19 +1,12 @@
 cmake_minimum_required(VERSION 2.8)
 
 project(sol)
+set (VERSION 0.9.18)
 
 OPTION(DEBUG "add debug flags" OFF)
 
-if (DEBUG)
-    message(STATUS "Configuring build for debug")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wunused -Werror -Wno-unused-result
-    -std=c11 -O3 -D_DEFAULT_SOURCE -pedantic -lpthread -lssl -lcrypto \
-    -lcrypt -ggdb -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer -pg")
-else (DEBUG)
-    message(STATUS "Configuring build for production")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wunused -Werror -Wextra -Wno-unused-result \
-    -pedantic -std=c11 -O3 -D_DEFAULT_SOURCE -lpthread -lssl -lcrypto -lcrypt")
-endif (DEBUG)
+add_definitions("-D_DEFAULT_SOURCE")
+find_package(OpenSSL REQUIRED)
 
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
 
@@ -27,6 +20,21 @@ set(LICENSE "BSD2 license")
 # Executable
 add_executable(sol ${SOURCES})
 add_executable(sol_test ${TEST})
+
+if (DEBUG)
+    message(STATUS "Configuring build for debug")
+    TARGET_LINK_LIBRARIES(sol pthread ssl crypto crypt)
+    TARGET_LINK_LIBRARIES(sol_test pthread ssl crypto crypt)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wunused -Werror -pedantic \
+    -Wno-unused-result -std=c11 -O3 -ggdb -fsanitize=address \
+    -fsanitize=undefined -fno-omit-frame-pointer -pg")
+else (DEBUG)
+    message(STATUS "Configuring build for production")
+    TARGET_LINK_LIBRARIES(sol pthread ssl crypto crypt)
+    TARGET_LINK_LIBRARIES(sol_test pthread ssl crypto crypt)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wunused -Werror -pedantic \
+    -Wno-unused-result -std=c11 -O3")
+endif (DEBUG)
 
 add_custom_command(
     TARGET sol_test
