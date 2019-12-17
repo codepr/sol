@@ -667,7 +667,7 @@ static int publish_handler(struct io_event *e) {
                 // TODO add conn instead of FDs
                 if (p->header.bits.qos > AT_MOST_ONCE) {
                     publen += sizeof(uint16_t);
-                    sol.out_pending_msgs[p->pkt_id] =
+                    sol.out_i_msgs[p->pkt_id] =
                         inflight_msg_new(sc, &e->data, PUBLISH, publen);
                 }
 
@@ -713,7 +713,7 @@ static int publish_handler(struct io_event *e) {
         log_debug("Sending PUBREC to %s", c->client_id);
         e->data.ack = *mqtt_packet_ack(PUBREC_B, p->pkt_id);
         ptype = PUBREC;
-        sol.out_pending_acks[p->pkt_id] =
+        sol.out_i_acks[p->pkt_id] =
             inflight_msg_new(c, &e->data, ptype, acklen);
     }
 
@@ -741,13 +741,13 @@ static int puback_handler(struct io_event *e) {
 
     log_debug("Received PUBACK from %s", e->client->client_id);
 
-    // TODO Remove from pending PUBACK clients map
+    // TODO Remove from inflight PUBACK clients map
 
     LOCK;
 
-    if (sol.out_pending_msgs[e->data.ack.pkt_id]) {
-        sol_free(sol.out_pending_msgs[e->data.ack.pkt_id]);
-        sol.out_pending_msgs[e->data.ack.pkt_id] = NULL;
+    if (sol.out_i_msgs[e->data.ack.pkt_id]) {
+        sol_free(sol.out_i_msgs[e->data.ack.pkt_id]);
+        sol.out_i_msgs[e->data.ack.pkt_id] = NULL;
     }
 
     UNLOCK;
@@ -763,11 +763,11 @@ static int pubrec_handler(struct io_event *e) {
     unsigned char *packed = pack_mqtt_packet(&e->data, PUBREC);
     e->reply = bstring_copy(packed, MQTT_ACK_LEN);
     sol_free(packed);
-    // Update pending acks table
+    // Update inflight acks table
     size_t acklen = MQTT_ACK_LEN;
-    if (sol.out_pending_acks[e->data.ack.pkt_id]) {
-        sol_free(sol.out_pending_acks[e->data.ack.pkt_id]);
-        sol.out_pending_acks[e->data.ack.pkt_id] =
+    if (sol.out_i_acks[e->data.ack.pkt_id]) {
+        sol_free(sol.out_i_acks[e->data.ack.pkt_id]);
+        sol.out_i_acks[e->data.ack.pkt_id] =
             inflight_msg_new(c, &e->data, PUBREL, acklen);
     }
 
@@ -793,7 +793,7 @@ static int pubrel_handler(struct io_event *e) {
 
 static int pubcomp_handler(struct io_event *e) {
     log_debug("Received PUBCOMP from %s", e->client->client_id);
-    // TODO Remove from pending PUBACK clients map
+    // TODO Remove from inflight PUBACK clients map
     return NOREPLY;
 }
 
@@ -1469,9 +1469,9 @@ static void publish_stats(void) {
 }
 
 /*
- * Check for pending messages in the ingoing and outgoing maps (actually
+ * Check for infligh messages in the ingoing and outgoing maps (actually
  * arrays), each position between 0-65535 contains either NULL or a pointer
- * to a pending_packet stucture with a timestamp of the sending action, the
+ * to an inflight stucture with a timestamp of the sending action, the
  * target file descriptor (e.g. the client) and the payload to be sent
  * unserialized, this way it's possible to set the DUP flag easily at the cost
  * of additional packing before re-sending it out
@@ -1482,16 +1482,15 @@ static void inflight_msg_check(void) {
     ssize_t sent;
     for (int i = 0; i < 65535; ++i) {
         // TODO Remove hard-coded values, 65535 and 20
-        if (sol.out_pending_msgs[i]
-            && (now - sol.out_pending_msgs[i]->sent_timestamp) > 20) {
+        if (sol.out_i_msgs[i]
+            && (now - sol.out_i_msgs[i]->sent_timestamp) > 20) {
             // Set DUP flag to 1
-            mqtt_set_dup(sol.out_pending_msgs[i]->packet,
-                         sol.out_pending_msgs[i]->type);
+            mqtt_set_dup(sol.out_i_msgs[i]->packet, sol.out_i_msgs[i]->type);
             // Serialize the packet and send it out again
-            pub = pack_mqtt_packet(sol.out_pending_msgs[i]->packet,
-                                   sol.out_pending_msgs[i]->type);
-            bstring payload = bstring_copy(pub, sol.out_pending_msgs[i]->size);
-            if ((sent = send_data(sol.out_pending_msgs[i]->client->conn,
+            pub = pack_mqtt_packet(sol.out_i_msgs[i]->packet,
+                                   sol.out_i_msgs[i]->type);
+            bstring payload = bstring_copy(pub, sol.out_i_msgs[i]->size);
+            if ((sent = send_data(sol.out_i_msgs[i]->client->conn,
                                   payload, bstring_len(payload))) < 0)
                 log_error("Error re-sending %s", strerror(errno));
 
@@ -1609,15 +1608,15 @@ int start_server(const char *addr, const char *port) {
     /* Start the expiration keys check routine */
     struct itimerspec exp_keys_timer = get_timer(conf->stats_pub_interval, 0);
 
-    /* And one for the pending ingoing and outgoing messages with QoS > 0 */
-    struct itimerspec pending_msgs_timer = get_timer(0, 1e8);
+    /* And one for the inflight ingoing and outgoing messages with QoS > 0 */
+    struct itimerspec inflight_msgs_timer = get_timer(0, 1e8);
 
-    // add expiration keys cron task and pending messages cron task
+    // add expiration keys cron task and inflight messages cron task
     int exptimerfd = add_cron_task(epoll.w_epollfd, &exp_keys_timer);
-    int pendingfd = add_cron_task(epoll.w_epollfd, &pending_msgs_timer);
+    int inflightfd = add_cron_task(epoll.w_epollfd, &inflight_msgs_timer);
 
     epoll.timerfd[0] = exptimerfd;
-    epoll.timerfd[1] = pendingfd;
+    epoll.timerfd[1] = inflightfd;
 
     /*
      * We need to watch for global eventfd in order to gracefully shutdown IO
@@ -1648,7 +1647,7 @@ int start_server(const char *addr, const char *port) {
     // Stop expire keys check routine
     epoll_del(epoll.w_epollfd, epoll.timerfd[0]);
 
-    // Stop pending messages timer fd
+    // Stop inflight messages timer fd
     epoll_del(epoll.w_epollfd, epoll.timerfd[1]);
 
     /* Join started thread pools */

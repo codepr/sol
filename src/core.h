@@ -71,10 +71,10 @@ struct sol {
     Trie topics;
     HashTable *sessions;
     HashTable *authentications;
-    struct inflight_msg *in_pending_msgs[MAX_INFLIGHT_MSGS];
-    struct inflight_msg *in_pending_acks[MAX_INFLIGHT_MSGS];
-    struct inflight_msg *out_pending_msgs[MAX_INFLIGHT_MSGS];
-    struct inflight_msg *out_pending_acks[MAX_INFLIGHT_MSGS];
+    struct inflight_msg *in_i_msgs[MAX_INFLIGHT_MSGS];
+    struct inflight_msg *in_i_acks[MAX_INFLIGHT_MSGS];
+    struct inflight_msg *out_i_msgs[MAX_INFLIGHT_MSGS];
+    struct inflight_msg *out_i_acks[MAX_INFLIGHT_MSGS];
     SSL_CTX *ssl_ctx;
 };
 
