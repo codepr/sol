@@ -175,7 +175,7 @@ static void publish_stats(void);
 
 static void publish_message(const struct mqtt_publish *);
 
-static void pending_message_check(void);
+static void inflight_msg_check(void);
 
 /* Prototype for a command handler */
 typedef int handler(struct io_event *);
@@ -668,9 +668,7 @@ static int publish_handler(struct io_event *e) {
                 if (p->header.bits.qos > AT_MOST_ONCE) {
                     publen += sizeof(uint16_t);
                     sol.out_pending_msgs[p->pkt_id] =
-                        pending_message_new(conn->fd, &e->data, PUBLISH, publen);
-                    if (conf->use_ssl == true)
-                        sol.out_pending_acks[p->pkt_id]->ssl = conn->ssl;
+                        inflight_msg_new(sc, &e->data, PUBLISH, publen);
                 }
 
                 // TODO subscriber connection instead of FD
@@ -716,9 +714,7 @@ static int publish_handler(struct io_event *e) {
         e->data.ack = *mqtt_packet_ack(PUBREC_B, p->pkt_id);
         ptype = PUBREC;
         sol.out_pending_acks[p->pkt_id] =
-            pending_message_new(c->conn->fd, &e->data, ptype, acklen);
-        if (conf->use_ssl == true)
-            sol.out_pending_acks[p->pkt_id]->ssl = c->conn->ssl;
+            inflight_msg_new(c, &e->data, ptype, acklen);
     }
 
     unsigned char *packed = pack_mqtt_packet(&e->data, ptype);
@@ -772,9 +768,7 @@ static int pubrec_handler(struct io_event *e) {
     if (sol.out_pending_acks[e->data.ack.pkt_id]) {
         sol_free(sol.out_pending_acks[e->data.ack.pkt_id]);
         sol.out_pending_acks[e->data.ack.pkt_id] =
-            pending_message_new(c->conn->fd, &e->data, PUBREL, acklen);
-        if (conf->use_ssl == true)
-            sol.out_pending_acks[e->data.ack.pkt_id]->ssl = c->conn->ssl;
+            inflight_msg_new(c, &e->data, PUBREL, acklen);
     }
 
     log_debug("Sending PUBREL to %s", c->client_id);
@@ -1287,7 +1281,7 @@ static void *worker(void *arg) {
             } else if (e_events[i].data.fd == epoll->timerfd[1]) {
                 (void) read(e_events[i].data.fd, &timers, sizeof(timers));
                 // Check for keys about to expire out
-                pending_message_check();
+                inflight_msg_check();
                 epoll_mod(epoll->w_epollfd, e_events[i].data.fd, EPOLLIN, NULL);
             } else if (e_events[i].events & EPOLLIN) {
                 struct io_event *event = e_events[i].data.ptr;
@@ -1482,7 +1476,7 @@ static void publish_stats(void) {
  * unserialized, this way it's possible to set the DUP flag easily at the cost
  * of additional packing before re-sending it out
  */
-static void pending_message_check(void) {
+static void inflight_msg_check(void) {
     time_t now = time(NULL);
     unsigned char *pub = NULL;
     ssize_t sent;
@@ -1497,8 +1491,8 @@ static void pending_message_check(void) {
             pub = pack_mqtt_packet(sol.out_pending_msgs[i]->packet,
                                    sol.out_pending_msgs[i]->type);
             bstring payload = bstring_copy(pub, sol.out_pending_msgs[i]->size);
-            if ((sent = send_bytes(sol.out_pending_msgs[i]->fd,
-                                   payload, bstring_len(payload))) < 0)
+            if ((sent = send_data(sol.out_pending_msgs[i]->client->conn,
+                                  payload, bstring_len(payload))) < 0)
                 log_error("Error re-sending %s", strerror(errno));
 
             // Update information stats

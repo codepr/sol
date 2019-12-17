@@ -123,16 +123,17 @@ struct topic *sol_topic_get_or_create(struct sol *sol, const char *name) {
     return t;
 }
 
-struct pending_message *pending_message_new(int fd, union mqtt_packet *p,
-                                            int type, size_t size) {
-    struct pending_message *pm = sol_malloc(sizeof(*pm));
-    pm->fd = fd;
-    pm->ssl = NULL;
-    pm->sent_timestamp = time(NULL);
-    pm->packet = p;
-    pm->type = type;
-    pm->size = size;
-    return pm;
+struct inflight_msg *inflight_msg_new(struct sol_client *c,
+                                      union mqtt_packet *p,
+                                      int type, size_t size) {
+    struct inflight_msg *imsg = sol_malloc(sizeof(*imsg));
+
+    imsg->client = c;
+    imsg->sent_timestamp = time(NULL);
+    imsg->packet = p;
+    imsg->type = type;
+    imsg->size = size;
+    return imsg;
 }
 
 struct session *sol_session_new(void) {

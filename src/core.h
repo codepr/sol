@@ -45,12 +45,11 @@
  * of the message, the timestamp of the last send try, the size of the packet
  * and the packet himself
  */
-struct pending_message {
-    int fd;
+struct inflight_msg {
+    struct sol_client *client;
     int type;
     time_t sent_timestamp;
     unsigned long size;
-    SSL *ssl;
     union mqtt_packet *packet;
 };
 
@@ -72,10 +71,10 @@ struct sol {
     Trie topics;
     HashTable *sessions;
     HashTable *authentications;
-    struct pending_message *in_pending_msgs[MAX_INFLIGHT_MSGS];
-    struct pending_message *in_pending_acks[MAX_INFLIGHT_MSGS];
-    struct pending_message *out_pending_msgs[MAX_INFLIGHT_MSGS];
-    struct pending_message *out_pending_acks[MAX_INFLIGHT_MSGS];
+    struct inflight_msg *in_pending_msgs[MAX_INFLIGHT_MSGS];
+    struct inflight_msg *in_pending_acks[MAX_INFLIGHT_MSGS];
+    struct inflight_msg *out_pending_msgs[MAX_INFLIGHT_MSGS];
+    struct inflight_msg *out_pending_acks[MAX_INFLIGHT_MSGS];
     SSL_CTX *ssl_ctx;
 };
 
@@ -105,8 +104,8 @@ struct subscriber {
 
 struct sol_client *sol_client_new(struct connection *);
 
-struct pending_message *pending_message_new(int, union mqtt_packet *,
-                                            int, size_t);
+struct inflight_msg *inflight_msg_new(struct sol_client *,
+                                      union mqtt_packet *, int, size_t);
 
 struct topic *topic_new(const char *);
 
