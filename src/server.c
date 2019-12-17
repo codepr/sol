@@ -355,16 +355,16 @@ static int connect_handler(struct io_event *e) {
         size_t tpc_len = strlen((const char *) c->payload.will_topic);
         // We must store the retained message in the topic
         if (c->bits.will_retain == 1) {
-            struct mqtt_publish *p = sol_malloc(sizeof(*p));
-            p->header = (union mqtt_header) { .byte = PUBLISH_B };
-            p->pkt_id = 0;  // placeholder
-            p->topiclen = tpc_len;
-            p->topic = c->payload.will_topic;
-            p->payloadlen = msg_len;
-            p->payload = c->payload.will_message;
+            struct mqtt_publish *lwt = sol_malloc(sizeof(*lwt));
+            lwt->header = (union mqtt_header) { .byte = PUBLISH_B };
+            lwt->pkt_id = 0;  // placeholder
+            lwt->topiclen = tpc_len;
+            lwt->topic = c->payload.will_topic;
+            lwt->payloadlen = msg_len;
+            lwt->payload = c->payload.will_message;
 
-            union mqtt_packet up = { .publish = *p };
-            e->client->lwt_msg = p;
+            union mqtt_packet up = { .publish = *lwt };
+            e->client->lwt_msg = lwt;
             // Update the QOS of the retained message according to the desired
             // one by the connected client
             up.publish.header.bits.qos = c->bits.will_qos;
