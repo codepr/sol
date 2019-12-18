@@ -37,7 +37,7 @@
 #include "hashtable.h"
 #include "pack.h"
 
-#define MAX_INFLIGHT_MSGS 65535
+#define MAX_INFLIGHT_MSGS 65536
 
 /*
  * Pending messages remaining to be sent out, they can be either PUBLISH or
@@ -71,10 +71,6 @@ struct sol {
     Trie topics;
     HashTable *sessions;
     HashTable *authentications;
-    struct inflight_msg *in_i_msgs[MAX_INFLIGHT_MSGS];
-    struct inflight_msg *in_i_acks[MAX_INFLIGHT_MSGS];
-    struct inflight_msg *out_i_msgs[MAX_INFLIGHT_MSGS];
-    struct inflight_msg *out_i_acks[MAX_INFLIGHT_MSGS];
     SSL_CTX *ssl_ctx;
 };
 
@@ -94,6 +90,8 @@ struct sol_client {
     struct session *session;
     unsigned long last_action_time;
     struct mqtt_publish *lwt_msg;
+    struct inflight_msg *i_acks[MAX_INFLIGHT_MSGS];
+    struct inflight_msg *i_msgs[MAX_INFLIGHT_MSGS];
 };
 
 struct subscriber {
@@ -128,5 +126,7 @@ struct topic *sol_topic_get(struct sol *, const char *);
 
 /* Get or create a new topic if it doesn't exists */
 struct topic *sol_topic_get_or_create(struct sol *, const char *);
+
+unsigned next_free_mid(struct inflight_msg **);
 
 #endif

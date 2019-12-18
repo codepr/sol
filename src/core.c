@@ -37,6 +37,10 @@ struct sol_client *sol_client_new(struct connection *c) {
     client->last_action_time = time(NULL);
     client->lwt_msg = NULL;
     client->session = sol_session_new();
+    for (int i = 0; i < MAX_INFLIGHT_MSGS; ++i) {
+        client->i_acks[i] = NULL;
+        client->i_msgs[i] = NULL;
+    }
     return client;
 }
 
@@ -141,4 +145,15 @@ struct session *sol_session_new(void) {
     // TODO add a subscription destroyer
     s->subscriptions = list_new(NULL);
     return s;
+}
+
+unsigned next_free_mid(struct inflight_msg **i_msgs) {
+    unsigned short mid = 0;
+    for (unsigned int i = 1; i < MAX_INFLIGHT_MSGS; ++i) {
+        if (i_msgs[i] == NULL) {
+            mid = i;
+            break;
+        }
+    }
+    return mid;
 }

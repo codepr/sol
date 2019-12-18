@@ -51,7 +51,7 @@
 #define PUBLISH_B  0x30
 #define PUBACK_B   0x40
 #define PUBREC_B   0x50
-#define PUBREL_B   0x60
+#define PUBREL_B   0x62
 #define PUBCOMP_B  0x70
 #define SUBACK_B   0x90
 #define UNSUBACK_B 0xB0
@@ -215,5 +215,7 @@ struct mqtt_publish *mqtt_packet_publish(unsigned char, unsigned short, size_t,
 void mqtt_packet_release(union mqtt_packet *, unsigned);
 
 void mqtt_set_dup(union mqtt_packet *, int);
+
+void mqtt_pack_mono(unsigned char *, unsigned char, unsigned short);
 
 #endif

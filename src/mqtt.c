@@ -611,3 +611,27 @@ void mqtt_set_dup(union mqtt_packet *pkt, int type) {
             break;
     }
 }
+
+void mqtt_pack_mono(unsigned char *buf, unsigned char op, unsigned short id) {
+    unsigned byte = 0;
+    switch (op) {
+        case PUBACK:
+            byte = PUBACK_B;
+            break;
+        case PUBREC:
+            byte = PUBREC_B;
+            break;
+        case PUBREL:
+            byte = PUBREL_B;
+            break;
+        case PUBCOMP:
+            byte = PUBCOMP_B;
+            break;
+    }
+
+    pack(buf++, "B", byte);
+    int step = mqtt_encode_length(buf, MQTT_HEADER_LEN);
+    buf += step;
+
+    pack(buf, "H", id);
+}
