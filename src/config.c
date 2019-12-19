@@ -335,6 +335,7 @@ void config_print(void) {
             log_info("\tTcp backlog: %d", config.tcp_backlog);
             log_info("\tKeepalive: %d", config.keepalive);
             log_info("\tTLS: %d", config.use_ssl);
+            log_info("\tFile handles soft limit: %li", get_fh_soft_limit());
         }
         const char *human_rsize = memory_to_string(config.max_request_size);
         log_info("\tMax request size: %s", human_rsize);

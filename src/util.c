@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <sys/time.h>
+#include <sys/resource.h>
 #include "util.h"
 #include "mqtt.h"
 #include "config.h"
@@ -321,4 +322,14 @@ char *sol_strdup(const char *s) {
 
 size_t memory_used(void) {
     return memory;
+}
+
+
+long get_fh_soft_limit(void) {
+    struct rlimit limit;
+    if (getrlimit(RLIMIT_NOFILE, &limit)) {
+        perror("Failed to get limit");
+        return -1;
+    }
+    return limit.rlim_cur;
 }

@@ -65,6 +65,8 @@ bool check_passwd(const char *, const char *);
 
 size_t memory_used(void);
 
+long get_fh_soft_limit(void);
+
 
 #define log(...) sol_log( __VA_ARGS__ )
 #define log_debug(...) log(DEBUG, __VA_ARGS__)
