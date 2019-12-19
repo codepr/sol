@@ -1199,8 +1199,6 @@ static void *io_worker(void *arg) {
                     LOCK;
                     log_error("Closing connection with %s: %s",
                               event->client->conn->ip, solerr(rc));
-                    if (close(event->eventfd) < 0)
-                        perror("client disconnected - close");
                     // Publish, if present, LWT message
                     if (event->client->lwt_msg)
                         publish_message(event->client->lwt_msg);
