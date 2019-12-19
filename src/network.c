@@ -64,6 +64,25 @@ err:
     return -1;
 }
 
+int set_cloexec(int fd) {
+    int flags, result;
+    flags = fcntl(fd, F_GETFL, 0);
+
+    if (flags == -1)
+        goto err;
+
+    result = fcntl(fd, F_SETFD, flags |FD_CLOEXEC);
+    if (result == -1)
+        goto err;
+
+    return 0;
+
+err:
+
+    perror("set_nonblocking");
+    return -1;
+}
+
 /* Disable Nagle's algorithm by setting TCP_NODELAY */
 int set_tcp_nodelay(int fd) {
     return setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &(int) {1}, sizeof(int));
@@ -163,6 +182,9 @@ int make_listen(const char *host, const char *port, int socket_family) {
     if ((set_nonblocking(sfd)) == -1)
         abort();
 
+    if ((set_cloexec(sfd)) == -1)
+        abort();
+
     // Set TCP_NODELAY only for TCP sockets
     if (socket_family == INET)
         set_tcp_nodelay(sfd);
@@ -182,10 +204,15 @@ int accept_connection(int serversock, char *ip) {
     socklen_t addrlen = sizeof(addr);
 
     if ((clientsock = accept(serversock,
-                             (struct sockaddr *) &addr, &addrlen)) < 0)
+                             (struct sockaddr *) &addr, &addrlen)) < 0) {
+
+        if (errno != EWOULDBLOCK && errno != EAGAIN)
+            perror("accept");
         return -1;
+    }
 
     set_nonblocking(clientsock);
+    set_cloexec(clientsock);
 
     // Set TCP_NODELAY only for TCP sockets
     if (conf->socket_family == INET)
@@ -194,7 +221,8 @@ int accept_connection(int serversock, char *ip) {
     char ip_buff[INET_ADDRSTRLEN + 1];
     if (inet_ntop(AF_INET, &addr.sin_addr,
                   ip_buff, sizeof(ip_buff)) == NULL) {
-        close(clientsock);
+        if (close(clientsock) < 0)
+            perror("close");
         return -1;
     }
 
@@ -273,7 +301,7 @@ int epoll_add(int efd, int fd, int evs, void *data) {
     if (data)
         ev.data.ptr = data;
 
-    ev.events = evs | EPOLLET | EPOLLONESHOT;
+    ev.events = evs | EPOLLHUP | EPOLLERR | EPOLLET | EPOLLONESHOT;
 
     return epoll_ctl(efd, EPOLL_CTL_ADD, fd, &ev);
 }
@@ -493,6 +521,7 @@ static int conn_tls_accept(struct connection *c, int serverfd) {
     int fd = accept_connection(serverfd, c->ip);
     if (fd < 0)
         return fd;
+        /* return (errno == EAGAIN || errno == EWOULDBLOCK) ? 0 : fd; */
     c->ssl = ssl_accept(c->ctx, fd);
     c->fd = fd;
     return fd;
@@ -511,8 +540,8 @@ static ssize_t conn_tls_recv(struct connection *c,
 static void conn_tls_close(struct connection *c) {
     if (c->ssl)
         SSL_free(c->ssl);
-    if (c->fd > 0)
-        close(c->fd);
+    if (c->fd >= 0 && close(c->fd) < 0)
+        perror("close");
 }
 
 struct connection *conn_new(const SSL_CTX *ssl_ctx) {

@@ -466,6 +466,8 @@ static int disconnect_handler(struct io_event *e) {
     iter_destroy(it);
     hashtable_del(sol.clients, e->client->client_id);
 
+    if (close(e->eventfd) < 0)
+        perror("DISCONNECT close");
     sol_free(e);
 
     // Update stats
@@ -806,8 +808,12 @@ static int pubrel_handler(struct io_event *e) {
     unsigned char packed[MQTT_ACK_LEN];
     mqtt_pack_mono(packed, PUBCOMP, e->data.ack.pkt_id);
     if (c->i_acks[e->data.ack.pkt_id]) {
+        log_debug("[ACK] Freeing mid %u", e->data.ack.pkt_id);
         sol_free(c->i_acks[e->data.ack.pkt_id]);
         c->i_acks[e->data.ack.pkt_id] = NULL;
+    }
+    if (c->i_msgs[e->data.ack.pkt_id]) {
+        log_debug("[MSG] Freeing mid %u", e->data.ack.pkt_id);
         sol_free(c->i_msgs[e->data.ack.pkt_id]);
         c->i_msgs[e->data.ack.pkt_id] = NULL;
     }
@@ -911,6 +917,8 @@ static void accept_loop(struct epoll *epoll) {
                     struct connection *conn =
                         conf->use_ssl ? conn_new(sol.ssl_ctx) : conn_new(NULL);
                     int fd = accept_conn(conn, epoll->serverfd);
+                    if (fd == 0)
+                        continue;
                     if (fd < 0) {
                         close_conn(conn);
                         sol_free(conn);
@@ -1165,7 +1173,6 @@ static void *io_worker(void *arg) {
                 struct connection *c = event->client->conn;
                 int rc = read_data(c, buffer, &event->data);
                 if (rc == 0) {
-                    LOCK;
                     /*
                      * All is ok, raise an event to the worker poll EPOLL and
                      * link it with the IO event containing the decode payload
@@ -1180,7 +1187,6 @@ static void *io_worker(void *arg) {
 
                     /* Fire an event toward the worker thread pool */
                     eventfd_write(ev, 1);
-                    UNLOCK;
 
                 } else if (rc == -ERRCLIENTDC || rc == -ERRPACKETERR) {
 
@@ -1193,6 +1199,8 @@ static void *io_worker(void *arg) {
                     LOCK;
                     log_error("Closing connection with %s: %s",
                               event->client->conn->ip, solerr(rc));
+                    if (close(event->eventfd) < 0)
+                        perror("client disconnected - close");
                     // Publish, if present, LWT message
                     if (event->client->lwt_msg)
                         publish_message(event->client->lwt_msg);
@@ -1202,13 +1210,14 @@ static void *io_worker(void *arg) {
                     // Remove from subscriptions for now
                     struct list *subs = event->client->session->subscriptions;
                     struct iterator *it = iter_new(subs, list_iter_next);
-                    if (it->ptr)
+                    if (it->ptr) {
                         do {
                             log_debug("Deleting %s from topic %s",
                                       event->client->client_id,
                                       ((struct topic *) it->ptr)->name);
                             topic_del_subscriber(it->ptr, event->client, false);
                         } while ((it = iter_next(it)) && it->ptr);
+                    }
                     iter_destroy(it);
                     /* hashtable_del(sol.clients, event->client->client_id); */
                     info.nclients--;
@@ -1250,7 +1259,6 @@ static void *io_worker(void *arg) {
                 /* Free resource, ACKs will be free'd closing the server */
                 bstring_destroy(event->reply);
                 mqtt_packet_release(&event->data, event->data.header.bits.type);
-                close(event->eventfd);
                 sol_free(event);
             }
         }
@@ -1336,7 +1344,8 @@ static void *worker(void *arg) {
                 struct connection *c = event->client->conn;
                 int reply = handlers[event->data.header.bits.type](event);
                 if (reply == REPLY) {
-                    close(event->eventfd);
+                    if (close(event->eventfd) < 0)
+                        perror("reply - eventfd close");
                     epoll_mod(event->epollfd, c->fd, EPOLLOUT, event);
                 } else if (reply == RC_BAD_USERNAME_OR_PASSWORD
                            || reply == RC_NOT_AUTHORIZED) {
@@ -1344,7 +1353,8 @@ static void *worker(void *arg) {
                     epoll_mod(event->epollfd, c->fd, EPOLLOUT, event);
                 } else if (reply != CLIENTDC) {
                     epoll_mod(epoll->io_epollfd, c->fd, EPOLLIN, event->client);
-                    close(event->eventfd);
+                    if (close(event->eventfd) < 0)
+                        perror("noreply - eventfd close");
                     sol_free(event);
                 }
             }
