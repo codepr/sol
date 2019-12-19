@@ -627,6 +627,9 @@ void mqtt_pack_mono(unsigned char *buf, unsigned char op, unsigned short id) {
         case PUBCOMP:
             byte = PUBCOMP_B;
             break;
+        case UNSUBACK:
+            byte = UNSUBACK_B;
+            break;
     }
 
     pack(buf++, "B", byte);

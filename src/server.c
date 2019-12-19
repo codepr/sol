@@ -583,13 +583,12 @@ static int unsubscribe_handler(struct io_event *e) {
             topic_del_subscriber(t, c, false);
     }
 
-    e->data.ack = *mqtt_packet_ack(UNSUBACK_B, e->data.unsubscribe.pkt_id);
-    unsigned char *packed = pack_mqtt_packet(&e->data, UNSUBACK);
+    unsigned char packed[MQTT_ACK_LEN];
+    mqtt_pack_mono(packed, UNSUBACK, e->data.unsubscribe.pkt_id);
 
     log_debug("Sending UNSUBACK to %s", c->client_id);
 
     e->reply = bstring_copy(packed, MQTT_ACK_LEN);
-    sol_free(packed);
     mqtt_packet_release(&e->data, UNSUBACK);
 
     return REPLY;
