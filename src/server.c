@@ -299,8 +299,8 @@ static int connect_handler(struct io_event *e) {
         goto not_authorized;
 
     /*
-     * Check for client ID, if not present generate a UUID, otherwise add the
-     * client to the sessions map if not already present
+     * Check for client ID, if not present generate a random ID, otherwise add
+     * the client to the sessions map if not already present
      */
     if (!c->payload.client_id[0]) {
         generate_random_id((char *) c->payload.client_id);
@@ -595,7 +595,6 @@ static int unsubscribe_handler(struct io_event *e) {
 
 static int publish_handler(struct io_event *e) {
 
-    int rc = NOREPLY;
     struct sol_client *c = e->client;
     struct mqtt_publish *p = &e->data.publish;
     unsigned short orig_mid = p->pkt_id;
@@ -668,8 +667,10 @@ static int publish_handler(struct io_event *e) {
                 p->header.bits.qos = qos >= sub->qos ? sub->qos : qos;
 
                 if (p->header.bits.qos > AT_MOST_ONCE) {
+                    // QoS > 0 (1|2)
                     publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
                         p->topiclen + p->payloadlen;
+                    // Add 2 bytes to make space for packet identifier
                     publen += sizeof(uint16_t);
                     pkt.publish.pkt_id = next_free_mid(sc->i_msgs);
                     pkt.publish.header.bits.qos = p->header.bits.qos;
@@ -690,6 +691,13 @@ static int publish_handler(struct io_event *e) {
                             inflight_msg_new(sc, &ack, type, publen);
                     }
                 } else {
+                    /*
+                     * QoS 0
+                     *
+                     * Set the correct size of the output packet and set the
+                     * correct QoS value (0) and packet identifier to 0 as
+                     * specified by MQTT specs
+                     */
                     publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
                         p->topiclen + p->payloadlen;
                     pkt.publish.header.bits.qos = 0;
@@ -727,6 +735,8 @@ static int publish_handler(struct io_event *e) {
 
     mqtt_packet_release(&e->data, PUBLISH);
 
+    // We have to answer to the publisher
+
     if (qos == AT_MOST_ONCE)
         goto exit;
 
@@ -747,10 +757,9 @@ static int publish_handler(struct io_event *e) {
     mqtt_pack_mono(packed, ptype, orig_mid);
     e->reply = bstring_copy(packed, MQTT_ACK_LEN);
 
-    rc = REPLY;
     UNLOCK;
 
-    return rc;
+    return REPLY;
 
 exit:
 
@@ -760,7 +769,7 @@ exit:
      * We're in the case of AT_MOST_ONCE QoS level, we don't need to sent out
      * any byte, it's a fire-and-forget.
      */
-    return rc;
+    return NOREPLY;
 }
 
 static int puback_handler(struct io_event *e) {
