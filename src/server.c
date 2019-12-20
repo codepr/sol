@@ -483,7 +483,6 @@ static int disconnect_handler(struct io_event *e) {
 static int subscribe_handler(struct io_event *e) {
 
     bool wildcard = false;
-    bool alloced = false;
     struct mqtt_subscribe *s = &e->data.subscribe;
 
     /*
@@ -503,7 +502,9 @@ static int subscribe_handler(struct io_event *e) {
          * Check if the topic exists already or in case create it and store in
          * the global map
          */
-        char *topic = (char *) s->tuples[i].topic;
+        /* char *topic = (char *) s->tuples[i].topic; */
+        char topic[s->tuples[i].topic_len + 1];
+        strncpy(topic, (const char *) s->tuples[i].topic, s->tuples[i].topic_len);
 
         log_debug("\t%s (QoS %i)", topic, s->tuples[i].qos);
 
@@ -512,11 +513,11 @@ static int subscribe_handler(struct io_event *e) {
         /* Recursive subscribe to all children topics if the topic ends with "/#" */
         if (topic[s->tuples[i].topic_len - 1] == '#' &&
             topic[s->tuples[i].topic_len - 2] == '/') {
-            topic = remove_occur(topic, '#');
+            topic[s->tuples[i].topic_len - 1] = '\0';
             wildcard = true;
         } else if (topic[s->tuples[i].topic_len - 1] != '/') {
-            topic = append_string((char *) s->tuples[i].topic, "/", 1);
-            alloced = true;
+            topic[s->tuples[i].topic_len - 1] = '/';
+            topic[s->tuples[i].topic_len] = '\0';
         }
 
         struct topic *t = sol_topic_get_or_create(&sol, topic);
@@ -545,9 +546,6 @@ static int subscribe_handler(struct io_event *e) {
         }
 
         UNLOCK;
-
-        if (alloced)
-            sol_free(topic);
 
         rcs[i] = s->tuples[i].qos;
     }
@@ -614,8 +612,8 @@ static int publish_handler(struct io_event *e) {
 
     info.messages_recv++;
 
-    char *topic = (char *) p->topic;
-    bool alloced = false;
+    char topic[p->topiclen + 1];
+    strncpy(topic, (const char *) p->topic, p->topiclen);
     unsigned char qos = p->header.bits.qos;
 
     /*
@@ -623,8 +621,8 @@ static int publish_handler(struct io_event *e) {
      * hierarchical level
      */
     if (topic[p->topiclen - 1] != '/') {
-        topic = append_string((char *) p->topic, "/", 1);
-        alloced = true;
+        topic[p->topiclen - 1] = '/';
+        topic[p->topiclen] = '\0';
     }
 
     /*
@@ -646,10 +644,6 @@ static int publish_handler(struct io_event *e) {
         t->retained_msg = bstring_copy(pub, publen);
 
     sol_free(pub);
-
-    // Not the best way to handle this
-    if (alloced == true)
-        sol_free(topic);
 
     bstring payload = NULL;
 
