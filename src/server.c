@@ -505,6 +505,7 @@ static int subscribe_handler(struct io_event *e) {
         /* char *topic = (char *) s->tuples[i].topic; */
         char topic[s->tuples[i].topic_len + 1];
         strncpy(topic, (const char *) s->tuples[i].topic, s->tuples[i].topic_len);
+        topic[s->tuples[i].topic_len] = '\0';
 
         log_debug("\t%s (QoS %i)", topic, s->tuples[i].qos);
 
@@ -689,6 +690,10 @@ static int publish_handler(struct io_event *e) {
                             inflight_msg_new(sc, &ack, type, publen);
                     }
                 } else {
+                    publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
+                        p->topiclen + p->payloadlen;
+                    pkt.publish.header.bits.qos = 0;
+                    pkt.publish.pkt_id = 0;
                     pub = pack_mqtt_packet(&pkt, PUBLISH);
                 }
 
