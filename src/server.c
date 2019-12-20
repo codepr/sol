@@ -650,6 +650,7 @@ static int publish_handler(struct io_event *e) {
     if (hashtable_size(t->subscribers) > 0) {
 
         struct iterator *it = iter_new(t->subscribers, hashtable_iter_next);
+        unsigned char type, opcode;
 
         // first run check
         if (it->ptr) {
@@ -679,15 +680,13 @@ static int publish_handler(struct io_event *e) {
 
                     unsigned short mid = next_free_mid(sc->i_acks);
                     if (!sc->i_acks[mid]) {
-                        unsigned char mtype =
-                            sub->qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
-                        unsigned char byte =
-                            sub->qos == AT_LEAST_ONCE ? PUBACK_B : PUBREC_B;
+                        type = sub->qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
+                        opcode = type == PUBACK ? PUBACK_B : PUBREC_B;
                         union mqtt_packet ack = {
-                            .ack = *mqtt_packet_ack(byte, mid)
+                            .ack = *mqtt_packet_ack(opcode, mid)
                         };
                         sc->i_acks[mid] =
-                            inflight_msg_new(sc, &ack, mtype, publen);
+                            inflight_msg_new(sc, &ack, type, publen);
                     }
                 } else {
                     pub = pack_mqtt_packet(&pkt, PUBLISH);
