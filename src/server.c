@@ -457,12 +457,13 @@ static int disconnect_handler(struct io_event *e) {
     // Remove from subscriptions for now
     struct list *subs = e->client->session->subscriptions;
     struct iterator *it = iter_new(subs, list_iter_next);
-    if (it->ptr)
+    if (it->ptr) {
         do {
             log_debug("Removing %s from topic %s",
                       e->client->client_id, ((struct topic *) it->ptr)->name);
             topic_del_subscriber(it->ptr, e->client, false);
         } while ((it = iter_next(it)) && it->ptr);
+    }
     iter_destroy(it);
     hashtable_del(sol.clients, e->client->client_id);
 
@@ -741,6 +742,7 @@ static int publish_handler(struct io_event *e) {
         goto exit;
 
     int ptype = PUBACK;
+    unsigned char packed[MQTT_ACK_LEN];
 
     // TODO check for unwanted values
     if (qos == AT_LEAST_ONCE) {
@@ -749,11 +751,15 @@ static int publish_handler(struct io_event *e) {
         // TODO add to a hashtable to track PUBREC clients last
         log_debug("Sending PUBREC to %s (m%u)", c->client_id, orig_mid);
         ptype = PUBREC;
+        union mqtt_packet ack = {
+            .ack = *mqtt_packet_ack(PUBREC_B, orig_mid)
+        };
+        c->in_i_acks[orig_mid] =
+            inflight_msg_new(c, &ack, ptype, publen);
     }
 
     e->data.ack = *mqtt_packet_ack(ptype == PUBACK ? PUBACK_B : PUBREC_B,
                                    orig_mid);
-    unsigned char packed[MQTT_ACK_LEN];
     mqtt_pack_mono(packed, ptype, orig_mid);
     e->reply = bstring_copy(packed, MQTT_ACK_LEN);
 
@@ -817,15 +823,9 @@ static int pubrel_handler(struct io_event *e) {
     struct sol_client *c = e->client;
     unsigned char packed[MQTT_ACK_LEN];
     mqtt_pack_mono(packed, PUBCOMP, e->data.ack.pkt_id);
-    if (c->i_acks[e->data.ack.pkt_id]) {
-        log_debug("[ACK] Freeing mid %u", e->data.ack.pkt_id);
-        sol_free(c->i_acks[e->data.ack.pkt_id]);
-        c->i_acks[e->data.ack.pkt_id] = NULL;
-    }
-    if (c->i_msgs[e->data.ack.pkt_id]) {
-        log_debug("[MSG] Freeing mid %u", e->data.ack.pkt_id);
-        sol_free(c->i_msgs[e->data.ack.pkt_id]);
-        c->i_msgs[e->data.ack.pkt_id] = NULL;
+    if (c->in_i_acks[e->data.ack.pkt_id]) {
+        sol_free(c->in_i_acks[e->data.ack.pkt_id]);
+        c->in_i_acks[e->data.ack.pkt_id] = NULL;
     }
     log_debug("Sending PUBCOMP to %s (m%u)",
               e->client->client_id, e->data.ack.pkt_id);
@@ -1540,28 +1540,50 @@ static void publish_stats(void) {
  * of additional packing before re-sending it out
  */
 static void inflight_msg_check(void) {
-    /* time_t now = time(NULL); */
-    /* unsigned char *pub = NULL; */
-    /* ssize_t sent; */
-    /* for (int i = 0; i < 65535; ++i) { */
-        // TODO Remove hard-coded values, 65535 and 20
-        /* if (sol.out_i_msgs[i] */
-        /*     && (now - sol.out_i_msgs[i]->sent_timestamp) > 20) { */
-        /*     // Set DUP flag to 1 */
-        /*     mqtt_set_dup(sol.out_i_msgs[i]->packet, sol.out_i_msgs[i]->type); */
-        /*     // Serialize the packet and send it out again */
-        /*     pub = pack_mqtt_packet(sol.out_i_msgs[i]->packet, */
-        /*                            sol.out_i_msgs[i]->type); */
-        /*     bstring payload = bstring_copy(pub, sol.out_i_msgs[i]->size); */
-        /*     if ((sent = send_data(sol.out_i_msgs[i]->client->conn, */
-        /*                           payload, bstring_len(payload))) < 0) */
-        /*         log_error("Error re-sending %s", strerror(errno)); */
-        /*  */
-        /*     // Update information stats */
-        /*     info.messages_sent++; */
-        /*     info.bytes_sent += sent; */
-        /* } */
-    /* } */
+    time_t now = time(NULL);
+    unsigned char *pub = NULL;
+    ssize_t sent;
+    LOCK;
+    struct iterator *it = iter_new(sol.clients, hashtable_iter_next);
+    while (it && it->ptr) {
+        struct sol_client *c = it->ptr;
+        for (int i = 1; i < MAX_INFLIGHT_MSGS; ++i) {
+            // TODO remove 20 hardcoded value
+            // Messages
+            if (c->i_msgs[i] && (now - c->i_msgs[i]->sent_timestamp) > 20) {
+                // Set DUP flag to 1
+                mqtt_set_dup(c->i_msgs[i]->packet, c->i_msgs[i]->type);
+                // Serialize the packet and send it out again
+                pub = pack_mqtt_packet(c->i_msgs[i]->packet, c->i_msgs[i]->type);
+                bstring payload = bstring_copy(pub, c->i_msgs[i]->size);
+                if ((sent = send_data(c->i_msgs[i]->client->conn,
+                                      payload, bstring_len(payload))) < 0)
+                    log_error("Error re-sending %s", strerror(errno));
+
+                // Update information stats
+                info.messages_sent++;
+                info.bytes_sent += sent;
+            }
+            // ACKs
+            if (c->i_acks[i] && (now - c->i_acks[i]->sent_timestamp) > 20) {
+                // Set DUP flag to 1
+                mqtt_set_dup(c->i_acks[i]->packet, c->i_acks[i]->type);
+                // Serialize the packet and send it out again
+                pub = pack_mqtt_packet(c->i_acks[i]->packet, c->i_acks[i]->type);
+                bstring payload = bstring_copy(pub, c->i_acks[i]->size);
+                if ((sent = send_data(c->i_acks[i]->client->conn,
+                                      payload, bstring_len(payload))) < 0)
+                    log_error("Error re-sending %s", strerror(errno));
+
+                // Update information stats
+                info.messages_sent++;
+                info.bytes_sent += sent;
+            }
+        }
+        it = iter_next(it);
+    }
+    iter_destroy(it);
+    UNLOCK;
 }
 
 /*
@@ -1591,6 +1613,8 @@ static int client_destructor(struct hashtable_entry *entry) {
             sol_free(client->i_acks[i]);
         if (client->i_msgs[i])
             sol_free(client->i_msgs[i]);
+        if (client->in_i_acks[i])
+            sol_free(client->in_i_acks[i]);
     }
 
     sol_free(client);
@@ -1679,7 +1703,7 @@ int start_server(const char *addr, const char *port) {
     struct itimerspec exp_keys_timer = get_timer(conf->stats_pub_interval, 0);
 
     /* And one for the inflight ingoing and outgoing messages with QoS > 0 */
-    struct itimerspec inflight_msgs_timer = get_timer(0, 1e8);
+    struct itimerspec inflight_msgs_timer = get_timer(0, 2e8);
 
     // add expiration keys cron task and inflight messages cron task
     int exptimerfd = add_cron_task(epoll.w_epollfd, &exp_keys_timer);

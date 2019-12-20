@@ -40,6 +40,7 @@ struct sol_client *sol_client_new(struct connection *c) {
     for (int i = 0; i < MAX_INFLIGHT_MSGS; ++i) {
         client->i_acks[i] = NULL;
         client->i_msgs[i] = NULL;
+        client->in_i_acks[i] = NULL;
     }
     return client;
 }

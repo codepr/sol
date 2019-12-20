@@ -92,6 +92,7 @@ struct sol_client {
     struct mqtt_publish *lwt_msg;
     struct inflight_msg *i_acks[MAX_INFLIGHT_MSGS];
     struct inflight_msg *i_msgs[MAX_INFLIGHT_MSGS];
+    struct inflight_msg *in_i_acks[MAX_INFLIGHT_MSGS];
 };
 
 struct subscriber {
