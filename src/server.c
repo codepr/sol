@@ -658,8 +658,12 @@ static int publish_handler(struct io_event *e) {
                 struct sol_client *sc = sub->client;
                 struct connection *conn = sc->conn;
 
-                /* Update QoS according to subscriber's one */
-                p->header.bits.qos = sub->qos;
+                /*
+                 * Update QoS according to subscriber's one, following MQTT
+                 * rules: The min between the original QoS and the subscriber
+                 * QoS
+                 */
+                p->header.bits.qos = qos >= sub->qos ? sub->qos : qos;
 
                 if (p->header.bits.qos > AT_MOST_ONCE) {
                     publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
