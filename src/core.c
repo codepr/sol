@@ -33,6 +33,7 @@ struct sol_client *sol_client_new(struct connection *c) {
     struct sol_client *client = sol_malloc(sizeof(*client));
     client->conn = c;
     client->online = true;
+    client->clean_session = true;
     client->client_id[0] = '\0';
     client->last_action_time = time(NULL);
     client->lwt_msg = NULL;
@@ -145,7 +146,17 @@ struct session *sol_session_new(void) {
     // TODO add a subscription destroyer
     s->subscriptions = list_new(NULL);
     s->msg_queue = sol_malloc(sizeof(struct inflight_msg) * 4);
+    s->msg_queue_next = 0;
+    s->msg_queue_size = 0;
     return s;
+}
+
+void sol_session_append_imsg(struct session *s, struct inflight_msg *m) {
+    if (s->msg_queue_next > s->msg_queue_size / 2) {
+        s->msg_queue_size *= 2;
+        s->msg_queue = sol_realloc(s->msg_queue, s->msg_queue_size);
+    }
+    s->msg_queue[s->msg_queue_next++] = m;
 }
 
 unsigned next_free_mid(struct inflight_msg **i_msgs) {

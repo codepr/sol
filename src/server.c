@@ -383,8 +383,10 @@ static int connect_handler(struct io_event *e) {
 
     // TODO check for session already present
 
-    if (c->bits.clean_session == false)
+    if (c->bits.clean_session == false) {
+        e->client->clean_session = false;
         e->client->session->subscriptions = list_new(NULL);
+    }
 
     set_payload_connack(e, RC_CONNECTION_ACCEPTED);
 
@@ -664,19 +666,30 @@ static int publish_handler(struct io_event *e) {
                 struct connection *conn = sc->conn;
 
                 /*
-                 * If offline, we must enqueue messages in the inflight queue
-                 * of the client, they will be sent out only in case of a
-                 * clean_session == false connection
-                 */
-                /* if (sc->online == false && sc->session) */
-
-                /*
                  * Update QoS according to subscriber's one, following MQTT
                  * rules: The min between the original QoS and the subscriber
                  * QoS
                  */
                 p->header.bits.qos = qos >= sub->qos ? sub->qos : qos;
 
+                /*
+                 * If offline, we must enqueue messages in the inflight queue
+                 * of the client, they will be sent out only in case of a
+                 * clean_session == false connection
+                 */
+                if (sc->online == false && sc->clean_session == false) {
+                    pkt.publish.header.bits.qos = p->header.bits.qos;
+                    struct inflight_msg *im =
+                        inflight_msg_new(sc, &pkt, PUBLISH, publen);
+                    sol_session_append_imsg(sc->session, im);
+                    continue;
+                }
+
+                /*
+                 * Proceed with the publish towards online subscriber.
+                 * TODO move the IO part into the dedicated workers. Coded
+                 * here as first simpler working version
+                 */
                 if (p->header.bits.qos > AT_MOST_ONCE) {
                     // QoS > 0 (1|2)
                     publen = MQTT_HEADER_LEN + sizeof(uint16_t) +

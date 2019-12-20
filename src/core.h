@@ -76,6 +76,8 @@ struct sol {
 
 struct session {
     List *subscriptions;
+    size_t msg_queue_size;
+    size_t msg_queue_next;
     struct inflight_msg **msg_queue;
 };
 
@@ -85,6 +87,7 @@ struct session {
  */
 struct sol_client {
     bool online;  // just a boolean will be fine for now
+    bool clean_session;
     char client_id[MQTT_CLIENT_ID_LEN];
     struct connection *conn;
     struct session *session;
@@ -129,5 +132,7 @@ struct topic *sol_topic_get(struct sol *, const char *);
 struct topic *sol_topic_get_or_create(struct sol *, const char *);
 
 unsigned next_free_mid(struct inflight_msg **);
+
+void sol_session_append_imsg(struct session *, struct inflight_msg *);
 
 #endif
