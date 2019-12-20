@@ -76,7 +76,7 @@ struct sol {
 
 struct session {
     List *subscriptions;
-    // TODO add pending confirmed messages
+    struct inflight_msg **msg_queue;
 };
 
 /*

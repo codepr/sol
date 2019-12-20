@@ -132,7 +132,6 @@ struct inflight_msg *inflight_msg_new(struct sol_client *c,
                                       union mqtt_packet *p,
                                       int type, size_t size) {
     struct inflight_msg *imsg = sol_malloc(sizeof(*imsg));
-
     imsg->client = c;
     imsg->sent_timestamp = time(NULL);
     imsg->packet = p;
@@ -145,6 +144,7 @@ struct session *sol_session_new(void) {
     struct session *s = sol_malloc(sizeof(*s));
     // TODO add a subscription destroyer
     s->subscriptions = list_new(NULL);
+    s->msg_queue = sol_malloc(sizeof(struct inflight_msg) * 4);
     return s;
 }
 

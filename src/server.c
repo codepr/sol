@@ -441,7 +441,8 @@ static void rec_sub(struct trie_node *node, void *arg) {
     log_debug("Adding subscriber %s to topic %s",
               s->client->client_id, t->name);
     hashtable_put(t->subscribers, s->client->client_id, s);
-    list_push(s->client->session->subscriptions, t);
+    if (s->client->session)
+        list_push(s->client->session->subscriptions, t);
 }
 
 static int disconnect_handler(struct io_event *e) {
@@ -455,16 +456,18 @@ static int disconnect_handler(struct io_event *e) {
     // Clean resources
     close_conn(e->client->conn);
     // Remove from subscriptions for now
-    struct list *subs = e->client->session->subscriptions;
-    struct iterator *it = iter_new(subs, list_iter_next);
-    if (it->ptr) {
-        do {
-            log_debug("Removing %s from topic %s",
-                      e->client->client_id, ((struct topic *) it->ptr)->name);
-            topic_del_subscriber(it->ptr, e->client, false);
-        } while ((it = iter_next(it)) && it->ptr);
+    if (e->client->session) {
+        struct list *subs = e->client->session->subscriptions;
+        struct iterator *it = iter_new(subs, list_iter_next);
+        if (it->ptr) {
+            do {
+                log_debug("Removing %s from topic %s",
+                          e->client->client_id, ((struct topic *) it->ptr)->name);
+                topic_del_subscriber(it->ptr, e->client, false);
+            } while ((it = iter_next(it)) && it->ptr);
+        }
+        iter_destroy(it);
     }
-    iter_destroy(it);
     hashtable_del(sol.clients, e->client->client_id);
 
     if (close(e->eventfd) < 0)
@@ -659,6 +662,13 @@ static int publish_handler(struct io_event *e) {
                 struct subscriber *sub = it->ptr;
                 struct sol_client *sc = sub->client;
                 struct connection *conn = sc->conn;
+
+                /*
+                 * If offline, we must enqueue messages in the inflight queue
+                 * of the client, they will be sent out only in case of a
+                 * clean_session == false connection
+                 */
+                /* if (sc->online == false && sc->session) */
 
                 /*
                  * Update QoS according to subscriber's one, following MQTT
@@ -1216,17 +1226,19 @@ static void *io_worker(void *arg) {
                     // Clean resources
                     close_conn(event->client->conn);
                     // Remove from subscriptions for now
-                    struct list *subs = event->client->session->subscriptions;
-                    struct iterator *it = iter_new(subs, list_iter_next);
-                    if (it->ptr) {
-                        do {
-                            log_debug("Deleting %s from topic %s",
-                                      event->client->client_id,
-                                      ((struct topic *) it->ptr)->name);
-                            topic_del_subscriber(it->ptr, event->client, false);
-                        } while ((it = iter_next(it)) && it->ptr);
+                    if (event->client->session) {
+                        struct list *subs = event->client->session->subscriptions;
+                        struct iterator *it = iter_new(subs, list_iter_next);
+                        if (it->ptr) {
+                            do {
+                                log_debug("Deleting %s from topic %s",
+                                          event->client->client_id,
+                                          ((struct topic *) it->ptr)->name);
+                                topic_del_subscriber(it->ptr, event->client, false);
+                            } while ((it = iter_next(it)) && it->ptr);
+                        }
+                        iter_destroy(it);
                     }
-                    iter_destroy(it);
                     /* hashtable_del(sol.clients, event->client->client_id); */
                     info.nclients--;
                     info.nconnections--;
@@ -1605,6 +1617,7 @@ static int client_destructor(struct hashtable_entry *entry) {
 
     if (client->session) {
         list_destroy(client->session->subscriptions, 0);
+        sol_free(client->session->msg_queue);
         sol_free(client->session);
     }
 
@@ -1633,6 +1646,8 @@ static int session_destructor(struct hashtable_entry *entry) {
     struct session *s = entry->val;
     if (s->subscriptions)
         list_destroy(s->subscriptions, 1);
+    if (s->msg_queue)
+        sol_free(s->msg_queue);
     sol_free(s);
     return 0;
 }
