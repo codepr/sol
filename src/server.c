@@ -171,9 +171,9 @@ static const char *sys_topics[SYS_TOPICS] = {
     "$SOL/broker/memory/used"
 };
 
-static void publish_stats(void);
+static void publish_stats(int);
 
-static void publish_message(struct mqtt_publish *, const struct topic *);
+static void publish_message(struct mqtt_publish *, const struct topic *, int);
 
 static void inflight_msg_check(void);
 
@@ -319,7 +319,7 @@ static int connect_handler(struct io_event *e) {
                 for (size_t i = 0; i < cc->session->msg_queue_next; ++i) {
                     tname = (char *) cc->session->msg_queue[i]->packet->publish.topic;
                     t = sol_topic_get_or_create(&sol, tname);
-                    publish_message(&cc->session->msg_queue[i]->packet->publish, t);
+                    publish_message(&cc->session->msg_queue[i]->packet->publish, t, e->epollfd);
                     xfree(cc->session->msg_queue[i]);
                 }
                 cc->session->msg_queue_next = 0;
@@ -621,7 +621,8 @@ static int unsubscribe_handler(struct io_event *e) {
     return REPLY;
 }
 
-static void publish_message(struct mqtt_publish *p, const struct topic *t) {
+static void publish_message(struct mqtt_publish *p,
+                            const struct topic *t, int epollfd) {
 
     unsigned char qos = p->header.bits.qos;
     size_t publen = 0;
@@ -640,7 +641,6 @@ static void publish_message(struct mqtt_publish *p, const struct topic *t) {
         do {
             struct subscriber *sub = it->ptr;
             struct sol_client *sc = sub->client;
-            struct connection *conn = sc->conn;
 
             /*
              * Update QoS according to subscriber's one, following MQTT
@@ -709,20 +709,19 @@ static void publish_message(struct mqtt_publish *p, const struct topic *t) {
 
             payload = bstring_copy(pub, publen);
             xfree(pub);
-            UNLOCK;
 
-            // TODO move call to EPOLLOUT io_worker
-            ssize_t sent = send_data(conn, payload, bstring_len(payload));
-            if (sent < 0)
-                log_error("Error publishing to %s: %s",
-                          sc->client_id, strerror(errno));
+            // Trigger write on IO threadpool
+            struct io_event *event = xmalloc(sizeof(*event));
+            event->epollfd = epollfd;
+            event->rc = REPLY;
+            event->client = sc;
+            event->reply = payload;
 
-            xfree(payload);
+            epoll_mod(event->epollfd, sc->conn->fd, EPOLLOUT, event);
+
             info.messages_sent++;
 
-            // Update information stats
-            info.bytes_sent += sent;
-
+            UNLOCK;
             log_debug("Sending PUBLISH to %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
                       sc->client_id,
                       p->header.bits.dup,
@@ -785,7 +784,7 @@ static int publish_handler(struct io_event *e) {
 
     xfree(pub);
 
-    publish_message(p, t);
+    publish_message(p, t, e->epollfd);
 
     mqtt_packet_release(&e->data, PUBLISH);
 
@@ -1268,7 +1267,7 @@ static void *io_worker(void *arg) {
                     if (event->client->lwt_msg) {
                         char *tname = (char *) event->client->lwt_msg->topic;
                         struct topic *t = sol_topic_get(&sol, tname);
-                        publish_message(event->client->lwt_msg, t);
+                        publish_message(event->client->lwt_msg, t, event->epollfd);
                     }
                     event->client->online = false;
                     // Clean resources
@@ -1294,6 +1293,7 @@ static void *io_worker(void *arg) {
                 }
             } else if (e_events[i].events & EPOLLOUT) {
 
+                LOCK;
                 struct io_event *event = e_events[i].data.ptr;
 
                 /*
@@ -1305,8 +1305,8 @@ static void *io_worker(void *arg) {
                 sent = send_data(c, event->reply, bstring_len(event->reply));
                 if (sent <= 0 || event->rc == RC_NOT_AUTHORIZED
                     || event->rc == RC_BAD_USERNAME_OR_PASSWORD) {
-                    log_info("Closing connection with %s: %s",
-                             c->ip, solerr(event->rc));
+                    log_info("Closing connection with %s: %s %lu",
+                             c->ip, solerr(event->rc), sent);
                     close_conn(c);
                     xfree(event->client->conn);
                     xfree(event->client);
@@ -1327,6 +1327,7 @@ static void *io_worker(void *arg) {
                 bstring_destroy(event->reply);
                 mqtt_packet_release(&event->data, event->data.header.bits.type);
                 xfree(event);
+                UNLOCK;
             }
         }
     }
@@ -1396,7 +1397,7 @@ static void *worker(void *arg) {
             } else if (e_events[i].data.fd == epoll->timerfd[0]) {
                 (void) read(e_events[i].data.fd, &timers, sizeof(timers));
                 // Check for keys about to expire out
-                publish_stats();
+                publish_stats(epoll->io_epollfd);
                 epoll_mod(epoll->w_epollfd, e_events[i].data.fd, EPOLLIN, NULL);
             } else if (e_events[i].data.fd == epoll->timerfd[1]) {
                 (void) read(e_events[i].data.fd, &timers, sizeof(timers));
@@ -1439,7 +1440,7 @@ exit:
  * Publish statistics periodic task, it will be called once every N config
  * defined seconds, it publish some informations on predefined topics
  */
-static void publish_stats(void) {
+static void publish_stats(int epollfd) {
 
     char cclients[number_len(info.nclients) + 1];
     sprintf(cclients, "%d", info.nclients);
@@ -1474,49 +1475,49 @@ static void publish_stats(void) {
         .payload = (unsigned char *) &utime
     };
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic));
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), epollfd);
 
     p.topiclen = strlen(sys_topics[6]);
     p.topic = (unsigned char *) sys_topics[6];
     p.payloadlen = strlen(sutime);
     p.payload = (unsigned char *) &sutime;
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic));
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), epollfd);
 
     p.topiclen = strlen(sys_topics[7]);
     p.topic = (unsigned char *) sys_topics[7];
     p.payloadlen = strlen(cclients);
     p.payload = (unsigned char *) &cclients;
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic));
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), epollfd);
 
     p.topiclen = strlen(sys_topics[9]);
     p.topic = (unsigned char *) sys_topics[9];
     p.payloadlen = strlen(bsent);
     p.payload = (unsigned char *) &bsent;
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic));
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), epollfd);
 
     p.topiclen = strlen(sys_topics[11]);
     p.topic = (unsigned char *) sys_topics[11];
     p.payloadlen = strlen(msent);
     p.payload = (unsigned char *) &msent;
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic));
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), epollfd);
 
     p.topiclen = strlen(sys_topics[12]);
     p.topic = (unsigned char *) sys_topics[12];
     p.payloadlen = strlen(mrecv);
     p.payload = (unsigned char *) &mrecv;
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic));
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), epollfd);
 
     p.topiclen = strlen(sys_topics[13]);
     p.topic = (unsigned char *) sys_topics[13];
     p.payloadlen = strlen(mem);
     p.payload = (unsigned char *) &mem;
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic));
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), epollfd);
 
 }
 

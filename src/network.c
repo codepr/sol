@@ -315,7 +315,7 @@ int epoll_mod(int efd, int fd, int evs, void *data) {
     if (data)
         ev.data.ptr = data;
 
-    ev.events = evs | EPOLLET | EPOLLONESHOT;
+    ev.events = evs | EPOLLHUP | EPOLLERR | EPOLLET | EPOLLONESHOT;
 
     return epoll_ctl(efd, EPOLL_CTL_MOD, fd, &ev);
 }
