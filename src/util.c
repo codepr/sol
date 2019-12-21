@@ -137,7 +137,7 @@ char *update_integer_string(char *str, int num) {
     char tmp[number_len(n) + 1];  // max size in bytes
     sprintf(tmp, "%d", n);  // XXX Unsafe
     size_t len = strlen(tmp);
-    str = sol_realloc(str, len + 1);
+    str = xrealloc(str, len + 1);
     memcpy(str, tmp, len + 1);
 
     return str;
@@ -150,7 +150,7 @@ char *update_integer_string(char *str, int num) {
  */
 char *append_string(const char *src, char *dst, size_t chunklen) {
     size_t srclen = strlen(src);
-    char *ret = sol_malloc(srclen + chunklen + 1);
+    char *ret = xmalloc(srclen + chunklen + 1);
     memcpy(ret, src, srclen);
     memcpy(ret + srclen, dst, chunklen);
     ret[srclen + chunklen] = '\0';
@@ -192,7 +192,7 @@ bool check_passwd(const char *passwd, const char *salt) {
  * allocated just 8 bytes after the start; this way it is possible to track
  * the memory usage at every allocation
  */
-void *sol_malloc(size_t size) {
+void *xmalloc(size_t size) {
 
     assert(size > 0);
 
@@ -209,10 +209,10 @@ void *sol_malloc(size_t size) {
 }
 
 /*
- * Same as sol_malloc, but with calloc, creating chunk o zero'ed memory.
+ * Same as xmalloc, but with calloc, creating chunk o zero'ed memory.
  * TODO: still a suboptimal solution
  */
-void *sol_calloc(size_t len, size_t size) {
+void *xcalloc(size_t len, size_t size) {
 
     assert(len > 0 && size > 0);
 
@@ -229,15 +229,15 @@ void *sol_calloc(size_t len, size_t size) {
 }
 
 /*
- * Same of sol_malloc but with realloc, resize a chunk of memory pointed by a
+ * Same of xmalloc but with realloc, resize a chunk of memory pointed by a
  * given pointer, again appends the new size in front of the byte array
  */
-void *sol_realloc(void *ptr, size_t size) {
+void *xrealloc(void *ptr, size_t size) {
 
     assert(size > 0);
 
     if (!ptr)
-        return sol_malloc(size);
+        return xmalloc(size);
 
     void *realptr = (char *)ptr-sizeof(size_t);
 
@@ -265,7 +265,7 @@ void *sol_realloc(void *ptr, size_t size) {
  * of memory pointed by `ptr`, this way it knows how many bytes will be
  * free'ed by the call
  */
-void sol_free(void *ptr) {
+void xfree(void *ptr) {
 
     if (!ptr)
         return;
@@ -287,7 +287,7 @@ void sol_free(void *ptr) {
  * 8 positions, the size of an unsigned long long in order to read the number
  * of allcated bytes
  */
-size_t malloc_size(void *ptr) {
+size_t xmalloc_size(void *ptr) {
 
     if (!ptr)
         return 0L;
@@ -303,13 +303,13 @@ size_t malloc_size(void *ptr) {
 }
 
 /*
- * As strdup but using sol_malloc instead of malloc, to track the number of bytes
- * allocated and to enable use of sol_free on duplicated strings without having
- * to care when to use a normal free or a sol_free
+ * As strdup but using xmalloc instead of malloc, to track the number of bytes
+ * allocated and to enable use of xfree on duplicated strings without having
+ * to care when to use a normal free or a xfree
  */
-char *sol_strdup(const char *s) {
+char *xstrdup(const char *s) {
 
-    char *ds = sol_malloc(strlen(s) + 1);
+    char *ds = xmalloc(strlen(s) + 1);
 
     if (!ds)
         return NULL;

@@ -56,7 +56,7 @@ bstring bstring_copy(const unsigned char *init, size_t len) {
      * track memory usage of the system, we just need to malloc it with the
      * custom malloc in utils
      */
-    unsigned char *str = sol_malloc(len);
+    unsigned char *str = xmalloc(len);
     memcpy(str, init, len);
     return str;
 }
@@ -68,7 +68,7 @@ bstring bstring_dup(const bstring src) {
 
 /* Same as bstring_copy but setting the entire content of the string to 0 */
 bstring bstring_empty(size_t len) {
-    unsigned char *str = sol_malloc(len);
+    unsigned char *str = xmalloc(len);
     memset(str, 0x00, len);
     return str;
 }
@@ -78,7 +78,7 @@ void bstring_destroy(bstring s) {
      * Being allocated with utils custom functions just free it with the
      * corrispective free function
      */
-    sol_free(s);
+    xfree(s);
 }
 
 /* Host-to-network (native endian to big endian) */
@@ -471,7 +471,7 @@ long long unpack_integer(unsigned char **buf, char size) {
 }
 
 unsigned char *unpack_bytes(unsigned char **buf, size_t len) {
-    unsigned char *dest = sol_malloc(len + 1);
+    unsigned char *dest = xmalloc(len + 1);
     memcpy(dest, *buf, len);
     dest[len] = '\0';
     *buf += len;

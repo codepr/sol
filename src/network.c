@@ -545,7 +545,7 @@ static void conn_tls_close(struct connection *c) {
 }
 
 struct connection *conn_new(const SSL_CTX *ssl_ctx) {
-    struct connection *conn = sol_malloc(sizeof(*conn));
+    struct connection *conn = xmalloc(sizeof(*conn));
     if (!conn)
         return NULL;
     conn->fd = -1;

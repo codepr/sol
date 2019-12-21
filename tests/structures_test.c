@@ -103,7 +103,7 @@ static char *test_list_remove_node(void) {
     ASSERT("[! list_remove_node :: list_push]: item not pushed in", l->len == 1);
     struct list_node *node = list_remove_node(l, x, compare_str);
     ASSERT("[! list_remove_node]: item not removed", strcmp(node->data, x) == 0);
-    sol_free(node);
+    xfree(node);
     list_destroy(l, 0);
     printf(" [list::list_remove_node]: OK\n");
     return 0;
@@ -155,7 +155,7 @@ static char *test_trie_insert(void) {
     struct Trie *root = trie_new(NULL);
     const char *key = "hello";
     char *val = "world";
-    trie_insert(root, key, sol_strdup(val));
+    trie_insert(root, key, xstrdup(val));
     void *payload = NULL;
     bool found = trie_find(root, key, &payload);
     ASSERT("[! trie_insert]: Trie insertion failed",
@@ -172,7 +172,7 @@ static char *test_trie_find(void) {
     struct Trie *root = trie_new(NULL);
     const char *key = "hello";
     char *val = "world";
-    trie_insert(root, key, sol_strdup(val));
+    trie_insert(root, key, xstrdup(val));
     void *payload = NULL;
     bool found = trie_find(root, key, &payload);
     ASSERT("[! trie_find]: Trie search failed",
@@ -193,9 +193,9 @@ static char *test_trie_delete(void) {
     char *val1 = "world";
     char *val2 = "world";
     char *val3 = "world";
-    trie_insert(root, key1, sol_strdup(val1));
-    trie_insert(root, key2, sol_strdup(val2));
-    trie_insert(root, key3, sol_strdup(val3));
+    trie_insert(root, key1, xstrdup(val1));
+    trie_insert(root, key2, xstrdup(val2));
+    trie_insert(root, key3, xstrdup(val3));
     trie_delete(root, key1);
     trie_delete(root, key2);
     trie_delete(root, key3);
@@ -227,10 +227,10 @@ static char *test_trie_prefix_delete(void) {
     char *val2 = "world";
     char *val3 = "world";
     char *val4 = "world";
-    trie_insert(root, key1, sol_strdup(val1));
-    trie_insert(root, key2, sol_strdup(val2));
-    trie_insert(root, key3, sol_strdup(val3));
-    trie_insert(root, key4, sol_strdup(val4));
+    trie_insert(root, key1, xstrdup(val1));
+    trie_insert(root, key2, xstrdup(val2));
+    trie_insert(root, key3, xstrdup(val3));
+    trie_insert(root, key4, xstrdup(val4));
     trie_prefix_delete(root, key1);
     void *payload = NULL;
     bool found = trie_find(root, key1, &payload);
@@ -263,10 +263,10 @@ static char *test_trie_prefix_count(void) {
     char *val2 = "world";
     char *val3 = "world";
     char *val4 = "world";
-    trie_insert(root, key1, sol_strdup(val1));
-    trie_insert(root, key2, sol_strdup(val2));
-    trie_insert(root, key3, sol_strdup(val3));
-    trie_insert(root, key4, sol_strdup(val4));
+    trie_insert(root, key1, xstrdup(val1));
+    trie_insert(root, key2, xstrdup(val2));
+    trie_insert(root, key3, xstrdup(val3));
+    trie_insert(root, key4, xstrdup(val4));
     int count = trie_prefix_count(root, "hel");
     ASSERT("[! trie_prefix_count]: Trie prefix count on prefix \"hel\" failed",
             count == 4);
@@ -311,7 +311,7 @@ static char *test_hashtable_put(void) {
     ASSERT("[! hashtable_put]: hashtable_put didn't work as expected",
            status == HASHTABLE_OK);
     char *val1 = "WORLD";
-    hashtable_put(m, sol_strdup(key), sol_strdup(val1));
+    hashtable_put(m, xstrdup(key), xstrdup(val1));
     void *ret = hashtable_get(m, key);
     ASSERT("[! hashtable_put]: hashtable_put didn't update the value",
            strcmp(val1, ret) == 0);
@@ -327,7 +327,7 @@ static char *test_hashtable_get(void) {
     HashTable *m = hashtable_new(NULL);
     char *key = "hello";
     char *val = "world";
-    hashtable_put(m, sol_strdup(key), sol_strdup(val));
+    hashtable_put(m, xstrdup(key), xstrdup(val));
     char *ret = (char *) hashtable_get(m, key);
     ASSERT("[! hashtable_get]: hashtable_get didn't work as expected",
            strcmp(ret, val) == 0);
@@ -343,7 +343,7 @@ static char *test_hashtable_del(void) {
     HashTable *m = hashtable_new(NULL);
     char *key = "hello";
     char *val = "world";
-    hashtable_put(m, sol_strdup(key), sol_strdup(val));
+    hashtable_put(m, xstrdup(key), xstrdup(val));
     int status = hashtable_del(m, key);
     ASSERT("[! hashtbale_del]: hashtable size = 1", hashtable_size(m) == 0);
     ASSERT("[! hashtbale_del]: hashtbale_del didn't work as expected",
@@ -360,10 +360,10 @@ static char *test_hashtable_iterator(void) {
     HashTable *m = hashtable_new(NULL);
     char *key = "hello";
     char *val = "world";
-    hashtable_put(m, sol_strdup(key), sol_strdup(val));
+    hashtable_put(m, xstrdup(key), xstrdup(val));
     char *keytwo = "foobar";
     char *valtwo = "worldfoo";
-    hashtable_put(m, sol_strdup(keytwo), sol_strdup(valtwo));
+    hashtable_put(m, xstrdup(keytwo), xstrdup(valtwo));
     struct iterator *it = iter_new(m, hashtable_iter_next);
     ASSERT("[! hashtable_iterator]: hashtable_iterator didn't work as expected",
            strcmp(it->ptr, val) == 0);

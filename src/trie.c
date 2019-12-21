@@ -85,7 +85,7 @@ static int trie_node_count(const struct trie_node *node) {
 
 // Returns new trie node (initialized to NULL)
 struct trie_node *trie_create_node(char c) {
-    struct trie_node *new_node = sol_malloc(sizeof(*new_node));
+    struct trie_node *new_node = xmalloc(sizeof(*new_node));
     if (new_node) {
         new_node->chr = c;
         new_node->data = NULL;
@@ -96,7 +96,7 @@ struct trie_node *trie_create_node(char c) {
 
 // Returns new Trie, with a NULL root and 0 size
 Trie *trie_new(trie_destructor *destructor) {
-    Trie *trie = sol_malloc(sizeof(*trie));
+    Trie *trie = xmalloc(sizeof(*trie));
     trie_init(trie, destructor);
     return trie;
 }
@@ -193,7 +193,7 @@ bool trie_delete(Trie *trie, const char *key) {
             return ret;
         } else {
             if (retnode->data) {
-                sol_free(retnode->data);
+                xfree(retnode->data);
                 retnode->data = NULL;
                 trie->size--;
             }
@@ -292,8 +292,8 @@ static void trie_node_prefix_find(const struct trie_node *node,
      * recursively for child node, caring for the size of the current string,
      * if exceed bounds, double the size of the string host
      */
-    if ((size_t) level == malloc_size(str))
-        str = sol_realloc(str, level * 2);
+    if ((size_t) level == xmalloc_size(str))
+        str = xrealloc(str, level * 2);
     str[level] = node->chr;
 
     /*
@@ -302,8 +302,8 @@ static void trie_node_prefix_find(const struct trie_node *node,
      */
     if (node->data) {
         str[level + 1] = '\0';
-        struct kv_obj *kv = sol_malloc(sizeof(*kv));
-        kv->key = sol_strdup(str);
+        struct kv_obj *kv = xmalloc(sizeof(*kv));
+        kv->key = xstrdup(str);
         kv->data = node->data;
         keys = list_push(keys, kv);
     }
@@ -326,7 +326,7 @@ List *trie_prefix_find(const Trie *trie, const char *prefix) {
     List *keys = list_new(NULL);
 
     // Check all possible sub-paths and add the resulting key to the result
-    char *str = sol_malloc(32);
+    char *str = xmalloc(32);
     size_t plen = strlen(prefix);
     memcpy(str, prefix, plen);
     str[plen] = '\0';
@@ -337,7 +337,7 @@ List *trie_prefix_find(const Trie *trie, const char *prefix) {
      */
     trie_node_prefix_find(node, str, plen - 1, keys);
 
-    sol_free(str);
+    xfree(str);
 
     return keys;
 }
@@ -351,7 +351,7 @@ static void children_destroy(struct bst_node *node,
         children_destroy(node->left, len, destructor);
     if (node->right)
         children_destroy(node->right, len, destructor);
-    sol_free(node);
+    xfree(node);
 }
 
 /* Release memory of a node while updating size of the trie */
@@ -372,14 +372,14 @@ void trie_node_destroy(struct trie_node *node,
 
         // Release memory on data stored on the node
         if (node->data) {
-            sol_free(node->data);
+            xfree(node->data);
             node->data = NULL;
             if (*size > 0)
                 (*size)--;
         }
 
         // Release the node itself
-        sol_free(node);
+        xfree(node);
     }
 }
 
@@ -387,7 +387,7 @@ void trie_destroy(Trie *trie) {
     if (!trie)
         return;
     trie_node_destroy(trie->root, &(trie->size), trie->destructor);
-    sol_free(trie);
+    xfree(trie);
 }
 
 /*

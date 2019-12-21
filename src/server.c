@@ -260,11 +260,11 @@ static void set_payload_connack(struct io_event *e, unsigned char rc) {
     };
     unsigned char *packed = pack_mqtt_packet(&response, CONNACK);
     e->reply = bstring_copy(packed, MQTT_ACK_LEN);
-    sol_free(packed);
+    xfree(packed);
     if (rc != RC_CONNECTION_ACCEPTED) {
         if (e->client->session) {
             list_destroy(e->client->session->subscriptions, 0);
-            sol_free(e->client->session);
+            xfree(e->client->session);
         }
     }
 }
@@ -309,7 +309,7 @@ static int connect_handler(struct io_event *e) {
         if (s == NULL) {
             struct session *new_s = sol_session_new();
             hashtable_put(sol.sessions,
-                          sol_strdup((char *) c->payload.client_id), new_s);
+                          xstrdup((char *) c->payload.client_id), new_s);
         } else {
             if (c->bits.clean_session == false) {
                 // A session is present and we want to re-establish that
@@ -320,7 +320,7 @@ static int connect_handler(struct io_event *e) {
                     tname = (char *) cc->session->msg_queue[i]->packet->publish.topic;
                     t = sol_topic_get_or_create(&sol, tname);
                     publish_message(&cc->session->msg_queue[i]->packet->publish, t);
-                    sol_free(cc->session->msg_queue[i]);
+                    xfree(cc->session->msg_queue[i]);
                 }
                 cc->session->msg_queue_next = 0;
             } else {
@@ -331,7 +331,7 @@ static int connect_handler(struct io_event *e) {
                 hashtable_del(sol.sessions, c->payload.client_id);
                 struct session *new_s = sol_session_new();
                 hashtable_put(sol.sessions,
-                              sol_strdup((char *) c->payload.client_id), new_s);
+                              xstrdup((char *) c->payload.client_id), new_s);
             }
         }
     }
@@ -377,7 +377,7 @@ static int connect_handler(struct io_event *e) {
         size_t tpc_len = strlen((const char *) c->payload.will_topic);
         // We must store the retained message in the topic
         if (c->bits.will_retain == 1) {
-            struct mqtt_publish *lwt = sol_malloc(sizeof(*lwt));
+            struct mqtt_publish *lwt = xmalloc(sizeof(*lwt));
             lwt->header = (union mqtt_header) { .byte = PUBLISH_B };
             lwt->pkt_id = 0;  // placeholder
             lwt->topiclen = tpc_len;
@@ -399,7 +399,7 @@ static int connect_handler(struct io_event *e) {
             // We got a ready-to-be sent bytestring in the retained message
             // field
             t->retained_msg = payload;
-            sol_free(pub);
+            xfree(pub);
         }
     }
 
@@ -496,7 +496,7 @@ static int disconnect_handler(struct io_event *e) {
 
     if (close(e->eventfd) < 0)
         perror("DISCONNECT close");
-    sol_free(e);
+    xfree(e);
 
     // Update stats
     info.nclients--;
@@ -552,7 +552,7 @@ static int subscribe_handler(struct io_event *e) {
         struct topic *t = sol_topic_get_or_create(&sol, topic);
 
         if (wildcard == true) {
-            struct subscriber *sub = sol_malloc(sizeof(*sub));
+            struct subscriber *sub = xmalloc(sizeof(*sub));
             sub->client = e->client;
             sub->qos = s->tuples[i].qos;
             sub->refs = 0;
@@ -589,9 +589,9 @@ static int subscribe_handler(struct io_event *e) {
     log_debug("Sending SUBACK to %s", c->client_id);
 
     e->reply = bstring_copy(packed, len);
-    sol_free(packed);
+    xfree(packed);
     mqtt_packet_release(&pkt, SUBACK);
-    sol_free(suback);
+    xfree(suback);
 
     return REPLY;
 }
@@ -708,7 +708,7 @@ static void publish_message(struct mqtt_publish *p, const struct topic *t) {
             }
 
             payload = bstring_copy(pub, publen);
-            sol_free(pub);
+            xfree(pub);
             UNLOCK;
 
             // TODO move call to EPOLLOUT io_worker
@@ -717,7 +717,7 @@ static void publish_message(struct mqtt_publish *p, const struct topic *t) {
                 log_error("Error publishing to %s: %s",
                           sc->client_id, strerror(errno));
 
-            sol_free(payload);
+            xfree(payload);
             info.messages_sent++;
 
             // Update information stats
@@ -783,7 +783,7 @@ static int publish_handler(struct io_event *e) {
     if (p->header.bits.retain == 1)
         t->retained_msg = bstring_copy(pub, publen);
 
-    sol_free(pub);
+    xfree(pub);
 
     publish_message(p, t);
 
@@ -839,11 +839,11 @@ static int puback_handler(struct io_event *e) {
     log_debug("Received PUBACK from %s (m%u)",
               c->client_id, e->data.ack.pkt_id);
     if (c->i_msgs[e->data.ack.pkt_id]) {
-        sol_free(c->i_msgs[e->data.ack.pkt_id]);
+        xfree(c->i_msgs[e->data.ack.pkt_id]);
         c->i_msgs[e->data.ack.pkt_id] = NULL;
     }
     if (c->i_acks[e->data.ack.pkt_id]) {
-        sol_free(c->i_acks[e->data.ack.pkt_id]);
+        xfree(c->i_acks[e->data.ack.pkt_id]);
         c->i_acks[e->data.ack.pkt_id] = NULL;
     }
     UNLOCK;
@@ -861,7 +861,7 @@ static int pubrec_handler(struct io_event *e) {
     e->reply = bstring_copy(packed, MQTT_ACK_LEN);
     // Update inflight acks table
     if (c->i_acks[e->data.ack.pkt_id]) {
-        sol_free(c->i_acks[e->data.ack.pkt_id]);
+        xfree(c->i_acks[e->data.ack.pkt_id]);
         c->i_acks[e->data.ack.pkt_id] =
             inflight_msg_new(c, &e->data, PUBREL, MQTT_ACK_LEN);
     }
@@ -879,7 +879,7 @@ static int pubrel_handler(struct io_event *e) {
     unsigned char packed[MQTT_ACK_LEN];
     mqtt_pack_mono(packed, PUBCOMP, e->data.ack.pkt_id);
     if (c->in_i_acks[e->data.ack.pkt_id]) {
-        sol_free(c->in_i_acks[e->data.ack.pkt_id]);
+        xfree(c->in_i_acks[e->data.ack.pkt_id]);
         c->in_i_acks[e->data.ack.pkt_id] = NULL;
     }
     log_debug("Sending PUBCOMP to %s (m%u)",
@@ -899,11 +899,11 @@ static int pubcomp_handler(struct io_event *e) {
               e->client->client_id, e->data.ack.pkt_id);
     struct sol_client *c = e->client;
     if (c->i_acks[e->data.ack.pkt_id]) {
-        sol_free(c->i_acks[e->data.ack.pkt_id]);
+        xfree(c->i_acks[e->data.ack.pkt_id]);
         c->i_acks[e->data.ack.pkt_id] = NULL;
     }
     if (c->i_msgs[e->data.ack.pkt_id]) {
-        sol_free(c->i_msgs[e->data.ack.pkt_id]);
+        xfree(c->i_msgs[e->data.ack.pkt_id]);
         c->i_msgs[e->data.ack.pkt_id] = NULL;
     }
     UNLOCK;
@@ -916,7 +916,7 @@ static int pingreq_handler(struct io_event *e) {
     e->data.ack.header.byte = PINGRESP_B;
     unsigned char *packed = pack_mqtt_packet(&e->data, PINGRESP);
     e->reply = bstring_copy(packed, MQTT_HEADER_LEN);
-    sol_free(packed);
+    xfree(packed);
     log_debug("Sending PINGRESP to %s", e->client->client_id);
     return REPLY;
 }
@@ -929,7 +929,7 @@ static int pingreq_handler(struct io_event *e) {
 static void accept_loop(struct epoll *epoll) {
     int events = 0;
     struct epoll_event *e_events =
-        sol_malloc(sizeof(struct epoll_event) * EPOLL_MAX_EVENTS);
+        xmalloc(sizeof(struct epoll_event) * EPOLL_MAX_EVENTS);
     int epollfd = epoll_create1(0);
 
     /*
@@ -986,7 +986,7 @@ static void accept_loop(struct epoll *epoll) {
                         continue;
                     if (fd < 0) {
                         close_conn(conn);
-                        sol_free(conn);
+                        xfree(conn);
                         break;
                     }
                     /*
@@ -1015,7 +1015,7 @@ static void accept_loop(struct epoll *epoll) {
 
 exit:
 
-    sol_free(e_events);
+    xfree(e_events);
 }
 
 /*
@@ -1182,10 +1182,10 @@ static void *io_worker(void *arg) {
     ssize_t sent = 0;
 
     struct epoll_event *e_events =
-        sol_malloc(sizeof(struct epoll_event) * EPOLL_MAX_EVENTS);
+        xmalloc(sizeof(struct epoll_event) * EPOLL_MAX_EVENTS);
 
     /* Raw bytes buffer to handle input from client */
-    unsigned char *buffer = sol_malloc(conf->max_request_size);
+    unsigned char *buffer = xmalloc(conf->max_request_size);
 
     while (1) {
 
@@ -1226,7 +1226,7 @@ static void *io_worker(void *arg) {
 
             } else if (e_events[i].events & EPOLLIN) {
 
-                struct io_event *event = sol_malloc(sizeof(*event));
+                struct io_event *event = xmalloc(sizeof(*event));
                 event->epollfd = epoll->io_epollfd;
                 event->rc = 0;
                 event->client = e_events[i].data.ptr;
@@ -1289,7 +1289,7 @@ static void *io_worker(void *arg) {
                     }
                     info.nclients--;
                     info.nconnections--;
-                    sol_free(event);
+                    xfree(event);
                     UNLOCK;
                 }
             } else if (e_events[i].events & EPOLLOUT) {
@@ -1308,8 +1308,8 @@ static void *io_worker(void *arg) {
                     log_info("Closing connection with %s: %s",
                              c->ip, solerr(event->rc));
                     close_conn(c);
-                    sol_free(event->client->conn);
-                    sol_free(event->client);
+                    xfree(event->client->conn);
+                    xfree(event->client);
                 } else {
                     /*
                      * Rearm descriptor, we're using EPOLLONESHOT feature to
@@ -1326,15 +1326,15 @@ static void *io_worker(void *arg) {
                 /* Free resource, ACKs will be free'd closing the server */
                 bstring_destroy(event->reply);
                 mqtt_packet_release(&event->data, event->data.header.bits.type);
-                sol_free(event);
+                xfree(event);
             }
         }
     }
 
 exit:
 
-    sol_free(e_events);
-    sol_free(buffer);
+    xfree(e_events);
+    xfree(buffer);
 
     return NULL;
 }
@@ -1353,7 +1353,7 @@ static void *worker(void *arg) {
     eventfd_t val;
 
     struct epoll_event *e_events =
-        sol_malloc(sizeof(struct epoll_event) * EPOLL_MAX_EVENTS);
+        xmalloc(sizeof(struct epoll_event) * EPOLL_MAX_EVENTS);
 
     while (1) {
 
@@ -1422,7 +1422,7 @@ static void *worker(void *arg) {
                     epoll_mod(epoll->io_epollfd, c->fd, EPOLLIN, event->client);
                     if (close(event->eventfd) < 0)
                         perror("noreply - eventfd close");
-                    sol_free(event);
+                    xfree(event);
                 }
             }
         }
@@ -1430,7 +1430,7 @@ static void *worker(void *arg) {
 
 exit:
 
-    sol_free(e_events);
+    xfree(e_events);
 
     return NULL;
 }
@@ -1589,25 +1589,25 @@ static int client_destructor(struct hashtable_entry *entry) {
     if (client->conn) {
         if (client->online == true)
             close_conn(client->conn);
-        sol_free(client->conn);
+        xfree(client->conn);
     }
 
     if (client->session) {
         list_destroy(client->session->subscriptions, 0);
-        sol_free(client->session->msg_queue);
-        sol_free(client->session);
+        xfree(client->session->msg_queue);
+        xfree(client->session);
     }
 
     for (int i = 0; i < MAX_INFLIGHT_MSGS; ++i) {
         if (client->i_acks[i])
-            sol_free(client->i_acks[i]);
+            xfree(client->i_acks[i]);
         if (client->i_msgs[i])
-            sol_free(client->i_msgs[i]);
+            xfree(client->i_msgs[i]);
         if (client->in_i_acks[i])
-            sol_free(client->in_i_acks[i]);
+            xfree(client->in_i_acks[i]);
     }
 
-    sol_free(client);
+    xfree(client);
 
     return 0;
 }
@@ -1619,13 +1619,13 @@ static int client_destructor(struct hashtable_entry *entry) {
 static int session_destructor(struct hashtable_entry *entry) {
     if (!entry)
         return -1;
-    sol_free((void *) entry->key);
+    xfree((void *) entry->key);
     struct session *s = entry->val;
     if (s->subscriptions)
         list_destroy(s->subscriptions, 1);
     if (s->msg_queue)
-        sol_free(s->msg_queue);
-    sol_free(s);
+        xfree(s->msg_queue);
+    xfree(s);
     return 0;
 }
 
@@ -1637,8 +1637,8 @@ static int auth_destructor(struct hashtable_entry *entry) {
 
     if (!entry)
         return -1;
-    sol_free((void *) entry->key);
-    sol_free(entry->val);
+    xfree((void *) entry->key);
+    xfree(entry->val);
 
     return 0;
 }
@@ -1672,7 +1672,7 @@ int start_server(const char *addr, const char *port) {
 
     /* Generate stats topics */
     for (int i = 0; i < SYS_TOPICS; i++)
-        sol_topic_put(&sol, topic_new(sol_strdup(sys_topics[i])));
+        sol_topic_put(&sol, topic_new(xstrdup(sys_topics[i])));
 
     /* Start listening for new connections */
     int sfd = make_listen(addr, port, conf->socket_family);

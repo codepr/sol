@@ -33,7 +33,7 @@
 #define BALANCE(n) !n ? 0 : (HEIGHT(n->left)) - (HEIGHT(n->right))
 
 struct bst_node *bst_new(unsigned char key, const void *data) {
-    struct bst_node *node = sol_malloc(sizeof(*node));
+    struct bst_node *node = xmalloc(sizeof(*node));
     node->key = key;
     node->height = 1;
     node->left = NULL;
@@ -187,7 +187,7 @@ struct bst_node *bst_delete(struct bst_node *node, unsigned char key) {
                 node = NULL;
             } else
                 *node = *tmp;
-            sol_free(tmp);
+            xfree(tmp);
         } else {
             struct bst_node *tmp = bst_min(node->right);
             node->key = tmp->key;

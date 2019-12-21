@@ -284,7 +284,7 @@ static size_t unpack_mqtt_subscribe(unsigned char *raw,
         len -= sizeof(uint16_t);
 
         /* We have to make room for additional incoming tuples */
-        subscribe.tuples = sol_realloc(subscribe.tuples,
+        subscribe.tuples = xrealloc(subscribe.tuples,
                                        (i+1) * sizeof(*subscribe.tuples));
         subscribe.tuples[i].topic_len = topic_len;
         subscribe.tuples[i].topic = unpack_bytes(&raw, topic_len);
@@ -326,7 +326,7 @@ static size_t unpack_mqtt_unsubscribe(unsigned char *raw,
         len -= sizeof(uint16_t);
 
         /* We have to make room for additional incoming tuples */
-        unsubscribe.tuples = sol_realloc(unsubscribe.tuples,
+        unsubscribe.tuples = xrealloc(unsubscribe.tuples,
                                          (i+1) * sizeof(*unsubscribe.tuples));
         unsubscribe.tuples[i].topic_len = topic_len;
         unsubscribe.tuples[i].topic = unpack_bytes(&raw, topic_len);
@@ -383,7 +383,7 @@ int unpack_mqtt_packet(unsigned char *raw,
 
 static unsigned char *pack_mqtt_header(const union mqtt_header *hdr) {
 
-    unsigned char *packed = sol_malloc(MQTT_HEADER_LEN);
+    unsigned char *packed = xmalloc(MQTT_HEADER_LEN);
     unsigned char *ptr = packed;
 
     pack(ptr++, "B", hdr->byte);
@@ -396,7 +396,7 @@ static unsigned char *pack_mqtt_header(const union mqtt_header *hdr) {
 
 static unsigned char *pack_mqtt_ack(const union mqtt_packet *pkt) {
 
-    unsigned char *packed = sol_malloc(MQTT_ACK_LEN);
+    unsigned char *packed = xmalloc(MQTT_ACK_LEN);
     unsigned char *ptr = packed;
 
     pack(ptr++, "B", pkt->ack.header.byte);
@@ -410,7 +410,7 @@ static unsigned char *pack_mqtt_ack(const union mqtt_packet *pkt) {
 
 static unsigned char *pack_mqtt_connack(const union mqtt_packet *pkt) {
 
-    unsigned char *packed = sol_malloc(MQTT_ACK_LEN);
+    unsigned char *packed = xmalloc(MQTT_ACK_LEN);
     unsigned char *ptr = packed;
 
     pack(ptr++, "B", pkt->connack.header.byte);
@@ -425,7 +425,7 @@ static unsigned char *pack_mqtt_connack(const union mqtt_packet *pkt) {
 static unsigned char *pack_mqtt_suback(const union mqtt_packet *pkt) {
 
     size_t pktlen = MQTT_HEADER_LEN + sizeof(uint16_t) + pkt->suback.rcslen;
-    unsigned char *packed = sol_malloc(pktlen + 0);
+    unsigned char *packed = xmalloc(pktlen + 0);
     unsigned char *ptr = packed;
 
     pack(ptr++, "B", pkt->suback.header.byte);
@@ -456,7 +456,7 @@ static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
     if (pkt->publish.header.bits.qos > AT_MOST_ONCE)
         pktlen += sizeof(uint16_t);
 
-    unsigned char *packed = sol_malloc(pktlen);
+    unsigned char *packed = xmalloc(pktlen);
     unsigned char *ptr = packed;
 
     pack(ptr++, "B", pkt->publish.header.byte);
@@ -533,12 +533,12 @@ struct mqtt_suback *mqtt_packet_suback(unsigned char byte,
                                        unsigned char *rcs,
                                        unsigned short rcslen) {
 
-    struct mqtt_suback *suback = sol_malloc(sizeof(*suback));
+    struct mqtt_suback *suback = xmalloc(sizeof(*suback));
 
     suback->header.byte = byte;
     suback->pkt_id = pkt_id;
     suback->rcslen = rcslen;
-    suback->rcs = sol_malloc(rcslen);
+    suback->rcs = xmalloc(rcslen);
     memcpy(suback->rcs, rcs, rcslen);
 
     return suback;
@@ -551,7 +551,7 @@ struct mqtt_publish *mqtt_packet_publish(unsigned char byte,
                                          size_t payloadlen,
                                          unsigned char *payload) {
 
-    struct mqtt_publish *publish = sol_malloc(sizeof(*publish));
+    struct mqtt_publish *publish = xmalloc(sizeof(*publish));
 
     publish->header.byte = byte;
     publish->pkt_id = pkt_id;
@@ -568,26 +568,26 @@ void mqtt_packet_release(union mqtt_packet *pkt, unsigned type) {
     switch (type) {
         case CONNECT:
             if (pkt->connect.bits.username == 1)
-                sol_free(pkt->connect.payload.username);
+                xfree(pkt->connect.payload.username);
             if (pkt->connect.bits.password == 1)
-                sol_free(pkt->connect.payload.password);
+                xfree(pkt->connect.payload.password);
             if (pkt->connect.bits.will == 1) {
-                sol_free(pkt->connect.payload.will_message);
-                sol_free(pkt->connect.payload.will_topic);
+                xfree(pkt->connect.payload.will_message);
+                xfree(pkt->connect.payload.will_topic);
             }
             break;
         case SUBSCRIBE:
         case UNSUBSCRIBE:
             for (unsigned i = 0; i < pkt->subscribe.tuples_len; i++)
-                sol_free(pkt->subscribe.tuples[i].topic);
-            sol_free(pkt->subscribe.tuples);
+                xfree(pkt->subscribe.tuples[i].topic);
+            xfree(pkt->subscribe.tuples);
             break;
         case SUBACK:
-            sol_free(pkt->suback.rcs);
+            xfree(pkt->suback.rcs);
             break;
         case PUBLISH:
-            sol_free(pkt->publish.topic);
-            sol_free(pkt->publish.payload);
+            xfree(pkt->publish.topic);
+            xfree(pkt->publish.payload);
             break;
         default:
             break;

@@ -37,7 +37,7 @@ static struct list_node *list_node_remove(struct list_node *,
  */
 List *list_new(int (*destructor)(struct list_node *)) {
 
-    List *l = sol_malloc(sizeof(List));
+    List *l = xmalloc(sizeof(List));
 
     if (!l)
         return NULL;
@@ -72,8 +72,8 @@ void list_destroy(List *l, int deep) {
         else {
             if (h) {
                 if (h->data && deep == 1)
-                    sol_free(h->data);
-                sol_free(h);
+                    xfree(h->data);
+                xfree(h);
             }
         }
 
@@ -81,7 +81,7 @@ void list_destroy(List *l, int deep) {
     }
 
     // free List structure pointer
-    sol_free(l);
+    xfree(l);
 }
 
 unsigned long list_size(const List *list) {
@@ -106,8 +106,8 @@ void list_clear(List *l, int deep) {
 
         if (h) {
             if (h->data && deep == 1)
-                sol_free(h->data);
-            sol_free(h);
+                xfree(h->data);
+            xfree(h);
         }
 
         h = tmp;
@@ -133,7 +133,7 @@ List *list_attach(List *l, struct list_node *head, unsigned long len) {
  */
 List *list_push(List *l, void *val) {
 
-    struct list_node *new_node = sol_malloc(sizeof(struct list_node));
+    struct list_node *new_node = xmalloc(sizeof(struct list_node));
 
     if (!new_node)
         return NULL;
@@ -159,7 +159,7 @@ List *list_push(List *l, void *val) {
  */
 List *list_push_back(List *l, void *val) {
 
-    struct list_node *new_node = sol_malloc(sizeof(struct list_node));
+    struct list_node *new_node = xmalloc(sizeof(struct list_node));
 
     if (!new_node)
         return NULL;
@@ -202,7 +202,7 @@ static struct list_node *list_node_remove(struct list_node *head,
     if (cmp(head, node) == 0) {
 
         struct list_node *tmp_next = head->next;
-        sol_free(head);
+        xfree(head);
         head = NULL;
 
         // Update remove counter

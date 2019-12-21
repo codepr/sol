@@ -123,7 +123,7 @@ static int hashtable_rehash(HashTable *table) {
 
     /* Setup the new elements */
     struct hashtable_entry *temp =
-        sol_calloc(2 * table->table_size, sizeof(*temp));
+        xcalloc(2 * table->table_size, sizeof(*temp));
 
     if (!temp)
         return -HASHTABLE_ERR;
@@ -150,7 +150,7 @@ static int hashtable_rehash(HashTable *table) {
             return status;
     }
 
-    sol_free(curr);
+    xfree(curr);
 
     return HASHTABLE_OK;
 }
@@ -163,11 +163,11 @@ static int destroy_entry(struct hashtable_entry *entry) {
 
     // free key field
     if (entry->key)
-        sol_free((void *) entry->key);
+        xfree((void *) entry->key);
 
     // free value field
     if (entry->val)
-        sol_free(entry->val);
+        xfree(entry->val);
 
     return HASHTABLE_OK;
 }
@@ -178,11 +178,11 @@ static int destroy_entry(struct hashtable_entry *entry) {
  */
 HashTable *hashtable_new(int (*destructor)(struct hashtable_entry *)) {
 
-    HashTable *table = sol_malloc(sizeof(HashTable));
+    HashTable *table = xmalloc(sizeof(HashTable));
     if(!table)
         return NULL;
 
-    table->entries = sol_calloc(INITIAL_SIZE, sizeof(struct hashtable_entry));
+    table->entries = xcalloc(INITIAL_SIZE, sizeof(struct hashtable_entry));
     if(!table->entries) {
         hashtable_destroy(table);
         return NULL;
@@ -398,8 +398,8 @@ void hashtable_destroy(HashTable *table){
     if (!table || !table->entries)
         return;
 
-    sol_free(table->entries);
-    sol_free(table);
+    xfree(table->entries);
+    xfree(table);
 }
 
 /* The implementation here was originally done by Gary S. Brown. Slighltly

@@ -34,7 +34,7 @@
  * function to define how the iterator next ptr should be updated
  */
 struct iterator *iter_new(void *iterable, void (*next)(struct iterator *)) {
-    struct iterator *i = sol_malloc(sizeof(*i));
+    struct iterator *i = xmalloc(sizeof(*i));
     i->index = 0;
     i->iterable = iterable;
     i->ptr = NULL;
@@ -44,7 +44,7 @@ struct iterator *iter_new(void *iterable, void (*next)(struct iterator *)) {
 }
 
 void iter_destroy(struct iterator *i) {
-    sol_free(i);
+    xfree(i);
 }
 
 /*

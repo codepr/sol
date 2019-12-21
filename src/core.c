@@ -30,7 +30,7 @@
 #include "core.h"
 
 struct sol_client *sol_client_new(struct connection *c) {
-    struct sol_client *client = sol_malloc(sizeof(*client));
+    struct sol_client *client = xmalloc(sizeof(*client));
     client->conn = c;
     client->online = true;
     client->clean_session = true;
@@ -47,7 +47,7 @@ struct sol_client *sol_client_new(struct connection *c) {
 }
 
 struct topic *topic_new(const char *name) {
-    struct topic *t = sol_malloc(sizeof(*t));
+    struct topic *t = xmalloc(sizeof(*t));
     topic_init(t, name);
     return t;
 }
@@ -61,7 +61,7 @@ static int subscriber_destroy(struct hashtable_entry *entry) {
     if (entry->val) {
         struct subscriber *sub = entry->val;
         if (sub->refs == 1)
-            sol_free(entry->val);
+            xfree(entry->val);
         else
             sub->refs--;
     }
@@ -79,7 +79,7 @@ void topic_add_subscriber(struct topic *t,
                           struct sol_client *client,
                           unsigned qos,
                           bool cleansession) {
-    struct subscriber *sub = sol_malloc(sizeof(*sub));
+    struct subscriber *sub = xmalloc(sizeof(*sub));
     sub->client = client;
     sub->qos = qos;
     sub->refs = 1;
@@ -123,7 +123,7 @@ struct topic *sol_topic_get(struct sol *sol, const char *name) {
 struct topic *sol_topic_get_or_create(struct sol *sol, const char *name) {
     struct topic *t = sol_topic_get(sol, name);
     if (!t) {
-        t = topic_new(sol_strdup(name));
+        t = topic_new(xstrdup(name));
         sol_topic_put(sol, t);
     }
     return t;
@@ -132,7 +132,7 @@ struct topic *sol_topic_get_or_create(struct sol *sol, const char *name) {
 struct inflight_msg *inflight_msg_new(struct sol_client *c,
                                       union mqtt_packet *p,
                                       int type, size_t size) {
-    struct inflight_msg *imsg = sol_malloc(sizeof(*imsg));
+    struct inflight_msg *imsg = xmalloc(sizeof(*imsg));
     imsg->client = c;
     imsg->sent_timestamp = time(NULL);
     imsg->packet = p;
@@ -142,10 +142,10 @@ struct inflight_msg *inflight_msg_new(struct sol_client *c,
 }
 
 struct session *sol_session_new(void) {
-    struct session *s = sol_malloc(sizeof(*s));
+    struct session *s = xmalloc(sizeof(*s));
     // TODO add a subscription destroyer
     s->subscriptions = list_new(NULL);
-    s->msg_queue = sol_malloc(sizeof(struct inflight_msg) * 4);
+    s->msg_queue = xmalloc(sizeof(struct inflight_msg) * 4);
     s->msg_queue_next = 0;
     s->msg_queue_size = 0;
     return s;
@@ -154,7 +154,7 @@ struct session *sol_session_new(void) {
 void sol_session_append_imsg(struct session *s, struct inflight_msg *m) {
     if (s->msg_queue_next > s->msg_queue_size / 2) {
         s->msg_queue_size *= 2;
-        s->msg_queue = sol_realloc(s->msg_queue, s->msg_queue_size);
+        s->msg_queue = xrealloc(s->msg_queue, s->msg_queue_size);
     }
     s->msg_queue[s->msg_queue_next++] = m;
 }

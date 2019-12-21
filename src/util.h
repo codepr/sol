@@ -53,12 +53,12 @@ void sol_log_close(void);
 void sol_log(int, const char *, ...);
 
 /* Memory management */
-void *sol_malloc(size_t);
-void *sol_calloc(size_t, size_t);
-void *sol_realloc(void *, size_t);
-size_t malloc_size(void *);
-void sol_free(void *);
-char *sol_strdup(const char *);
+void *xmalloc(size_t);
+void *xcalloc(size_t, size_t);
+void *xrealloc(void *, size_t);
+size_t xmalloc_size(void *);
+void xfree(void *);
+char *xstrdup(const char *);
 char *remove_occur(char *, char);
 char *append_string(const char *, char *, size_t);
 bool check_passwd(const char *, const char *);
