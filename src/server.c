@@ -364,11 +364,6 @@ static int connect_handler(struct io_event *e) {
 
         log_info("Received double CONNECT from %s, disconnecting client",
                  c->payload.client_id);
-
-        e->client->online = false;
-        close_conn(e->client->conn);
-        hashtable_del(sol.clients, c->payload.client_id);
-
         goto clientdc;
     }
 
@@ -441,10 +436,6 @@ static int connect_handler(struct io_event *e) {
 
 clientdc:
 
-    // Update stats
-    info.nclients--;
-    info.nconnections--;
-
     UNLOCK;
 
     return CLIENTDC;
@@ -454,10 +445,6 @@ bad_auth:
               c->payload.client_id, RC_BAD_USERNAME_OR_PASSWORD);  // TODO check for session
     set_payload_connack(e, RC_BAD_USERNAME_OR_PASSWORD);
 
-    // Update stats
-    info.nclients--;
-    info.nconnections--;
-
     UNLOCK;
 
     return RC_BAD_USERNAME_OR_PASSWORD;
@@ -466,10 +453,6 @@ not_authorized:
     log_debug("Sending CONNACK to %s rc=%u",
               c->payload.client_id, RC_NOT_AUTHORIZED); // TODO check for session
     set_payload_connack(e, RC_NOT_AUTHORIZED);
-
-    // Update stats
-    info.nclients--;
-    info.nconnections--;
 
     UNLOCK;
 
@@ -495,10 +478,6 @@ static int disconnect_handler(struct io_event *e) {
 
     LOCK;
 
-    /* Handle disconnection request from client */
-    e->client->online = false;
-    // Clean resources
-    close_conn(e->client->conn);
     // Remove from subscriptions for now
     if (e->client->session) {
         struct list *subs = e->client->session->subscriptions;
@@ -512,16 +491,6 @@ static int disconnect_handler(struct io_event *e) {
         }
         iter_destroy(it);
     }
-    hashtable_del(sol.clients, e->client->client_id);
-
-    if (close(e->eventfd) < 0)
-        perror("DISCONNECT close");
-    xfree(e);
-
-    // Update stats
-    info.nclients--;
-    info.nconnections--;
-
     UNLOCK;
 
     // TODO remove from all topic where it subscribed
@@ -583,6 +552,7 @@ static int subscribe_handler(struct io_event *e) {
         topic_add_subscriber(t, e->client, s->tuples[i].qos, false);
 
         // Retained message? Publish it
+        // TODO move to IO threadpool
         if (t->retained_msg) {
             ssize_t sent = send_data(e->client->conn, t->retained_msg,
                                      bstring_len(t->retained_msg));
@@ -910,10 +880,6 @@ static int pubrel_handler(struct io_event *e) {
     return REPLY;
 }
 
-/* Utility macro to handle base case on each EPOLL loop */
-#define EPOLL_ERR(e) if ((e.events & EPOLLERR) || (e.events & EPOLLHUP) || \
-                         (!(e.events & EPOLLIN) && !(e.events & EPOLLOUT)))
-
 static int pubcomp_handler(struct io_event *e) {
     LOCK;
     log_debug("Received PUBCOMP from %s (m%u)",
@@ -941,6 +907,10 @@ static int pingreq_handler(struct io_event *e) {
     log_debug("Sending PINGRESP to %s", e->client->client_id);
     return REPLY;
 }
+
+/* Utility macro to handle base case on each EPOLL loop */
+#define EPOLL_ERR(e) if ((e.events & EPOLLERR) || (e.events & EPOLLHUP) || \
+                         (!(e.events & EPOLLIN) && !(e.events & EPOLLOUT)))
 
 /*
  * Handle incoming connections, create a a fresh new struct client structure
@@ -1332,6 +1302,9 @@ static void *io_worker(void *arg) {
                     close_conn(c);
                     xfree(event->client->conn);
                     xfree(event->client);
+                    // Update stats
+                    info.nclients--;
+                    info.nconnections--;
                 } else {
                     /*
                      * Rearm descriptor, we're using EPOLLONESHOT feature to
@@ -1441,6 +1414,16 @@ static void *worker(void *arg) {
                            || reply == RC_NOT_AUTHORIZED) {
                     event->rc = reply;
                     epoll_mod(event->epollfd, c->fd, EPOLLOUT, event);
+                } else if (reply == CLIENTDC) {
+                    event->client->online = false;
+                    close_conn(event->client->conn);
+                    hashtable_del(sol.clients, event->client->client_id);
+                    if (close(event->eventfd) < 0)
+                        perror("DISCONNECT close");
+                    xfree(event);
+                    // Update stats
+                    info.nclients--;
+                    info.nconnections--;
                 } else if (reply != CLIENTDC) {
                     epoll_mod(epoll->io_epollfd, c->fd, EPOLLIN, event->client);
                     if (close(event->eventfd) < 0)
