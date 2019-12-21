@@ -173,7 +173,7 @@ static const char *sys_topics[SYS_TOPICS] = {
 
 static void publish_stats(void);
 
-static void publish_message(const struct mqtt_publish *);
+static void publish_message(struct mqtt_publish *, const struct topic *);
 
 static void inflight_msg_check(void);
 
@@ -311,6 +311,20 @@ static int connect_handler(struct io_event *e) {
             struct session *new_s = sol_session_new();
             hashtable_put(sol.sessions,
                           sol_strdup((char *) c->payload.client_id), new_s);
+        } else {
+            if (c->bits.clean_session == false) {
+                // A session is present and we want to re-establish that
+
+            } else {
+                /*
+                 * Requested a clean session, delete the older one and create
+                 * a fresh one
+                 */
+                hashtable_del(sol.sessions, (char *) c->payload.client_id);
+                struct session *new_s = sol_session_new();
+                hashtable_put(sol.sessions,
+                              sol_strdup((char *) c->payload.client_id), new_s);
+            }
         }
     }
 
@@ -599,6 +613,121 @@ static int unsubscribe_handler(struct io_event *e) {
     return REPLY;
 }
 
+static void publish_message(struct mqtt_publish *p, const struct topic *t) {
+
+    unsigned char qos = p->header.bits.qos;
+    size_t publen = 0;
+    bstring payload = NULL;
+    unsigned char *pub = NULL;
+    union mqtt_packet pkt = { .publish = *p };
+
+    if (hashtable_size(t->subscribers) == 0)
+        return;
+
+    struct iterator *it = iter_new(t->subscribers, hashtable_iter_next);
+    unsigned char type, opcode;
+
+    // first run check
+    if (it->ptr) {
+        do {
+            struct subscriber *sub = it->ptr;
+            struct sol_client *sc = sub->client;
+            struct connection *conn = sc->conn;
+
+            /*
+             * Update QoS according to subscriber's one, following MQTT
+             * rules: The min between the original QoS and the subscriber
+             * QoS
+             */
+            p->header.bits.qos = qos >= sub->qos ? sub->qos : qos;
+
+            /*
+             * If offline, we must enqueue messages in the inflight queue
+             * of the client, they will be sent out only in case of a
+             * clean_session == false connection
+             */
+            LOCK;
+            if (sc->online == false && sc->clean_session == false) {
+                pkt.publish.header.bits.qos = p->header.bits.qos;
+                struct inflight_msg *im =
+                    inflight_msg_new(sc, &pkt, PUBLISH, publen);
+                sol_session_append_imsg(sc->session, im);
+                continue;
+            }
+
+            /*
+             * Proceed with the publish towards online subscriber.
+             * TODO move the IO part into the dedicated workers. Coded
+             * here as first simpler working version
+             */
+            if (p->header.bits.qos > AT_MOST_ONCE) {
+                // QoS > 0 (1|2)
+                publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
+                    p->topiclen + p->payloadlen;
+                // Add 2 bytes to make space for packet identifier
+                publen += sizeof(uint16_t);
+                pkt.publish.pkt_id = next_free_mid(sc->i_msgs);
+                pkt.publish.header.bits.qos = p->header.bits.qos;
+                pub = pack_mqtt_packet(&pkt, PUBLISH);
+
+                if (!sc->i_msgs[pkt.publish.pkt_id])
+                    sc->i_msgs[pkt.publish.pkt_id] =
+                        inflight_msg_new(sc, &pkt, PUBLISH, publen);
+
+                unsigned short mid = next_free_mid(sc->i_acks);
+                if (!sc->i_acks[mid]) {
+                    type = sub->qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
+                    opcode = type == PUBACK ? PUBACK_B : PUBREC_B;
+                    union mqtt_packet ack = {
+                        .ack = *mqtt_packet_ack(opcode, mid)
+                    };
+                    sc->i_acks[mid] =
+                        inflight_msg_new(sc, &ack, type, publen);
+                }
+            } else {
+                /*
+                 * QoS 0
+                 *
+                 * Set the correct size of the output packet and set the
+                 * correct QoS value (0) and packet identifier to 0 as
+                 * specified by MQTT specs
+                 */
+                publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
+                    p->topiclen + p->payloadlen;
+                pkt.publish.header.bits.qos = 0;
+                pkt.publish.pkt_id = 0;
+                pub = pack_mqtt_packet(&pkt, PUBLISH);
+            }
+
+            payload = bstring_copy(pub, publen);
+            sol_free(pub);
+            UNLOCK;
+
+            // TODO move call to EPOLLOUT io_worker
+            ssize_t sent = send_data(conn, payload, bstring_len(payload));
+            if (sent < 0)
+                log_error("Error publishing to %s: %s",
+                          sc->client_id, strerror(errno));
+
+            sol_free(payload);
+            info.messages_sent++;
+
+            // Update information stats
+            info.bytes_sent += sent;
+
+            log_debug("Sending PUBLISH to %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
+                      sc->client_id,
+                      p->header.bits.dup,
+                      p->header.bits.qos,
+                      p->header.bits.retain,
+                      pkt.publish.pkt_id,
+                      p->topic,
+                      p->payloadlen);
+        } while ((it = iter_next(it)) && it->ptr != NULL);
+    }
+    iter_destroy(it);
+}
+
 static int publish_handler(struct io_event *e) {
 
     struct sol_client *c = e->client;
@@ -613,8 +742,6 @@ static int publish_handler(struct io_event *e) {
               p->pkt_id,
               p->topic,
               p->payloadlen);
-
-    LOCK;
 
     info.messages_recv++;
 
@@ -637,7 +764,6 @@ static int publish_handler(struct io_event *e) {
      */
     struct topic *t = sol_topic_get_or_create(&sol, topic);
     union mqtt_packet pkt = e->data;
-    /* unsigned short mid = ++pkt.publish.pkt_id; */
 
     unsigned char *pub = pack_mqtt_packet(&pkt, PUBLISH);
     size_t publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
@@ -651,115 +777,13 @@ static int publish_handler(struct io_event *e) {
 
     sol_free(pub);
 
-    bstring payload = NULL;
-
-    if (hashtable_size(t->subscribers) > 0) {
-
-        struct iterator *it = iter_new(t->subscribers, hashtable_iter_next);
-        unsigned char type, opcode;
-
-        // first run check
-        if (it->ptr) {
-            do {
-                struct subscriber *sub = it->ptr;
-                struct sol_client *sc = sub->client;
-                struct connection *conn = sc->conn;
-
-                /*
-                 * Update QoS according to subscriber's one, following MQTT
-                 * rules: The min between the original QoS and the subscriber
-                 * QoS
-                 */
-                p->header.bits.qos = qos >= sub->qos ? sub->qos : qos;
-
-                /*
-                 * If offline, we must enqueue messages in the inflight queue
-                 * of the client, they will be sent out only in case of a
-                 * clean_session == false connection
-                 */
-                if (sc->online == false && sc->clean_session == false) {
-                    pkt.publish.header.bits.qos = p->header.bits.qos;
-                    struct inflight_msg *im =
-                        inflight_msg_new(sc, &pkt, PUBLISH, publen);
-                    sol_session_append_imsg(sc->session, im);
-                    continue;
-                }
-
-                /*
-                 * Proceed with the publish towards online subscriber.
-                 * TODO move the IO part into the dedicated workers. Coded
-                 * here as first simpler working version
-                 */
-                if (p->header.bits.qos > AT_MOST_ONCE) {
-                    // QoS > 0 (1|2)
-                    publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
-                        p->topiclen + p->payloadlen;
-                    // Add 2 bytes to make space for packet identifier
-                    publen += sizeof(uint16_t);
-                    pkt.publish.pkt_id = next_free_mid(sc->i_msgs);
-                    pkt.publish.header.bits.qos = p->header.bits.qos;
-                    pub = pack_mqtt_packet(&pkt, PUBLISH);
-
-                    if (!sc->i_msgs[pkt.publish.pkt_id])
-                        sc->i_msgs[pkt.publish.pkt_id] =
-                            inflight_msg_new(sc, &pkt, PUBLISH, publen);
-
-                    unsigned short mid = next_free_mid(sc->i_acks);
-                    if (!sc->i_acks[mid]) {
-                        type = sub->qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
-                        opcode = type == PUBACK ? PUBACK_B : PUBREC_B;
-                        union mqtt_packet ack = {
-                            .ack = *mqtt_packet_ack(opcode, mid)
-                        };
-                        sc->i_acks[mid] =
-                            inflight_msg_new(sc, &ack, type, publen);
-                    }
-                } else {
-                    /*
-                     * QoS 0
-                     *
-                     * Set the correct size of the output packet and set the
-                     * correct QoS value (0) and packet identifier to 0 as
-                     * specified by MQTT specs
-                     */
-                    publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
-                        p->topiclen + p->payloadlen;
-                    pkt.publish.header.bits.qos = 0;
-                    pkt.publish.pkt_id = 0;
-                    pub = pack_mqtt_packet(&pkt, PUBLISH);
-                }
-
-                payload = bstring_copy(pub, publen);
-                sol_free(pub);
-
-                // TODO move call to EPOLLOUT io_worker
-                ssize_t sent = send_data(conn, payload, bstring_len(payload));
-                if (sent < 0)
-                    log_error("Error publishing to %s: %s",
-                              sc->client_id, strerror(errno));
-
-                sol_free(payload);
-                info.messages_sent++;
-
-                // Update information stats
-                info.bytes_sent += sent;
-
-                log_debug("Sending PUBLISH to %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
-                          sc->client_id,
-                          p->header.bits.dup,
-                          p->header.bits.qos,
-                          p->header.bits.retain,
-                          pkt.publish.pkt_id,
-                          p->topic,
-                          p->payloadlen);
-            } while ((it = iter_next(it)) && it->ptr != NULL);
-        }
-        iter_destroy(it);
-    }
+    publish_message(p, t);
 
     mqtt_packet_release(&e->data, PUBLISH);
 
     // We have to answer to the publisher
+
+    LOCK;
 
     if (qos == AT_MOST_ONCE)
         goto exit;
@@ -1233,8 +1257,11 @@ static void *io_worker(void *arg) {
                     log_error("Closing connection with %s: %s",
                               event->client->conn->ip, solerr(rc));
                     // Publish, if present, LWT message
-                    if (event->client->lwt_msg)
-                        publish_message(event->client->lwt_msg);
+                    if (event->client->lwt_msg) {
+                        char *tname = (char *) event->client->lwt_msg->topic;
+                        struct topic *t = sol_topic_get(&sol, tname);
+                        publish_message(event->client->lwt_msg, t);
+                    }
                     event->client->online = false;
                     // Clean resources
                     close_conn(event->client->conn);
@@ -1401,76 +1428,6 @@ exit:
     return NULL;
 }
 
-static void publish_message(const struct mqtt_publish *p) {
-
-    /* Retrieve the Topic structure from the global map, exit if not found */
-    struct topic *t = sol_topic_get(&sol, (const char *) p->topic);
-
-    if (!t)
-        return;
-
-    /* Build MQTT packet with command PUBLISH */
-    union mqtt_packet pkt = { .publish = *p };
-
-    size_t len;
-    unsigned char *packed;
-
-    /* Send payload through TCP to all subscribed clients of the topic */
-    struct iterator *it = iter_new(t->subscribers, hashtable_iter_next);
-    ssize_t sent = 0L;
-
-    // first run check
-    if (!it->ptr) {
-        iter_destroy(it);
-        return;
-    }
-
-    LOCK;
-    do {
-
-        struct subscriber *sub = it->ptr;
-        struct sol_client *sc = sub->client;
-
-        // Skip DC's clients
-        if (!sub->client || sc->online == false)
-            continue;
-
-        log_debug("Sending PUBLISH (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
-                  pkt.publish.header.bits.dup,
-                  pkt.publish.header.bits.qos,
-                  pkt.publish.header.bits.retain,
-                  pkt.publish.pkt_id,
-                  pkt.publish.topic,
-                  pkt.publish.payloadlen);
-
-        len = MQTT_HEADER_LEN + sizeof(uint16_t) +
-            pkt.publish.topiclen + pkt.publish.payloadlen;
-
-        /* Update QoS according to subscriber's one */
-        pkt.publish.header.bits.qos = sub->qos;
-
-        if (pkt.publish.header.bits.qos > AT_MOST_ONCE)
-            len += sizeof(uint16_t);
-
-        packed = pack_mqtt_packet(&pkt, PUBLISH);
-
-        sent = send_data(sc->conn, packed, len);
-        if (sent < 0)
-            log_error("Error publishing to %s: %s",
-                      sc->client_id, strerror(errno));
-
-        // Update information stats
-        info.bytes_sent += sent;
-        info.messages_sent++;
-
-        sol_free(packed);
-    } while ((it = iter_next(it)) && it->ptr != NULL);
-
-    iter_destroy(it);
-
-    UNLOCK;
-}
-
 /*
  * Publish statistics periodic task, it will be called once every N config
  * defined seconds, it publish some informations on predefined topics
@@ -1510,49 +1467,49 @@ static void publish_stats(void) {
         .payload = (unsigned char *) &utime
     };
 
-    publish_message(&p);
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic));
 
     p.topiclen = strlen(sys_topics[6]);
     p.topic = (unsigned char *) sys_topics[6];
     p.payloadlen = strlen(sutime);
     p.payload = (unsigned char *) &sutime;
 
-    publish_message(&p);
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic));
 
     p.topiclen = strlen(sys_topics[7]);
     p.topic = (unsigned char *) sys_topics[7];
     p.payloadlen = strlen(cclients);
     p.payload = (unsigned char *) &cclients;
 
-    publish_message(&p);
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic));
 
     p.topiclen = strlen(sys_topics[9]);
     p.topic = (unsigned char *) sys_topics[9];
     p.payloadlen = strlen(bsent);
     p.payload = (unsigned char *) &bsent;
 
-    publish_message(&p);
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic));
 
     p.topiclen = strlen(sys_topics[11]);
     p.topic = (unsigned char *) sys_topics[11];
     p.payloadlen = strlen(msent);
     p.payload = (unsigned char *) &msent;
 
-    publish_message(&p);
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic));
 
     p.topiclen = strlen(sys_topics[12]);
     p.topic = (unsigned char *) sys_topics[12];
     p.payloadlen = strlen(mrecv);
     p.payload = (unsigned char *) &mrecv;
 
-    publish_message(&p);
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic));
 
     p.topiclen = strlen(sys_topics[13]);
     p.topic = (unsigned char *) sys_topics[13];
     p.payloadlen = strlen(mem);
     p.payload = (unsigned char *) &mem;
 
-    publish_message(&p);
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic));
 
 }
 
