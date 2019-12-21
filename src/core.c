@@ -29,8 +29,8 @@
 #include "util.h"
 #include "core.h"
 
-struct sol_client *sol_client_new(struct connection *c) {
-    struct sol_client *client = xmalloc(sizeof(*client));
+struct client *sol_client_new(struct connection *c) {
+    struct client *client = xmalloc(sizeof(*client));
     client->conn = c;
     client->online = true;
     client->clean_session = true;
@@ -76,7 +76,7 @@ void topic_init(struct topic *t, const char *name) {
 }
 
 void topic_add_subscriber(struct topic *t,
-                          struct sol_client *client,
+                          struct client *client,
                           unsigned qos,
                           bool cleansession) {
     struct subscriber *sub = xmalloc(sizeof(*sub));
@@ -93,7 +93,7 @@ void topic_add_subscriber(struct topic *t,
 }
 
 void topic_del_subscriber(struct topic *t,
-                          struct sol_client *client,
+                          struct client *client,
                           bool cleansession) {
     cleansession = (bool) cleansession; // temporary placeholder for compiler
     hashtable_del(t->subscribers, client->client_id);
@@ -129,7 +129,7 @@ struct topic *sol_topic_get_or_create(struct sol *sol, const char *name) {
     return t;
 }
 
-struct inflight_msg *inflight_msg_new(struct sol_client *c,
+struct inflight_msg *inflight_msg_new(struct client *c,
                                       union mqtt_packet *p,
                                       int type, size_t size) {
     struct inflight_msg *imsg = xmalloc(sizeof(*imsg));

@@ -95,9 +95,12 @@ static struct sol sol;
 
 /*
  * Guards the access to the main database structure, the trie underlying the
- * DB
+ * topic DB and all the hashtable/lists involved
  */
 static pthread_spinlock_t spinlock;
+
+/* Guards the EPOLL event changing between different threads */
+static pthread_spinlock_t iospinlock;
 
 static void lock(void) {
 #if WORKERPOOLSIZE > 1
@@ -107,7 +110,6 @@ static void lock(void) {
 #endif
 }
 
-
 static void unlock(void) {
 #if WORKERPOOLSIZE > 1
     pthread_spin_unlock(&spinlock);
@@ -116,8 +118,26 @@ static void unlock(void) {
 #endif
 }
 
+static void iolock(void) {
+#if IOPOOLSIZE > 1
+    pthread_spin_lock(&iospinlock);
+#else
+    (void) NULL;
+#endif
+}
+
+static void iounlock(void) {
+#if IOPOOLSIZE > 1
+    pthread_spin_unlock(&iospinlock);
+#else
+    (void) NULL;
+#endif
+}
+
 #define LOCK do lock(); while (0);
 #define UNLOCK do unlock(); while (0);
+#define IOLOCK do iolock(); while (0);
+#define IOUNLOCK do iounlock(); while (0);
 
 /*
  * IO event strucuture, it's the main information that will be communicated
@@ -131,7 +151,7 @@ struct io_event {
     int rc;
     eventfd_t eventfd;
     bstring reply;
-    struct sol_client *client;
+    struct client *client;
     union mqtt_packet data;
 };
 
@@ -274,7 +294,7 @@ static int connect_handler(struct io_event *e) {
     LOCK;
 
     struct mqtt_connect *c = &e->data.connect;
-    struct sol_client *cc = e->client;
+    struct client *cc = e->client;
 
     /*
      * If allow_anonymous is false we need to check for an existing
@@ -519,7 +539,7 @@ static int subscribe_handler(struct io_event *e) {
      */
     unsigned char rcs[s->tuples_len];
 
-    struct sol_client *c = e->client;
+    struct client *c = e->client;
 
     /* Subscribe packets contains a list of topics and QoS tuples */
     for (unsigned i = 0; i < s->tuples_len; i++) {
@@ -598,7 +618,7 @@ static int subscribe_handler(struct io_event *e) {
 
 static int unsubscribe_handler(struct io_event *e) {
 
-    struct sol_client *c = e->client;
+    struct client *c = e->client;
 
     log_debug("Received UNSUBSCRIBE from %s", c->client_id);
 
@@ -640,7 +660,7 @@ static void publish_message(struct mqtt_publish *p,
     if (it->ptr) {
         do {
             struct subscriber *sub = it->ptr;
-            struct sol_client *sc = sub->client;
+            struct client *sc = sub->client;
 
             /*
              * Update QoS according to subscriber's one, following MQTT
@@ -706,7 +726,9 @@ static void publish_message(struct mqtt_publish *p,
                 pkt.publish.pkt_id = 0;
                 pub = pack_mqtt_packet(&pkt, PUBLISH);
             }
+            UNLOCK;
 
+            IOLOCK;
             payload = bstring_copy(pub, publen);
             xfree(pub);
 
@@ -721,7 +743,7 @@ static void publish_message(struct mqtt_publish *p,
 
             info.messages_sent++;
 
-            UNLOCK;
+            IOUNLOCK;
             log_debug("Sending PUBLISH to %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
                       sc->client_id,
                       p->header.bits.dup,
@@ -737,7 +759,7 @@ static void publish_message(struct mqtt_publish *p,
 
 static int publish_handler(struct io_event *e) {
 
-    struct sol_client *c = e->client;
+    struct client *c = e->client;
     struct mqtt_publish *p = &e->data.publish;
     unsigned short orig_mid = p->pkt_id;
 
@@ -834,7 +856,7 @@ exit:
 
 static int puback_handler(struct io_event *e) {
     LOCK;
-    struct sol_client *c = e->client;
+    struct client *c = e->client;
     log_debug("Received PUBACK from %s (m%u)",
               c->client_id, e->data.ack.pkt_id);
     if (c->i_msgs[e->data.ack.pkt_id]) {
@@ -851,7 +873,7 @@ static int puback_handler(struct io_event *e) {
 
 static int pubrec_handler(struct io_event *e) {
     LOCK;
-    struct sol_client *c = e->client;
+    struct client *c = e->client;
     log_debug("Received PUBREC from %s (m%u)",
               c->client_id, e->data.ack.pkt_id);
     unsigned char packed[MQTT_ACK_LEN];
@@ -874,7 +896,7 @@ static int pubrel_handler(struct io_event *e) {
     LOCK;
     log_debug("Received PUBREL from %s (m%u)",
               e->client->client_id, e->data.ack.pkt_id);
-    struct sol_client *c = e->client;
+    struct client *c = e->client;
     unsigned char packed[MQTT_ACK_LEN];
     mqtt_pack_mono(packed, PUBCOMP, e->data.ack.pkt_id);
     if (c->in_i_acks[e->data.ack.pkt_id]) {
@@ -896,7 +918,7 @@ static int pubcomp_handler(struct io_event *e) {
     LOCK;
     log_debug("Received PUBCOMP from %s (m%u)",
               e->client->client_id, e->data.ack.pkt_id);
-    struct sol_client *c = e->client;
+    struct client *c = e->client;
     if (c->i_acks[e->data.ack.pkt_id]) {
         xfree(c->i_acks[e->data.ack.pkt_id]);
         c->i_acks[e->data.ack.pkt_id] = NULL;
@@ -992,7 +1014,7 @@ static void accept_loop(struct epoll *epoll) {
                      * Create a client structure to handle his context
                      * connection
                      */
-                    struct sol_client *client = sol_client_new(conn);
+                    struct client *client = sol_client_new(conn);
                     if (!conn || !client)
                         return;
 
@@ -1260,7 +1282,7 @@ static void *io_worker(void *arg) {
                      * free resources allocated such as io_event structure and
                      * paired payload
                      */
-                    LOCK;
+                    IOLOCK;
                     log_error("Closing connection with %s: %s",
                               event->client->conn->ip, solerr(rc));
                     // Publish, if present, LWT message
@@ -1289,11 +1311,11 @@ static void *io_worker(void *arg) {
                     info.nclients--;
                     info.nconnections--;
                     xfree(event);
-                    UNLOCK;
+                    IOUNLOCK;
                 }
             } else if (e_events[i].events & EPOLLOUT) {
 
-                LOCK;
+                IOLOCK;
                 struct io_event *event = e_events[i].data.ptr;
 
                 /*
@@ -1327,7 +1349,7 @@ static void *io_worker(void *arg) {
                 bstring_destroy(event->reply);
                 mqtt_packet_release(&event->data, event->data.header.bits.type);
                 xfree(event);
-                UNLOCK;
+                IOUNLOCK;
             }
         }
     }
@@ -1536,7 +1558,7 @@ static void inflight_msg_check(void) {
     LOCK;
     struct iterator *it = iter_new(sol.clients, hashtable_iter_next);
     while (it && it->ptr) {
-        struct sol_client *c = it->ptr;
+        struct client *c = it->ptr;
         for (int i = 1; i < MAX_INFLIGHT_MSGS; ++i) {
             // TODO remove 20 hardcoded value
             // Messages
@@ -1585,7 +1607,7 @@ static int client_destructor(struct hashtable_entry *entry) {
     if (!entry)
         return -1;
 
-    struct sol_client *client = entry->val;
+    struct client *client = entry->val;
 
     if (client->conn) {
         if (client->online == true)
@@ -1670,6 +1692,7 @@ int start_server(const char *addr, const char *port) {
         config_read_passwd_file(conf->password_file, sol.authentications);
 
     pthread_spin_init(&spinlock, PTHREAD_PROCESS_SHARED);
+    pthread_spin_init(&iospinlock, PTHREAD_PROCESS_SHARED);
 
     /* Generate stats topics */
     for (int i = 0; i < SYS_TOPICS; i++)
@@ -1755,6 +1778,7 @@ int start_server(const char *addr, const char *port) {
     }
 
     pthread_spin_destroy(&spinlock);
+    pthread_spin_destroy(&iospinlock);
 
     log_info("Sol v%s exiting", VERSION);
 

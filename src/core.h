@@ -46,7 +46,7 @@
  * and the packet himself
  */
 struct inflight_msg {
-    struct sol_client *client;
+    struct client *client;
     int type;
     time_t sent_timestamp;
     unsigned long size;
@@ -85,7 +85,7 @@ struct session {
  * Wrapper structure around a connected client, each client can be a publisher
  * or a subscriber, it can be used to track sessions too.
  */
-struct sol_client {
+struct client {
     bool online;  // just a boolean will be fine for now
     bool clean_session;
     char client_id[MQTT_CLIENT_ID_LEN];
@@ -100,22 +100,22 @@ struct sol_client {
 
 struct subscriber {
     unsigned qos;
-    struct sol_client *client;
+    struct client *client;
     unsigned refs;
 };
 
-struct sol_client *sol_client_new(struct connection *);
+struct client *sol_client_new(struct connection *);
 
-struct inflight_msg *inflight_msg_new(struct sol_client *,
+struct inflight_msg *inflight_msg_new(struct client *,
                                       union mqtt_packet *, int, size_t);
 
 struct topic *topic_new(const char *);
 
 void topic_init(struct topic *, const char *);
 
-void topic_add_subscriber(struct topic *, struct sol_client *, unsigned, bool);
+void topic_add_subscriber(struct topic *, struct client *, unsigned, bool);
 
-void topic_del_subscriber(struct topic *, struct sol_client *, bool);
+void topic_del_subscriber(struct topic *, struct client *, bool);
 
 bool sol_topic_exists(struct sol *, const char *);
 
