@@ -284,8 +284,7 @@ static int connect_handler(struct io_event *e) {
         if (c->bits.username == 0 || c->bits.password == 0)
             goto bad_auth;
         else {
-            void *salt = hashtable_get(sol.authentications,
-                                       (const char *) c->payload.username);
+            void *salt = hashtable_get(sol.authentications, c->payload.username);
             if (!salt)
                 goto bad_auth;
 
@@ -306,8 +305,7 @@ static int connect_handler(struct io_event *e) {
     if (!c->payload.client_id[0]) {
         generate_random_id((char *) c->payload.client_id);
     } else {
-        struct session *s = hashtable_get(sol.sessions,
-                                          (const char *) c->payload.client_id);
+        struct session *s = hashtable_get(sol.sessions, c->payload.client_id);
         if (s == NULL) {
             struct session *new_s = sol_session_new();
             hashtable_put(sol.sessions,
@@ -330,7 +328,7 @@ static int connect_handler(struct io_event *e) {
                  * Requested a clean session, delete the older one and create
                  * a fresh one
                  */
-                hashtable_del(sol.sessions, (char *) c->payload.client_id);
+                hashtable_del(sol.sessions, c->payload.client_id);
                 struct session *new_s = sol_session_new();
                 hashtable_put(sol.sessions,
                               sol_strdup((char *) c->payload.client_id), new_s);
@@ -339,7 +337,7 @@ static int connect_handler(struct io_event *e) {
     }
 
     // TODO just return error_code and handle it on `on_read`
-    if (hashtable_exists(sol.clients, (const char *) c->payload.client_id)) {
+    if (hashtable_exists(sol.clients, c->payload.client_id)) {
 
         // Already connected client, 2 CONNECT packet should be interpreted as
         // a violation of the protocol, causing disconnection of the client
@@ -349,7 +347,7 @@ static int connect_handler(struct io_event *e) {
 
         e->client->online = false;
         close_conn(e->client->conn);
-        hashtable_del(sol.clients, (const char *) c->payload.client_id);
+        hashtable_del(sol.clients, c->payload.client_id);
 
         goto clientdc;
     }
@@ -1289,7 +1287,6 @@ static void *io_worker(void *arg) {
                         }
                         iter_destroy(it);
                     }
-                    /* hashtable_del(sol.clients, event->client->client_id); */
                     info.nclients--;
                     info.nconnections--;
                     sol_free(event);

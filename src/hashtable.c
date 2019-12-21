@@ -200,14 +200,14 @@ size_t hashtable_size(const HashTable *table) {
     return table->size;
 }
 
-int hashtable_exists(HashTable *table, const char *key) {
+int hashtable_exists(HashTable *table, const void *key) {
     void *ret = hashtable_get(table, key);
     return !ret ? 0 : 1;
 }
 
 /* Add a new key-value pair into the hashtable entries array, use chaining in
    case of collision. */
-int hashtable_put(HashTable *table, const char *key, void *val) {
+int hashtable_put(HashTable *table, const void *key, void *val) {
 
     assert(table && key);
 
@@ -238,7 +238,7 @@ int hashtable_put(HashTable *table, const char *key, void *val) {
 /*
  * Get the value void pointer out of the hashtable associated to a key
  */
-void *hashtable_get(HashTable *table, const char *key) {
+void *hashtable_get(HashTable *table, const void *key) {
 
     assert(table && key);
 
@@ -262,7 +262,7 @@ void *hashtable_get(HashTable *table, const char *key) {
  * Return the key-value pair represented by a key in the hashtable
  */
 struct hashtable_entry *hashtable_get_entry(HashTable *table,
-                                            const char *key) {
+                                            const void *key) {
 
     assert(table && key);
 
@@ -286,7 +286,7 @@ struct hashtable_entry *hashtable_get_entry(HashTable *table,
 /*
  * Remove an element with that key from the hashtable
  */
-int hashtable_del(HashTable *table, const char *key) {
+int hashtable_del(HashTable *table, const void *key) {
 
     assert(table && key);
 

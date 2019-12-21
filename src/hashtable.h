@@ -41,7 +41,7 @@
 
 /* We need to keep keys and values */
 struct hashtable_entry {
-    const char *key;
+    const void *key;
     void *val;
     bool taken;
 };
@@ -70,19 +70,19 @@ void hashtable_destroy(HashTable *);
 size_t hashtable_size(const HashTable *);
 
 /* Check if a key is already stored in the hashtable */
-int hashtable_exists(HashTable *, const char *);
+int hashtable_exists(HashTable *, const void *);
 
 /*
- * Insert a new key-value pair into the hashtable, accept a const char * as
+ * Insert a new key-value pair into the hashtable, accept a const void * as
  * key and a void * for value
  */
-int hashtable_put(HashTable *, const char *, void *);
+int hashtable_put(HashTable *, const void *, void *);
 
-/* Retrieve a value from the hashtable, accept a const char * as key. */
-void *hashtable_get(HashTable *, const char *);
+/* Retrieve a value from the hashtable, accept a const void * as key. */
+void *hashtable_get(HashTable *, const void *);
 
-/* Remove a key-value pair from the hashtable, accept a const char * as key. */
-int hashtable_del(HashTable *, const char *);
+/* Remove a key-value pair from the hashtable, accept a const void * as key. */
+int hashtable_del(HashTable *, const void *);
 
 /*
  * Iterate through all key-value pairs in the hashtable, accept a functor as

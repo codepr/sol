@@ -4,8 +4,8 @@ Sol
 ===
 
 Oversimplified MQTT broker written from scratch, which mimic mosquitto
-features. Implemented to learning how the protocol works, for now it supports
-almost all MQTT v3.1.1 commands on linux platform; it relies on EPOLL interface
+features. Implemented to learning how the protocol works, it supports
+almost all MQTT v3.1.1 commands on linux platform and relies on EPOLL interface
 for multiplexing I/O. Development process is documented in this [series of posts](https://codepr.github.io/posts/sol-mqtt-broker).
 **Not for production use**.
 
@@ -15,11 +15,11 @@ It's still a work in progress but it already handles the most of the basic
 features expected from an MQTT broker. It does not leak memory as of now,
 there's probably some corner cases, not deeply investigated yet.
 
-- QoS 0, 1, 2 are correctly parsed, 0 and 1 working
+- QoS 0, 1, 2
 - Retained messages
 - Periodic stats publishing
 - Wildcards (#) on subscriptions
-- Authentication
+- Authentication through username and password
 - SSL/TLS connections (almost ready)
 - Multiplexing IO shared on multiple threads with separation between accepting,
   IO operations and processing.
@@ -27,6 +27,7 @@ there's probably some corner cases, not deeply investigated yet.
 ### To be implemented
 
 - QoS 2 tracking of pending clients and re-send, already started
+- Spread publish operations to multiple clients to a threadpool
 - Session present check and handling, already started
 - Last will & Testament, already started
 - Wildcards (+) on subscriptions
