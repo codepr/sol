@@ -274,6 +274,7 @@ static int connect_handler(struct io_event *e) {
     LOCK;
 
     struct mqtt_connect *c = &e->data.connect;
+    struct sol_client *cc = e->client;
 
     /*
      * If allow_anonymous is false we need to check for an existing
@@ -314,7 +315,16 @@ static int connect_handler(struct io_event *e) {
         } else {
             if (c->bits.clean_session == false) {
                 // A session is present and we want to re-establish that
-
+                struct topic *t;
+                char *tname = NULL;
+                // Send the messages in queue
+                for (size_t i = 0; i < cc->session->msg_queue_next; ++i) {
+                    tname = (char *) cc->session->msg_queue[i]->packet->publish.topic;
+                    t = sol_topic_get_or_create(&sol, tname);
+                    publish_message(&cc->session->msg_queue[i]->packet->publish, t);
+                    sol_free(cc->session->msg_queue[i]);
+                }
+                cc->session->msg_queue_next = 0;
             } else {
                 /*
                  * Requested a clean session, delete the older one and create
