@@ -28,6 +28,11 @@
 #ifndef SERVER_H
 #define SERVER_H
 
+#include <pthread.h>
+#include <sys/eventfd.h>
+#include "mqtt.h"
+#include "pack.h"
+
 /*
  * Epoll default settings for concurrent events monitored and timeout, -1
  * means no timeout at all, blocking undefinitely
@@ -62,6 +67,22 @@
 /* Number of Worker threads, or the size of the worker pool */
 #define WORKERPOOLSIZE 2
 
+/*
+ * IO event strucuture, it's the main information that will be communicated
+ * between threads, every request packet will be wrapped into an IO event and
+ * passed to the work EPOLL, in order to be handled by the worker thread pool.
+ * Then finally, after the execution of the command, it will be updated and
+ * passed back to the IO epoll loop to be written back to the requesting client
+ */
+struct io_event {
+    int epollfd;
+    int rc;
+    eventfd_t eventfd;
+    bstring reply;
+    struct client *client;
+    union mqtt_packet data;
+};
+
 /* Global informations statistics structure */
 struct sol_info {
     /* Number of clients currently connected */
@@ -84,8 +105,21 @@ struct sol_info {
     unsigned long long bytes_recv;
 };
 
+/*
+ * General informations of the broker, all fields will be published
+ * periodically to internal topics
+ */
+extern struct sol_info info;
+
+/*
+ * Guards the access to the main database structure, the trie underlying the
+ * topic DB and all the hashtable/lists involved
+ */
+extern pthread_spinlock_t w_spinlock;
+
+/* Guards the EPOLL event changing between different threads */
+extern pthread_spinlock_t io_spinlock;
 
 int start_server(const char *, const char *);
-
 
 #endif

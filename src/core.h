@@ -74,6 +74,8 @@ struct sol {
     SSL_CTX *ssl_ctx;
 };
 
+extern struct sol sol;
+
 struct session {
     List *subscriptions;
     size_t msg_queue_size;
