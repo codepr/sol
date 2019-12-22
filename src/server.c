@@ -120,13 +120,10 @@ struct epoll {
  * Statistics topics, published every N seconds defined by configuration
  * interval
  */
-#define SYS_TOPICS 14
+#define SYS_TOPICS 11
 
 static const char *sys_topics[SYS_TOPICS] = {
-    "$SOL/",
-    "$SOL/broker/",
     "$SOL/broker/clients/",
-    "$SOL/broker/bytes/",
     "$SOL/broker/messages/",
     "$SOL/broker/uptime/",
     "$SOL/broker/uptime/sol",
@@ -740,51 +737,51 @@ static void publish_stats(int epollfd) {
     struct mqtt_publish p = {
         .header = (union mqtt_header) { .byte = PUBLISH_B },
         .pkt_id = 0,
-        .topiclen = strlen(sys_topics[5]),
-        .topic = (unsigned char *) sys_topics[5],
+        .topiclen = strlen(sys_topics[2]),
+        .topic = (unsigned char *) sys_topics[2],
         .payloadlen = strlen(utime),
         .payload = (unsigned char *) &utime
     };
 
     publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), epollfd);
 
-    p.topiclen = strlen(sys_topics[6]);
-    p.topic = (unsigned char *) sys_topics[6];
+    p.topiclen = strlen(sys_topics[3]);
+    p.topic = (unsigned char *) sys_topics[3];
     p.payloadlen = strlen(sutime);
     p.payload = (unsigned char *) &sutime;
 
     publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), epollfd);
 
-    p.topiclen = strlen(sys_topics[7]);
-    p.topic = (unsigned char *) sys_topics[7];
+    p.topiclen = strlen(sys_topics[4]);
+    p.topic = (unsigned char *) sys_topics[4];
     p.payloadlen = strlen(cclients);
     p.payload = (unsigned char *) &cclients;
 
     publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), epollfd);
 
-    p.topiclen = strlen(sys_topics[9]);
-    p.topic = (unsigned char *) sys_topics[9];
+    p.topiclen = strlen(sys_topics[6]);
+    p.topic = (unsigned char *) sys_topics[6];
     p.payloadlen = strlen(bsent);
     p.payload = (unsigned char *) &bsent;
 
     publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), epollfd);
 
-    p.topiclen = strlen(sys_topics[11]);
-    p.topic = (unsigned char *) sys_topics[11];
+    p.topiclen = strlen(sys_topics[8]);
+    p.topic = (unsigned char *) sys_topics[8];
     p.payloadlen = strlen(msent);
     p.payload = (unsigned char *) &msent;
 
     publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), epollfd);
 
-    p.topiclen = strlen(sys_topics[12]);
-    p.topic = (unsigned char *) sys_topics[12];
+    p.topiclen = strlen(sys_topics[9]);
+    p.topic = (unsigned char *) sys_topics[9];
     p.payloadlen = strlen(mrecv);
     p.payload = (unsigned char *) &mrecv;
 
     publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), epollfd);
 
-    p.topiclen = strlen(sys_topics[13]);
-    p.topic = (unsigned char *) sys_topics[13];
+    p.topiclen = strlen(sys_topics[10]);
+    p.topic = (unsigned char *) sys_topics[10];
     p.payloadlen = strlen(mem);
     p.payload = (unsigned char *) &mem;
 

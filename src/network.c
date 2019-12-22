@@ -79,7 +79,7 @@ int set_cloexec(int fd) {
 
 err:
 
-    perror("set_nonblocking");
+    perror("set_cloexec");
     return -1;
 }
 
@@ -521,7 +521,6 @@ static int conn_tls_accept(struct connection *c, int serverfd) {
     int fd = accept_connection(serverfd, c->ip);
     if (fd < 0)
         return fd;
-        /* return (errno == EAGAIN || errno == EWOULDBLOCK) ? 0 : fd; */
     c->ssl = ssl_accept(c->ctx, fd);
     c->fd = fd;
     return fd;
@@ -544,6 +543,14 @@ static void conn_tls_close(struct connection *c) {
         perror("close");
 }
 
+/*
+ * Simple abstraction over a socket connection, based on the connection type,
+ * sets plain accept, read, write and close functions or the TLS version once.
+ *
+ * This structure allows to ignore some details at a higher level where we can
+ * simply call accept, send, recv or close without actually worrying of the
+ * type of the underlying communication.
+ */
 struct connection *conn_new(const SSL_CTX *ssl_ctx) {
     struct connection *conn = xmalloc(sizeof(*conn));
     if (!conn)
@@ -566,6 +573,11 @@ struct connection *conn_new(const SSL_CTX *ssl_ctx) {
     return conn;
 }
 
+/*
+ * 4 connection type agnostic functions to be used at a higher level, like the
+ * server module. They accept a connection structure as the first parameter
+ * in order to leverage the previously set underlying function.
+ */
 int accept_conn(struct connection *c, int fd) {
     return c->accept(c, fd);
 }
