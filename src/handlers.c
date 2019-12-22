@@ -282,18 +282,18 @@ static int connect_handler(struct io_event *e) {
         // I'm sure that the string will be NUL terminated by unpack function
         size_t msg_len = strlen((const char *) c->payload.will_message);
         size_t tpc_len = strlen((const char *) c->payload.will_topic);
+
+        struct mqtt_publish *lwt = xmalloc(sizeof(*lwt));
+        lwt->header = (union mqtt_header) { .byte = PUBLISH_B };
+        lwt->pkt_id = 0;  // placeholder
+        lwt->topiclen = tpc_len;
+        lwt->topic = c->payload.will_topic;
+        lwt->payloadlen = msg_len;
+        lwt->payload = c->payload.will_message;
+        e->client->lwt_msg = lwt;
         // We must store the retained message in the topic
         if (c->bits.will_retain == 1) {
-            struct mqtt_publish *lwt = xmalloc(sizeof(*lwt));
-            lwt->header = (union mqtt_header) { .byte = PUBLISH_B };
-            lwt->pkt_id = 0;  // placeholder
-            lwt->topiclen = tpc_len;
-            lwt->topic = c->payload.will_topic;
-            lwt->payloadlen = msg_len;
-            lwt->payload = c->payload.will_message;
-
             union mqtt_packet up = { .publish = *lwt };
-            e->client->lwt_msg = lwt;
             // Update the QOS of the retained message according to the desired
             // one by the connected client
             up.publish.header.bits.qos = c->bits.will_qos;
@@ -308,6 +308,8 @@ static int connect_handler(struct io_event *e) {
             t->retained_msg = payload;
             xfree(pub);
         }
+        log_info("Will message specified (%lu bytes)", lwt->payloadlen);
+        log_info("\t%s", lwt->payload);
     }
 
     // TODO check for session already present

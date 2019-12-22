@@ -734,6 +734,7 @@ static void publish_stats(int epollfd) {
     char mem[number_len(memory)];
     sprintf(mem, "%lld", memory);
 
+    // $SOL/uptime
     struct mqtt_publish p = {
         .header = (union mqtt_header) { .byte = PUBLISH_B },
         .pkt_id = 0,
@@ -745,6 +746,7 @@ static void publish_stats(int epollfd) {
 
     publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), epollfd);
 
+    // $SOL/broker/uptime/sol
     p.topiclen = strlen(sys_topics[3]);
     p.topic = (unsigned char *) sys_topics[3];
     p.payloadlen = strlen(sutime);
@@ -752,6 +754,7 @@ static void publish_stats(int epollfd) {
 
     publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), epollfd);
 
+    // $SOL/broker/clients/connected
     p.topiclen = strlen(sys_topics[4]);
     p.topic = (unsigned char *) sys_topics[4];
     p.payloadlen = strlen(cclients);
@@ -759,6 +762,7 @@ static void publish_stats(int epollfd) {
 
     publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), epollfd);
 
+    // $SOL/broker/bytes/sent
     p.topiclen = strlen(sys_topics[6]);
     p.topic = (unsigned char *) sys_topics[6];
     p.payloadlen = strlen(bsent);
@@ -766,6 +770,7 @@ static void publish_stats(int epollfd) {
 
     publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), epollfd);
 
+    // $SOL/broker/messages/sent
     p.topiclen = strlen(sys_topics[8]);
     p.topic = (unsigned char *) sys_topics[8];
     p.payloadlen = strlen(msent);
@@ -773,6 +778,7 @@ static void publish_stats(int epollfd) {
 
     publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), epollfd);
 
+    // $SOL/broker/messages/received
     p.topiclen = strlen(sys_topics[9]);
     p.topic = (unsigned char *) sys_topics[9];
     p.payloadlen = strlen(mrecv);
@@ -780,6 +786,7 @@ static void publish_stats(int epollfd) {
 
     publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), epollfd);
 
+    // $SOL/broker/memory/used
     p.topiclen = strlen(sys_topics[10]);
     p.topic = (unsigned char *) sys_topics[10];
     p.payloadlen = strlen(mem);
@@ -874,6 +881,9 @@ static int client_destructor(struct hashtable_entry *entry) {
         if (client->in_i_acks[i])
             xfree(client->in_i_acks[i]);
     }
+
+    if (client->lwt_msg)
+        xfree(client->lwt_msg);
 
     xfree(client);
 

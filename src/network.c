@@ -140,7 +140,7 @@ static int create_and_bind_tcp(const char *host, const char *port) {
             /* Succesful bind */
             break;
         }
-        close(sfd);
+        (void) close(sfd);
     }
 
     freeaddrinfo(result);
@@ -157,15 +157,8 @@ err:
 }
 
 int create_and_bind(const char *host, const char *port, int socket_family) {
-
-    int fd;
-
-    if (socket_family == UNIX)
-        fd = create_and_bind_unix(host);
-    else
-        fd = create_and_bind_tcp(host, port);
-
-    return fd;
+    return socket_family == UNIX ?
+        create_and_bind_unix(host) : create_and_bind_tcp(host, port);
 }
 
 /*
@@ -187,7 +180,7 @@ int make_listen(const char *host, const char *port, int socket_family) {
 
     // Set TCP_NODELAY only for TCP sockets
     if (socket_family == INET)
-        set_tcp_nodelay(sfd);
+        (void) set_tcp_nodelay(sfd);
 
     if ((listen(sfd, conf->tcp_backlog)) == -1) {
         perror("listen");
@@ -216,7 +209,7 @@ int accept_connection(int serversock, char *ip) {
 
     // Set TCP_NODELAY only for TCP sockets
     if (conf->socket_family == INET)
-        set_tcp_nodelay(clientsock);
+        (void) set_tcp_nodelay(clientsock);
 
     char ip_buff[INET_ADDRSTRLEN + 1];
     if (inet_ntop(AF_INET, &addr.sin_addr,
