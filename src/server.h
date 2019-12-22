@@ -29,6 +29,7 @@
 #define SERVER_H
 
 #include <pthread.h>
+#include <sys/types.h>
 #include <sys/eventfd.h>
 #include "mqtt.h"
 #include "pack.h"
@@ -62,10 +63,10 @@
  * Number of I/O workers to start, in other words the size of the IO thread
  * pool
  */
-#define IOPOOLSIZE 2
+#define IOPOOLSIZE 4
 
 /* Number of Worker threads, or the size of the worker pool */
-#define WORKERPOOLSIZE 2
+#define WORKERPOOLSIZE 4
 
 /*
  * IO event strucuture, it's the main information that will be communicated

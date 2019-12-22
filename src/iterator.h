@@ -48,4 +48,7 @@ struct iterator *iter_new(void *, void (*next)(struct iterator *));
 struct iterator *iter_next(struct iterator *);
 void iter_destroy(struct iterator *);
 
+#define FOREACH(it)  \
+    for (; it && it->ptr; it = iter_next(it))
+
 #endif

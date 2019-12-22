@@ -139,8 +139,13 @@ static const char *sys_topics[SYS_TOPICS] = {
     "$SOL/broker/memory/used"
 };
 
+/* Periodic routine to publish general stats about the broker on $SOL topics */
 static void publish_stats(int);
 
+/*
+ * Periodic routine to check for incomplete transactions on QoS > 0 to be
+ * concluded
+ */
 static void inflight_msg_check(void);
 
 /* Simple error_code to string function, to be refined */
@@ -220,6 +225,7 @@ static void accept_loop(struct epoll *epoll) {
                           (void *) pthread_self());
                 epoll_mod(epollfd, conf->run, EPOLLIN, NULL);
                 goto exit;
+
             } else if (e_events[i].data.fd == epoll->serverfd) {
 
                 while (1) {
@@ -274,12 +280,15 @@ exit:
  * type and total length that we need to recv to complete the packet.
  *
  * This function accept a socket fd, a buffer to read incoming streams of
- * bytes and a structure formed by 2 fields:
+ * bytes and a pointer to the decoded fixed header that will be set in the
+ * final parsed packet.
  *
- * - buf -> a byte buffer, it will be malloc'ed in the function and it will
- *          contain the serialized bytes of the incoming packet
- * - flags -> flags pointer, copy the flag setting of the incoming packet,
- *            again for simplicity and convenience of the caller.
+ * - c: A struct connection pointer, contains the FD of the requesting client
+ *      as well as his SSL context in case of TLS communication.
+ * - buf: A byte buffer, it will be malloc'ed in the function and it will
+ *        contain the serialized bytes of the incoming packet
+ * - header: Single byte pointer, copy the opcode and flags of the incoming
+ *           packet, again for simplicity and convenience of the caller.
  */
 static ssize_t recv_packet(struct connection *c, unsigned char **buf,
                            unsigned char *header) {
@@ -527,13 +536,11 @@ static void *io_worker(void *arg) {
                     if (event->client->session) {
                         struct list *subs = event->client->session->subscriptions;
                         struct iterator *it = iter_new(subs, list_iter_next);
-                        if (it->ptr) {
-                            do {
-                                log_debug("Deleting %s from topic %s",
-                                          event->client->client_id,
-                                          ((struct topic *) it->ptr)->name);
-                                topic_del_subscriber(it->ptr, event->client, false);
-                            } while ((it = iter_next(it)) && it->ptr);
+                        FOREACH (it) {
+                            log_debug("Deleting %s from topic %s",
+                                      event->client->client_id,
+                                      ((struct topic *) it->ptr)->name);
+                            topic_del_subscriber(it->ptr, event->client, false);
                         }
                         iter_destroy(it);
                     }
@@ -799,7 +806,7 @@ static void inflight_msg_check(void) {
     ssize_t sent;
     pthread_spin_lock(&w_spinlock);
     struct iterator *it = iter_new(sol.clients, hashtable_iter_next);
-    while (it && it->ptr) {
+    FOREACH (it) {
         struct client *c = it->ptr;
         for (int i = 1; i < MAX_INFLIGHT_MSGS; ++i) {
             // TODO remove 20 hardcoded value
@@ -834,7 +841,6 @@ static void inflight_msg_check(void) {
                 info.bytes_sent += sent;
             }
         }
-        it = iter_next(it);
     }
     iter_destroy(it);
     pthread_spin_unlock(&w_spinlock);

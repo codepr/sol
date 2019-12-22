@@ -13,23 +13,14 @@ typedef int handler(struct io_event *);
 
 /* Command handler, each one have responsibility over a defined command packet */
 static int connect_handler(struct io_event *);
-
 static int disconnect_handler(struct io_event *);
-
 static int subscribe_handler(struct io_event *);
-
 static int unsubscribe_handler(struct io_event *);
-
 static int publish_handler(struct io_event *);
-
 static int puback_handler(struct io_event *);
-
 static int pubrec_handler(struct io_event *);
-
 static int pubrel_handler(struct io_event *);
-
 static int pubcomp_handler(struct io_event *);
-
 static int pingreq_handler(struct io_event *);
 
 /* Command handler mapped usign their position paired with their type */
@@ -67,102 +58,100 @@ void publish_message(struct mqtt_publish *p,
     unsigned char type, opcode;
 
     // first run check
-    if (it->ptr) {
-        do {
-            struct subscriber *sub = it->ptr;
-            struct client *sc = sub->client;
+    FOREACH (it) {
+        struct subscriber *sub = it->ptr;
+        struct client *sc = sub->client;
 
-            /*
-             * Update QoS according to subscriber's one, following MQTT
-             * rules: The min between the original QoS and the subscriber
-             * QoS
-             */
-            p->header.bits.qos = qos >= sub->qos ? sub->qos : qos;
+        /*
+         * Update QoS according to subscriber's one, following MQTT
+         * rules: The min between the original QoS and the subscriber
+         * QoS
+         */
+        p->header.bits.qos = qos >= sub->qos ? sub->qos : qos;
 
-            /*
-             * If offline, we must enqueue messages in the inflight queue
-             * of the client, they will be sent out only in case of a
-             * clean_session == false connection
-             */
-            pthread_spin_lock(&w_spinlock);
-            if (sc->online == false && sc->clean_session == false) {
-                pkt.publish.header.bits.qos = p->header.bits.qos;
-                struct inflight_msg *im =
+        /*
+         * If offline, we must enqueue messages in the inflight queue
+         * of the client, they will be sent out only in case of a
+         * clean_session == false connection
+         */
+        pthread_spin_lock(&w_spinlock);
+        if (sc->online == false && sc->clean_session == false) {
+            pkt.publish.header.bits.qos = p->header.bits.qos;
+            struct inflight_msg *im =
+                inflight_msg_new(sc, &pkt, PUBLISH, publen);
+            sol_session_append_imsg(sc->session, im);
+            continue;
+        }
+
+        /*
+         * Proceed with the publish towards online subscriber.
+         * TODO move the IO part into the dedicated workers. Coded
+         * here as first simpler working version
+         */
+        if (p->header.bits.qos > AT_MOST_ONCE) {
+            // QoS > 0 (1|2)
+            publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
+                p->topiclen + p->payloadlen;
+            // Add 2 bytes to make space for packet identifier
+            publen += sizeof(uint16_t);
+            pkt.publish.pkt_id = next_free_mid(sc->i_msgs);
+            pkt.publish.header.bits.qos = p->header.bits.qos;
+            pub = pack_mqtt_packet(&pkt, PUBLISH);
+
+            if (!sc->i_msgs[pkt.publish.pkt_id])
+                sc->i_msgs[pkt.publish.pkt_id] =
                     inflight_msg_new(sc, &pkt, PUBLISH, publen);
-                sol_session_append_imsg(sc->session, im);
-                continue;
-            }
 
+            unsigned short mid = next_free_mid(sc->i_acks);
+            if (!sc->i_acks[mid]) {
+                type = sub->qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
+                opcode = type == PUBACK ? PUBACK_B : PUBREC_B;
+                union mqtt_packet ack = {
+                    .ack = *mqtt_packet_ack(opcode, mid)
+                };
+                sc->i_acks[mid] =
+                    inflight_msg_new(sc, &ack, type, publen);
+            }
+        } else {
             /*
-             * Proceed with the publish towards online subscriber.
-             * TODO move the IO part into the dedicated workers. Coded
-             * here as first simpler working version
+             * QoS 0
+             *
+             * Set the correct size of the output packet and set the
+             * correct QoS value (0) and packet identifier to 0 as
+             * specified by MQTT specs
              */
-            if (p->header.bits.qos > AT_MOST_ONCE) {
-                // QoS > 0 (1|2)
-                publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
-                    p->topiclen + p->payloadlen;
-                // Add 2 bytes to make space for packet identifier
-                publen += sizeof(uint16_t);
-                pkt.publish.pkt_id = next_free_mid(sc->i_msgs);
-                pkt.publish.header.bits.qos = p->header.bits.qos;
-                pub = pack_mqtt_packet(&pkt, PUBLISH);
+            publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
+                p->topiclen + p->payloadlen;
+            pkt.publish.header.bits.qos = 0;
+            pkt.publish.pkt_id = 0;
+            pub = pack_mqtt_packet(&pkt, PUBLISH);
+        }
+        pthread_spin_unlock(&w_spinlock);
 
-                if (!sc->i_msgs[pkt.publish.pkt_id])
-                    sc->i_msgs[pkt.publish.pkt_id] =
-                        inflight_msg_new(sc, &pkt, PUBLISH, publen);
+        pthread_spin_lock(&io_spinlock);
+        payload = bstring_copy(pub, publen);
+        xfree(pub);
 
-                unsigned short mid = next_free_mid(sc->i_acks);
-                if (!sc->i_acks[mid]) {
-                    type = sub->qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
-                    opcode = type == PUBACK ? PUBACK_B : PUBREC_B;
-                    union mqtt_packet ack = {
-                        .ack = *mqtt_packet_ack(opcode, mid)
-                    };
-                    sc->i_acks[mid] =
-                        inflight_msg_new(sc, &ack, type, publen);
-                }
-            } else {
-                /*
-                 * QoS 0
-                 *
-                 * Set the correct size of the output packet and set the
-                 * correct QoS value (0) and packet identifier to 0 as
-                 * specified by MQTT specs
-                 */
-                publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
-                    p->topiclen + p->payloadlen;
-                pkt.publish.header.bits.qos = 0;
-                pkt.publish.pkt_id = 0;
-                pub = pack_mqtt_packet(&pkt, PUBLISH);
-            }
-            pthread_spin_unlock(&w_spinlock);
+        // Trigger write on IO threadpool
+        struct io_event *event = xmalloc(sizeof(*event));
+        event->epollfd = epollfd;
+        event->rc = REPLY;
+        event->client = sc;
+        event->reply = payload;
 
-            pthread_spin_lock(&io_spinlock);
-            payload = bstring_copy(pub, publen);
-            xfree(pub);
+        epoll_mod(event->epollfd, sc->conn->fd, EPOLLOUT, event);
 
-            // Trigger write on IO threadpool
-            struct io_event *event = xmalloc(sizeof(*event));
-            event->epollfd = epollfd;
-            event->rc = REPLY;
-            event->client = sc;
-            event->reply = payload;
+        info.messages_sent++;
 
-            epoll_mod(event->epollfd, sc->conn->fd, EPOLLOUT, event);
-
-            info.messages_sent++;
-
-            pthread_spin_unlock(&io_spinlock);
-            log_debug("Sending PUBLISH to %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
-                      sc->client_id,
-                      p->header.bits.dup,
-                      p->header.bits.qos,
-                      p->header.bits.retain,
-                      pkt.publish.pkt_id,
-                      p->topic,
-                      p->payloadlen);
-        } while ((it = iter_next(it)) && it->ptr != NULL);
+        pthread_spin_unlock(&io_spinlock);
+        log_debug("Sending PUBLISH to %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
+                  sc->client_id,
+                  p->header.bits.dup,
+                  p->header.bits.qos,
+                  p->header.bits.retain,
+                  pkt.publish.pkt_id,
+                  p->topic,
+                  p->payloadlen);
     }
     iter_destroy(it);
 }
@@ -385,12 +374,10 @@ static int disconnect_handler(struct io_event *e) {
     if (e->client->session) {
         struct list *subs = e->client->session->subscriptions;
         struct iterator *it = iter_new(subs, list_iter_next);
-        if (it->ptr) {
-            do {
-                log_debug("Removing %s from topic %s",
-                          e->client->client_id, ((struct topic *) it->ptr)->name);
-                topic_del_subscriber(it->ptr, e->client, false);
-            } while ((it = iter_next(it)) && it->ptr);
+        FOREACH (it) {
+            log_debug("Removing %s from topic %s",
+                      e->client->client_id, ((struct topic *) it->ptr)->name);
+            topic_del_subscriber(it->ptr, e->client, false);
         }
         iter_destroy(it);
     }
