@@ -518,7 +518,7 @@ static int publish_handler(struct io_event *e) {
 
     info.messages_recv++;
 
-    char topic[p->topiclen + 1];
+    char topic[p->topiclen + 2];
     strncpy(topic, (const char *) p->topic, p->topiclen);
     unsigned char qos = p->header.bits.qos;
 
@@ -526,9 +526,9 @@ static int publish_handler(struct io_event *e) {
      * For convenience we assure that all topics ends with a '/', indicating a
      * hierarchical level
      */
-    if (topic[p->topiclen - 1] != '/') {
-        topic[p->topiclen - 1] = '/';
-        topic[p->topiclen] = '\0';
+    if (topic[p->topiclen] != '/') {
+        topic[p->topiclen] = '/';
+        topic[p->topiclen + 1] = '\0';
     }
 
     /*
