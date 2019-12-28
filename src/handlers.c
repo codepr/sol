@@ -411,10 +411,8 @@ static int subscribe_handler(struct io_event *e) {
          * Check if the topic exists already or in case create it and store in
          * the global map
          */
-        /* char *topic = (char *) s->tuples[i].topic; */
-        char topic[s->tuples[i].topic_len + 1];
-        strncpy(topic, (const char *) s->tuples[i].topic, s->tuples[i].topic_len);
-        topic[s->tuples[i].topic_len] = '\0';
+        char topic[s->tuples[i].topic_len + 2];
+        strncpy(topic, (const char *) s->tuples[i].topic, s->tuples[i].topic_len + 1);
 
         log_debug("\t%s (QoS %i)", topic, s->tuples[i].qos);
 
@@ -426,8 +424,8 @@ static int subscribe_handler(struct io_event *e) {
             topic[s->tuples[i].topic_len - 1] = '\0';
             wildcard = true;
         } else if (topic[s->tuples[i].topic_len - 1] != '/') {
-            topic[s->tuples[i].topic_len - 1] = '/';
-            topic[s->tuples[i].topic_len] = '\0';
+            topic[s->tuples[i].topic_len] = '/';
+            topic[s->tuples[i].topic_len + 1] = '\0';
         }
 
         struct topic *t = sol_topic_get_or_create(&sol, topic);
