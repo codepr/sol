@@ -325,11 +325,7 @@ int add_cron_task(int epollfd, const struct itimerspec *timervalue) {
         goto err;
 
     // Add the timer to the event loop
-    struct epoll_event ev;
-    ev.data.fd = timerfd;
-    ev.events = EPOLLIN|EPOLLONESHOT;
-
-    if (epoll_ctl(epollfd, EPOLL_CTL_ADD, timerfd, &ev) < 0)
+    if (epoll_add(epollfd, timerfd, EPOLLIN, NULL) < 0)
         goto err;
 
     return timerfd;
