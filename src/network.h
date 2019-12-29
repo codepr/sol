@@ -85,12 +85,6 @@ int make_listen(const char *, const char *, int);
 /* Accept a connection and add it to the right epollfd */
 int accept_connection(int, char *);
 
-struct evloop *evloop_create(int, int);
-
-void evloop_init(struct evloop *, int, int);
-
-void evloop_free(struct evloop *);
-
 /* Epoll management functions */
 int epoll_add(int, int, int, void *);
 
