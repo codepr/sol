@@ -85,22 +85,6 @@ int make_listen(const char *, const char *, int);
 /* Accept a connection and add it to the right epollfd */
 int accept_connection(int, char *);
 
-/* Epoll management functions */
-int epoll_add(int, int, int, void *);
-
-/*
- * Modify an epoll-monitored descriptor, automatically set EPOLLONESHOT in
- * addition to the other flags, which can be EPOLLIN for read and EPOLLOUT for
- * write
- */
-int epoll_mod(int, int, int, void *);
-
-/*
- * Remove a descriptor from an epoll descriptor, making it no-longer monitored
- * for events
- */
-int epoll_del(int, int);
-
 /* I/O management functions */
 
 /*
@@ -114,8 +98,6 @@ ssize_t send_bytes(int, const unsigned char *, size_t);
  * store them in a buffer
  */
 ssize_t recv_bytes(int, unsigned char *, size_t);
-
-int add_cron_task(int, const struct itimerspec *);
 
 // Init SSL context
 SSL_CTX *create_ssl_context(void);

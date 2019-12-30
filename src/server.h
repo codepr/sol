@@ -66,7 +66,7 @@
 #define IOPOOLSIZE 4
 
 /* Number of Worker threads, or the size of the worker pool */
-#define WORKERPOOLSIZE 4
+#define WORKERPOOLSIZE 2
 
 /*
  * IO event strucuture, it's the main information that will be communicated
@@ -76,7 +76,8 @@
  * passed back to the IO epoll loop to be written back to the requesting client
  */
 struct io_event {
-    int epollfd;
+    // int epollfd;
+    struct ev_ctx *ctx;
     int rc;
     eventfd_t eventfd;
     bstring reply;

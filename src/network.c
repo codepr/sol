@@ -285,57 +285,6 @@ err:
     return -1;
 }
 
-int epoll_add(int efd, int fd, int evs, void *data) {
-
-    struct epoll_event ev;
-    ev.data.fd = fd;
-
-    // Being ev.data a union, in case of data != NULL, fd will be set to random
-    if (data)
-        ev.data.ptr = data;
-
-    ev.events = evs | EPOLLHUP | EPOLLERR | EPOLLET | EPOLLONESHOT;
-
-    return epoll_ctl(efd, EPOLL_CTL_ADD, fd, &ev);
-}
-
-int epoll_mod(int efd, int fd, int evs, void *data) {
-
-    struct epoll_event ev;
-    ev.data.fd = fd;
-
-    // Being ev.data a union, in case of data != NULL, fd will be set to random
-    if (data)
-        ev.data.ptr = data;
-
-    ev.events = evs | EPOLLHUP | EPOLLERR | EPOLLET | EPOLLONESHOT;
-
-    return epoll_ctl(efd, EPOLL_CTL_MOD, fd, &ev);
-}
-
-int epoll_del(int efd, int fd) {
-    return epoll_ctl(efd, EPOLL_CTL_DEL, fd, NULL);
-}
-
-int add_cron_task(int epollfd, const struct itimerspec *timervalue) {
-
-    int timerfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
-
-    if (timerfd_settime(timerfd, 0, timervalue, NULL) < 0)
-        goto err;
-
-    // Add the timer to the event loop
-    if (epoll_add(epollfd, timerfd, EPOLLIN, NULL) < 0)
-        goto err;
-
-    return timerfd;
-
-err:
-
-    perror("add_cron_task");
-    return -1;
-}
-
 void openssl_init() {
     SSL_library_init();
     ERR_load_crypto_strings();

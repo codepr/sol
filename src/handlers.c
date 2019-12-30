@@ -7,6 +7,7 @@
 #include "util.h"
 #include "config.h"
 #include "hashtable.h"
+#include "eventloop.h"
 
 /* Prototype for a command handler */
 typedef int handler(struct io_event *);
@@ -43,7 +44,7 @@ static handler *handlers[15] = {
 };
 
 void publish_message(struct mqtt_publish *p,
-                     const struct topic *t, int epollfd) {
+                     const struct topic *t, struct ev_ctx *ctx) {
 
     unsigned char qos = p->header.bits.qos;
     size_t publen = 0;
@@ -128,22 +129,24 @@ void publish_message(struct mqtt_publish *p,
         }
         pthread_spin_unlock(&w_spinlock);
 
-        pthread_spin_lock(&io_spinlock);
+        /* pthread_spin_lock(&io_spinlock); */
         payload = bstring_copy(pub, publen);
         xfree(pub);
 
         // Trigger write on IO threadpool
         struct io_event *event = xmalloc(sizeof(*event));
-        event->epollfd = epollfd;
+        /* event->epollfd = epollfd; */
+        event->ctx = ctx;
         event->rc = REPLY;
         event->client = sc;
         event->reply = payload;
 
-        epoll_mod(event->epollfd, sc->conn->fd, EPOLLOUT, event);
+        ev_fire_event(ctx, sc->conn->fd, EV_WRITE, event);
+        /* epoll_mod(event->epollfd, sc->conn->fd, EPOLLOUT, event); */
 
         info.messages_sent++;
 
-        pthread_spin_unlock(&io_spinlock);
+        /* pthread_spin_unlock(&io_spinlock); */
         log_debug("Sending PUBLISH to %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
                   sc->client_id,
                   p->header.bits.dup,
@@ -231,7 +234,7 @@ static int connect_handler(struct io_event *e) {
                 for (size_t i = 0; i < cc->session->msg_queue_next; ++i) {
                     tname = (char *) cc->session->msg_queue[i]->packet->publish.topic;
                     t = sol_topic_get_or_create(&sol, tname);
-                    publish_message(&cc->session->msg_queue[i]->packet->publish, t, e->epollfd);
+                    publish_message(&cc->session->msg_queue[i]->packet->publish, t, e->ctx);
                     xfree(cc->session->msg_queue[i]);
                 }
                 cc->session->msg_queue_next = 0;
@@ -550,7 +553,7 @@ static int publish_handler(struct io_event *e) {
 
     xfree(pub);
 
-    publish_message(p, t, e->epollfd);
+    publish_message(p, t, e->ctx);
 
     mqtt_packet_release(&e->data, PUBLISH);
 
