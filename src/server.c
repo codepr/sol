@@ -663,31 +663,28 @@ static void *worker(void *arg) {
             } else if (e_events[i].events & EPOLLIN) {
                 struct io_event *event = e_events[i].data.ptr;
                 eventfd_read(event->eventfd, &val);
+                close(event->eventfd);
                 // TODO free client and remove it from the global map in case
                 // of QUIT command (check return code)
                 struct connection *c = event->client->conn;
-                int reply = handle_command(event->data.header.bits.type, event);
-                if (reply == REPLY) {
-                    if (close(event->eventfd) < 0)
-                        perror("reply - eventfd close");
-                    epoll_mod(event->epollfd, c->fd, EPOLLOUT, event);
-                } else if (reply == RC_BAD_USERNAME_OR_PASSWORD
-                           || reply == RC_NOT_AUTHORIZED) {
-                    event->rc = reply;
-                    epoll_mod(event->epollfd, c->fd, EPOLLOUT, event);
-                } else if (reply == CLIENTDC) {
-                    hashtable_del(sol.clients, event->client->client_id);
-                    if (close(event->eventfd) < 0)
-                        perror("DISCONNECT close");
-                    xfree(event);
-                    // Update stats
-                    info.nclients--;
-                    info.nconnections--;
-                } else if (reply != CLIENTDC) {
-                    epoll_mod(epoll->io_epollfd, c->fd, EPOLLIN, event->client);
-                    if (close(event->eventfd) < 0)
-                        perror("noreply - eventfd close");
-                    xfree(event);
+                event->rc = handle_command(event->data.header.bits.type, event);
+                switch (event->rc) {
+                    case REPLY:
+                    case RC_NOT_AUTHORIZED:
+                    case RC_BAD_USERNAME_OR_PASSWORD:
+                        epoll_mod(event->epollfd, c->fd, EPOLLOUT, event);
+                        break;
+                    case CLIENTDC:
+                        hashtable_del(sol.clients, event->client->client_id);
+                        xfree(event);
+                        // Update stats
+                        info.nclients--;
+                        info.nconnections--;
+                        break;
+                    default:
+                        epoll_mod(epoll->io_epollfd, c->fd, EPOLLIN, event->client);
+                        xfree(event);
+                        break;
                 }
             }
         }
