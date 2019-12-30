@@ -105,16 +105,16 @@ pthread_spinlock_t io_spinlock;
  */
 
 /*
- * Shared epoll object, contains the IO epoll and Worker epoll descriptors,
- * as well as the server descriptor and the timer fd for repeated routines.
+ * Shared eventloop object, contains the IO and Worker contexts, as well as the
+ * server descriptor.
  * Each thread will receive a copy of a pointer to this structure, to have
  * access to all file descriptor running the application
  */
-struct epoll {
+
+struct eventloop {
+    int serverfd;
     struct ev_ctx *io_ctx;
     struct ev_ctx *w_ctx;
-    int serverfd;
-    int timerfd[2];
 };
 
 /*
@@ -179,7 +179,7 @@ static const char *solerr(int rc) {
  * and link it to the fd, ready to be set in EPOLLIN event, then pass the
  * connection to the IO EPOLL loop, waited by the IO thread pool.
  */
-static void accept_loop(struct epoll *epoll) {
+static void accept_loop(struct eventloop *loop) {
 
     int event = 0, events = 0;
     struct ev_ctx ctx;
@@ -189,7 +189,7 @@ static void accept_loop(struct epoll *epoll) {
      * We want to watch for events incoming on the server descriptor (e.g. new
      * connections)
      */
-    ev_watch_fd(&ctx, epoll->serverfd, EV_READ);
+    ev_watch_fd(&ctx, loop->serverfd, EV_READ);
 
     /*
      * And also to the global event fd, this one is useful to gracefully
@@ -216,7 +216,7 @@ static void accept_loop(struct epoll *epoll) {
                 goto exit;
 
             } else if ((event & EV_READ) &&
-                       ev_get_fd(&ctx, i) == epoll->serverfd) {
+                       ev_get_fd(&ctx, i) == loop->serverfd) {
 
                 while (1) {
 
@@ -227,7 +227,7 @@ static void accept_loop(struct epoll *epoll) {
                      */
                     struct connection *conn =
                         conf->use_ssl ? conn_new(sol.ssl_ctx) : conn_new(NULL);
-                    int fd = accept_conn(conn, epoll->serverfd);
+                    int fd = accept_conn(conn, loop->serverfd);
                     if (fd == 0)
                         continue;
                     if (fd < 0) {
@@ -244,10 +244,10 @@ static void accept_loop(struct epoll *epoll) {
                         return;
 
                     /* Add it to the epoll loop */
-                    ev_register_event(epoll->io_ctx, fd, EV_READ, client);
+                    ev_register_event(loop->io_ctx, fd, EV_READ, client);
 
                     /* Rearm server fd to accept new connections */
-                    ev_fire_event(&ctx, epoll->serverfd, EV_READ, NULL);
+                    ev_fire_event(&ctx, loop->serverfd, EV_READ, NULL);
 
                     /* Record the new client connected */
                     info.nclients++;
@@ -427,13 +427,12 @@ errdc:
  */
 static void *io_thread(void *arg) {
 
-    struct epoll *epoll = arg;
+    struct eventloop *loop = arg;
     int event = 0, events = 0;
     ssize_t sent = 0;
 
-    int fd = ((struct epoll_api *) epoll->io_ctx->api)->fd;
     struct ev_ctx ctx;
-    ev_clone_ctx(&ctx, fd, EPOLL_MAX_EVENTS);
+    ev_clone_ctx(&ctx, loop->io_ctx);
     /*
      * And also to the global event fd, this one is useful to gracefully
      * interrupt polling and thread execution
@@ -488,7 +487,7 @@ static void *io_thread(void *arg) {
                     io->client->last_action_time = time(NULL);
                     /* Fire an event toward the worker thread pool */
                     eventfd_t ev = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-                    ev_fire_event(epoll->w_ctx, ev, EV_READ | EV_EVENTFD, io);
+                    ev_fire_event(loop->w_ctx, ev, EV_READ | EV_EVENTFD, io);
 
                 } else if (rc == -ERRCLIENTDC || rc == -ERRPACKETERR) {
 
@@ -585,11 +584,10 @@ exit:
  */
 static void *worker_thread(void *arg) {
 
-    struct epoll *epoll = arg;
+    struct eventloop *loop = arg;
     int event = 0, events = 0;
-    int fd = ((struct epoll_api *) epoll->w_ctx->api)->fd;
     struct ev_ctx ctx;
-    ev_clone_ctx(&ctx, fd, EPOLL_MAX_EVENTS);
+    ev_clone_ctx(&ctx, loop->w_ctx);
     /*
      * And also to the global event fd, this one is useful to gracefully
      * interrupt polling and thread execution
@@ -628,12 +626,12 @@ static void *worker_thread(void *arg) {
                     case REPLY:
                     case RC_NOT_AUTHORIZED:
                     case RC_BAD_USERNAME_OR_PASSWORD:
-                        ev_fire_event(epoll->io_ctx, c->fd, EV_WRITE, io);
+                        ev_fire_event(loop->io_ctx, c->fd, EV_WRITE, io);
                         break;
                     case CLIENTDC:
                         /* pthread_spin_lock(&io_spinlock); */
                         io->client->online = false;
-                        ev_del_fd(epoll->io_ctx, c->fd);
+                        ev_del_fd(loop->io_ctx, c->fd);
                         close_conn(io->client->conn);
                         hashtable_del(sol.clients, io->client->client_id);
                         xfree(io);
@@ -643,7 +641,7 @@ static void *worker_thread(void *arg) {
                         /* pthread_spin_unlock(&io_spinlock); */
                         break;
                     default:
-                        ev_fire_event(epoll->io_ctx, c->fd, EV_READ, io->client);
+                        ev_fire_event(loop->io_ctx, c->fd, EV_READ, io->client);
                         xfree(io);
                         break;
                 }
@@ -911,7 +909,7 @@ int start_server(const char *addr, const char *port) {
     ev_init(&io_ctx, EPOLL_MAX_EVENTS);
     ev_init(&w_ctx, EPOLL_MAX_EVENTS);
 
-    struct epoll epoll = {
+    struct eventloop loop = {
         .io_ctx = &io_ctx,
         .w_ctx = &w_ctx,
         .serverfd = sfd
@@ -923,18 +921,18 @@ int start_server(const char *addr, const char *port) {
     /* Start I/O thread pool */
 
     for (int i = 0; i < IOPOOLSIZE; ++i)
-        pthread_create(&iothreads[i], NULL, &io_thread, &epoll);
+        pthread_create(&iothreads[i], NULL, &io_thread, &loop);
 
     /* Start Worker thread pool */
 
     for (int i = 0; i < WORKERPOOLSIZE; ++i)
-        pthread_create(&workers[i], NULL, &worker_thread, &epoll);
+        pthread_create(&workers[i], NULL, &worker_thread, &loop);
 
     log_info("Server start");
     info.start_time = time(NULL);
 
     // Main thread for accept new connections
-    accept_loop(&epoll);
+    accept_loop(&loop);
 
     /* Join started thread pools */
     for (int i = 0; i < IOPOOLSIZE; ++i)
