@@ -45,7 +45,7 @@
 #include "network.h"
 
 /* Set non-blocking socket */
-int set_nonblocking(int fd) {
+static int set_nonblocking(int fd) {
     int flags, result;
     flags = fcntl(fd, F_GETFL, 0);
 
@@ -64,7 +64,7 @@ err:
     return -1;
 }
 
-int set_cloexec(int fd) {
+static int set_cloexec(int fd) {
     int flags, result;
     flags = fcntl(fd, F_GETFL, 0);
 
@@ -83,8 +83,11 @@ err:
     return -1;
 }
 
-/* Disable Nagle's algorithm by setting TCP_NODELAY */
-int set_tcp_nodelay(int fd) {
+/*
+ * Set TCP_NODELAY flag to true, disabling Nagle's algorithm, no more waiting
+ * for incoming packets on the buffer
+ */
+static int set_tcp_nodelay(int fd) {
     return setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &(int) {1}, sizeof(int));
 }
 
@@ -156,8 +159,9 @@ err:
     return -1;
 }
 
-int create_and_bind(const char *host, const char *port, int socket_family) {
-    return socket_family == UNIX ?
+/* Auxiliary function for binding a socket to listen on defined port */
+static int create_and_bind(const char *host, const char *port, int s_family) {
+    return s_family == UNIX ?
         create_and_bind_unix(host) : create_and_bind_tcp(host, port);
 }
 
@@ -165,11 +169,11 @@ int create_and_bind(const char *host, const char *port, int socket_family) {
  * Create a non-blocking socket and make it listen on the specfied address and
  * port
  */
-int make_listen(const char *host, const char *port, int socket_family) {
+int make_listen(const char *host, const char *port, int s_family) {
 
     int sfd;
 
-    if ((sfd = create_and_bind(host, port, socket_family)) == -1)
+    if ((sfd = create_and_bind(host, port, s_family)) == -1)
         abort();
 
     if ((set_nonblocking(sfd)) == -1)
@@ -179,7 +183,7 @@ int make_listen(const char *host, const char *port, int socket_family) {
         abort();
 
     // Set TCP_NODELAY only for TCP sockets
-    if (socket_family == INET)
+    if (s_family == INET)
         (void) set_tcp_nodelay(sfd);
 
     if ((listen(sfd, conf->tcp_backlog)) == -1) {
@@ -190,7 +194,11 @@ int make_listen(const char *host, const char *port, int socket_family) {
     return sfd;
 }
 
-int accept_connection(int serversock, char *ip) {
+/*
+ * Accept a connection and set it NON_BLOCKING and CLOEXEC, optionally also set
+ * TCP_NODELAY disabling Nagle's algorithm
+ */
+static int accept_conn(int serversock, char *ip) {
 
     int clientsock;
     struct sockaddr_in addr;
@@ -204,8 +212,8 @@ int accept_connection(int serversock, char *ip) {
         return -1;
     }
 
-    set_nonblocking(clientsock);
-    set_cloexec(clientsock);
+    (void) set_nonblocking(clientsock);
+    (void) set_cloexec(clientsock);
 
     // Set TCP_NODELAY only for TCP sockets
     if (conf->socket_family == INET)
@@ -434,7 +442,7 @@ err:
  * connection handle
  */
 static int conn_accept(struct connection *c, int fd) {
-    int ret = accept_connection(fd, c->ip);
+    int ret = accept_conn(fd, c->ip);
     c->fd = ret;
     return ret;
 }
@@ -456,7 +464,7 @@ static void conn_close(struct connection *c) {
 // TLS version of the connection functions
 // XXX Not so neat, improve later
 static int conn_tls_accept(struct connection *c, int serverfd) {
-    int fd = accept_connection(serverfd, c->ip);
+    int fd = accept_conn(serverfd, c->ip);
     if (fd < 0)
         return fd;
     c->ssl = ssl_accept(c->ctx, fd);
@@ -489,7 +497,7 @@ static void conn_tls_close(struct connection *c) {
  * simply call accept, send, recv or close without actually worrying of the
  * type of the underlying communication.
  */
-struct connection *conn_new(const SSL_CTX *ssl_ctx) {
+struct connection *connection_new(const SSL_CTX *ssl_ctx) {
     struct connection *conn = xmalloc(sizeof(*conn));
     if (!conn)
         return NULL;
@@ -516,7 +524,7 @@ struct connection *conn_new(const SSL_CTX *ssl_ctx) {
  * server module. They accept a connection structure as the first parameter
  * in order to leverage the previously set underlying function.
  */
-int accept_conn(struct connection *c, int fd) {
+int accept_connection(struct connection *c, int fd) {
     return c->accept(c, fd);
 }
 
@@ -528,6 +536,6 @@ ssize_t recv_data(struct connection *c, unsigned char *buf, size_t len) {
     return c->recv(c, buf, len);
 }
 
-void close_conn(struct connection *c) {
+void close_connection(struct connection *c) {
     c->close(c);
 }

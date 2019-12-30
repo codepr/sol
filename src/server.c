@@ -81,7 +81,7 @@ pthread_spinlock_t io_spinlock;
  *
  *      MAIN              1...N              1...N
  *
- *     [EPOLL]         [IO EPOLL]         [WORK EPOLL]
+ *    [EV_CTX]        [IO EV_CTX]         [WORK EV_CTX]
  *  ACCEPT THREAD    IO THREAD POOL    WORKER THREAD POOL
  *  -------------    --------------    ------------------
  *        |                 |                  |
@@ -170,10 +170,6 @@ static const char *solerr(int rc) {
     }
 }
 
-/* Utility macro to handle base case on each EPOLL loop */
-#define EPOLL_ERR(e) if ((e.events & EPOLLERR) || (e.events & EPOLLHUP) || \
-                         (!(e.events & EPOLLIN) && !(e.events & EPOLLOUT)))
-
 /*
  * Handle incoming connections, create a a fresh new struct client structure
  * and link it to the fd, ready to be set in EPOLLIN event, then pass the
@@ -225,13 +221,14 @@ static void accept_loop(struct eventloop *loop) {
                      * and socket descriptor to the connection structure
                      * pointer passed as argument
                      */
-                    struct connection *conn =
-                        conf->use_ssl ? conn_new(sol.ssl_ctx) : conn_new(NULL);
-                    int fd = accept_conn(conn, loop->serverfd);
+                    struct connection *conn = conf->use_ssl ? \
+                                              connection_new(sol.ssl_ctx) : \
+                                              connection_new(NULL);
+                    int fd = accept_connection(conn, loop->serverfd);
                     if (fd == 0)
                         continue;
                     if (fd < 0) {
-                        close_conn(conn);
+                        close_connection(conn);
                         xfree(conn);
                         break;
                     }
@@ -359,7 +356,7 @@ exit:
 err:
 
     // TODO move this out of the function (LWT handling)
-    close_conn(c);
+    close_connection(c);
 
     return ret;
 
@@ -508,7 +505,7 @@ static void *io_thread(void *arg) {
                     io->client->online = false;
                     // Clean resources
                     ev_del_fd(&ctx, c->fd);
-                    close_conn(io->client->conn);
+                    close_connection(io->client->conn);
                     // Remove from subscriptions for now
                     if (io->client->session) {
                         struct list *subs = io->client->session->subscriptions;
@@ -626,13 +623,13 @@ static void *worker_thread(void *arg) {
                     case REPLY:
                     case RC_NOT_AUTHORIZED:
                     case RC_BAD_USERNAME_OR_PASSWORD:
-                        ev_fire_event(loop->io_ctx, c->fd, EV_WRITE, io);
+                        ev_fire_event(io->ctx, c->fd, EV_WRITE, io);
                         break;
                     case CLIENTDC:
                         /* pthread_spin_lock(&io_spinlock); */
                         io->client->online = false;
                         ev_del_fd(loop->io_ctx, c->fd);
-                        close_conn(io->client->conn);
+                        close_connection(io->client->conn);
                         hashtable_del(sol.clients, io->client->client_id);
                         xfree(io);
                         // Update stats
@@ -641,7 +638,7 @@ static void *worker_thread(void *arg) {
                         /* pthread_spin_unlock(&io_spinlock); */
                         break;
                     default:
-                        ev_fire_event(loop->io_ctx, c->fd, EV_READ, io->client);
+                        ev_fire_event(io->ctx, c->fd, EV_READ, io->client);
                         xfree(io);
                         break;
                 }
@@ -816,7 +813,7 @@ static int client_destructor(struct hashtable_entry *entry) {
 
     if (client->conn) {
         if (client->online == true)
-            close_conn(client->conn);
+            close_connection(client->conn);
         xfree(client->conn);
     }
 

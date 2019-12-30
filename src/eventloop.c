@@ -103,7 +103,7 @@ void ev_init(struct ev_ctx *ctx, int events_nr) {
 
 void ev_clone_ctx(struct ev_ctx *ctx, const struct ev_ctx *src) {
     struct epoll_api *e_api = xmalloc(sizeof(*e_api));
-    e_api->fd = ((struct epoll_api *) src)->fd;
+    e_api->fd = ((struct epoll_api *) src->api)->fd;
     e_api->events = xcalloc(src->events_nr, sizeof(struct epoll_event));
     ctx->api = e_api;
     ctx->maxfd = src->events_nr;
@@ -115,7 +115,8 @@ void ev_clone_ctx(struct ev_ctx *ctx, const struct ev_ctx *src) {
 
 void ev_destroy(struct ev_ctx *ctx) {
     for (int i = 0; i < ctx->maxfd; ++i) {
-        if (ctx->events_monitored[i].mask != EV_NONE)
+        if (!(ctx->events_monitored[i].mask & EV_CLOSEFD) &&
+            ctx->events_monitored[i].mask != EV_NONE)
             ev_del_fd(ctx, ctx->events_monitored[i].fd);
     }
     xfree(((struct epoll_api *) ctx->api)->events);
@@ -221,7 +222,7 @@ int ev_read_event(struct ev_ctx *ctx, int idx, int mask, void **ptr) {
         (void) read(fd, &(long int){0L}, sizeof(long int));
         err = epoll_mod(e_api->fd, fd, EPOLLIN, e);
         e->callback(ctx);
-    } else if  (mask & EV_CLOSEFD) {
+    } else if (mask & EV_CLOSEFD) {
         eventfd_read(fd, &(eventfd_t){0L});
         err = epoll_mod(e_api->fd, fd, EPOLLIN, e);
     }

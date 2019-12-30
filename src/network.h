@@ -54,36 +54,21 @@ struct connection {
     void (*close) (struct connection *);
 };
 
-struct connection *conn_new(const SSL_CTX *);
+struct connection *connection_new(const SSL_CTX *);
 
-int accept_conn(struct connection *, int);
+int accept_connection(struct connection *, int);
 
 ssize_t send_data(struct connection *, const unsigned char *, size_t);
 
 ssize_t recv_data(struct connection *, unsigned char *, size_t);
 
-void close_conn(struct connection *);
-
-/* Set non-blocking socket */
-int set_nonblocking(int);
-
-/*
- * Set TCP_NODELAY flag to true, disabling Nagle's algorithm, no more waiting
- * for incoming packets on the buffer
- */
-int set_tcp_nodelay(int);
-
-/* Auxiliary function for creating epoll server */
-int create_and_bind(const char *, const char *, int);
+void close_connection(struct connection *);
 
 /*
  * Create a non-blocking socket and make it listen on the specfied address and
  * port
  */
 int make_listen(const char *, const char *, int);
-
-/* Accept a connection and add it to the right epollfd */
-int accept_connection(int, char *);
 
 /* I/O management functions */
 
