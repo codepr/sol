@@ -76,6 +76,11 @@ static int epoll_del(int efd, int fd) {
     return epoll_ctl(efd, EPOLL_CTL_DEL, fd, NULL);
 }
 
+/*
+ * Auxiliary function, update FD, mask and data in monitored events array.
+ * Monitored events are the same number as the maximum FD registered in the
+ * context.
+ */
 static void ev_add_monitored(struct ev_ctx *ctx, int fd, int mask, void *ptr) {
     if (fd > ctx->maxfd) {
         int i = ctx->maxfd;
@@ -101,6 +106,11 @@ void ev_init(struct ev_ctx *ctx, int events_nr) {
         ctx->events_monitored[i].mask = EV_NONE;
 }
 
+/*
+ * Clone function, just take the inner FD of the context and create another
+ * context to it. Useful when a client needs to watch over a set of FDs using
+ * his own event array, not shared between different threads for example.
+ */
 void ev_clone_ctx(struct ev_ctx *ctx, const struct ev_ctx *src) {
     struct epoll_api *e_api = xmalloc(sizeof(*e_api));
     e_api->fd = ((struct epoll_api *) src->api)->fd;
@@ -128,6 +138,8 @@ int ev_get_event_type(struct ev_ctx *ctx, int idx) {
     struct epoll_api *e_api = ctx->api;
     int events = e_api->events[idx].events;
     int ev_mask = ((struct ev *) e_api->events[idx].data.ptr)->mask;
+    // We want to remember the previous events only if they're not of type
+    // CLOSE or TIMER
     int mask = ev_mask & (EV_CLOSEFD|EV_TIMERFD) ? ev_mask : 0;
     if (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
         mask |= EV_DISCONNECT;
