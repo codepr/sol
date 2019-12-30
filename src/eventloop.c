@@ -87,6 +87,10 @@ void ev_clone_ctx(struct ev_ctx *ctx, int fd, int events_nr) {
 }
 
 void ev_destroy(struct ev_ctx *ctx) {
+    for (int i = 0; i < ctx->maxfd; ++i) {
+        if (ctx->events_monitored[i].mask != EV_NONE)
+            ev_del_fd(ctx, ctx->events_monitored[i].fd);
+    }
     xfree(((struct epoll_api *) ctx->api)->events);
     xfree(ctx->events_monitored);
     xfree(ctx->api);

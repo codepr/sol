@@ -113,8 +113,6 @@ pthread_spinlock_t io_spinlock;
 struct epoll {
     struct ev_ctx *io_ctx;
     struct ev_ctx *w_ctx;
-    /* int io_epollfd; */
-    /* int w_epollfd; */
     int serverfd;
     int timerfd[2];
 };
@@ -183,7 +181,7 @@ static const char *solerr(int rc) {
  */
 static void accept_loop(struct epoll *epoll) {
 
-    int events = 0;
+    int event = 0, events = 0;
     struct ev_ctx ctx;
     ev_init(&ctx, EPOLL_MAX_EVENTS);
 
@@ -209,7 +207,7 @@ static void accept_loop(struct epoll *epoll) {
             break;
         }
         for (int i = 0; i < events; ++i) {
-            int event = ev_get_event_type(&ctx, i);
+            event = ev_get_event_type(&ctx, i);
             if (event & EV_CLOSEFD) {
                 /* And quit event after that */
                 log_debug("Stopping accept loop. Thread %p exiting.",
@@ -427,10 +425,10 @@ errdc:
  * processed by a worker thread, EPOLLOUT for bytes incoming from a worker
  * thread, ready to be delivered out.
  */
-static void *io_worker(void *arg) {
+static void *io_thread(void *arg) {
 
     struct epoll *epoll = arg;
-    int events = 0;
+    int event = 0, events = 0;
     ssize_t sent = 0;
 
     int fd = ((struct epoll_api *) epoll->io_ctx->api)->fd;
@@ -442,50 +440,44 @@ static void *io_worker(void *arg) {
      */
     ev_watch_fd(&ctx, conf->run, EV_READ | EV_CLOSEFD);
 
+    ev_register_cron(&ctx, publish_stats, conf->stats_pub_interval, 0);
+
     /* Raw bytes buffer to handle input from client */
     unsigned char *buffer = xmalloc(conf->max_request_size);
 
     while (1) {
-
         events = ev_poll(&ctx, -1);
-
         if (events < 0) {
-
             /* Signals to all threads. Ignore it for now */
             if (errno == EINTR)
                 continue;
-
             /* Error occured, break the loop */
             break;
         }
-
         for (int i = 0; i < events; ++i) {
-
-            int event = ev_get_event_type(&ctx, i);
-
+            event = ev_get_event_type(&ctx, i);
             if (event & EV_CLOSEFD) {
-
                 /* And quit event after that */
                 log_debug("Stopping IO epoll loop. Thread %p exiting.",
                           (void *) pthread_self());
-
                 ev_read_event(&ctx, i, EV_CLOSEFD, NULL);
                 goto exit;
-
+            } else if (event & EV_TIMERFD) {
+                ev_read_event(&ctx, i, EV_TIMERFD, NULL);
             } else if (event & EV_READ) {
 
                 /* pthread_spin_lock(&io_spinlock); */
-                struct io_event *event = xmalloc(sizeof(*event));
-                event->ctx = &ctx;
-                event->rc = 0;
-                ev_read_event(&ctx, i, EV_NONE, (void **)&event->client);
+                struct io_event *io = xmalloc(sizeof(*io));
+                io->ctx = &ctx;
+                io->rc = 0;
+                ev_read_event(&ctx, i, EV_NONE, (void **) &io->client);
                 /*
                  * Received a bunch of data from a client, after the creation
                  * of an IO event we need to read the bytes and encoding the
                  * content according to the protocol
                  */
-                struct connection *c = event->client->conn;
-                int rc = read_data(c, buffer, &event->data);
+                struct connection *c = io->client->conn;
+                int rc = read_data(c, buffer, &io->data);
                 if (rc == 0) {
                     /*
                      * All is ok, raise an event to the worker poll EPOLL and
@@ -493,11 +485,10 @@ static void *io_worker(void *arg) {
                      * ready to be processed
                      */
                     /* Record last action as of now */
-                    event->client->last_action_time = time(NULL);
+                    io->client->last_action_time = time(NULL);
                     /* Fire an event toward the worker thread pool */
                     eventfd_t ev = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-                    event->eventfd = ev;
-                    ev_fire_event(epoll->w_ctx, ev, EV_READ | EV_EVENTFD, event);
+                    ev_fire_event(epoll->w_ctx, ev, EV_READ | EV_EVENTFD, io);
 
                 } else if (rc == -ERRCLIENTDC || rc == -ERRPACKETERR) {
 
@@ -508,52 +499,52 @@ static void *io_worker(void *arg) {
                      * paired payload
                      */
                     log_error("Closing connection with %s: %s",
-                              event->client->conn->ip, solerr(rc));
+                              io->client->conn->ip, solerr(rc));
                     // Publish, if present, LWT message
-                    if (event->client->lwt_msg) {
-                        char *tname = (char *) event->client->lwt_msg->topic;
+                    if (io->client->lwt_msg) {
+                        char *tname = (char *) io->client->lwt_msg->topic;
                         struct topic *t = sol_topic_get(&sol, tname);
-                        publish_message(event->client->lwt_msg, t, event->ctx);
+                        publish_message(io->client->lwt_msg, t, io->ctx);
                     }
-                    event->client->online = false;
+                    io->client->online = false;
                     // Clean resources
                     ev_del_fd(&ctx, c->fd);
-                    close_conn(event->client->conn);
+                    close_conn(io->client->conn);
                     // Remove from subscriptions for now
-                    if (event->client->session) {
-                        struct list *subs = event->client->session->subscriptions;
+                    if (io->client->session) {
+                        struct list *subs = io->client->session->subscriptions;
                         struct iterator *it = iter_new(subs, list_iter_next);
                         FOREACH (it) {
                             log_debug("Deleting %s from topic %s",
-                                      event->client->client_id,
+                                      io->client->client_id,
                                       ((struct topic *) it->ptr)->name);
-                            topic_del_subscriber(it->ptr, event->client, false);
+                            topic_del_subscriber(it->ptr, io->client, false);
                         }
                         iter_destroy(it);
                     }
                     info.nclients--;
                     info.nconnections--;
-                    xfree(event);
+                    xfree(io);
                 }
                 /* pthread_spin_unlock(&io_spinlock); */
             } else if (event & EV_WRITE) {
                 /* pthread_spin_lock(&io_spinlock); */
                 void *ptr = NULL;
                 ev_read_event(&ctx, i, EV_NONE, &ptr);
-                struct io_event *event = ptr;
+                struct io_event *io = ptr;
 
                 /*
                  * Write out to client, after a request has been processed in
                  * worker thread routine. Just send out all bytes stored in the
                  * reply buffer to the reply file descriptor.
                  */
-                struct connection *c = event->client->conn;
-                sent = send_data(c, event->reply, bstring_len(event->reply));
-                if (sent <= 0 || event->rc == RC_NOT_AUTHORIZED
-                    || event->rc == RC_BAD_USERNAME_OR_PASSWORD) {
+                struct connection *c = io->client->conn;
+                sent = send_data(c, io->reply, bstring_len(io->reply));
+                if (sent <= 0 || io->rc == RC_NOT_AUTHORIZED
+                    || io->rc == RC_BAD_USERNAME_OR_PASSWORD) {
                     log_info("Closing connection with %s: %s %lu",
-                             c->ip, solerr(event->rc), sent);
-                    hashtable_del(sol.clients, event->client->client_id);
+                             c->ip, solerr(io->rc), sent);
+                    hashtable_del(sol.clients, io->client->client_id);
                     // Update stats
                     info.nclients--;
                     info.nconnections--;
@@ -563,16 +554,16 @@ static void *io_worker(void *arg) {
                      * avoid race condition and thundering herd issues on
                      * multithreaded EPOLL
                      */
-                    ev_fire_event(&ctx, c->fd, EV_READ, event->client);
+                    ev_fire_event(&ctx, c->fd, EV_READ, io->client);
                 }
 
                 // Update information stats
                 info.bytes_sent += sent < 0 ? 0 : sent;
 
                 /* Free resource, ACKs will be free'd closing the server */
-                bstring_destroy(event->reply);
-                mqtt_packet_release(&event->data, event->data.header.bits.type);
-                xfree(event);
+                bstring_destroy(io->reply);
+                mqtt_packet_release(&io->data, io->data.header.bits.type);
+                xfree(io);
                 /* pthread_spin_unlock(&io_spinlock); */
             }
         }
@@ -592,10 +583,10 @@ exit:
  * the IO workers to be processed and schedule them back to the IO side for
  * the answer.
  */
-static void *worker(void *arg) {
+static void *worker_thread(void *arg) {
 
     struct epoll *epoll = arg;
-    int events = 0;
+    int event = 0, events = 0;
     int fd = ((struct epoll_api *) epoll->w_ctx->api)->fd;
     struct ev_ctx ctx;
     ev_clone_ctx(&ctx, fd, EPOLL_MAX_EVENTS);
@@ -605,67 +596,55 @@ static void *worker(void *arg) {
      */
     ev_watch_fd(&ctx, conf->run, EV_READ | EV_CLOSEFD);
 
-    ev_register_cron(&ctx, publish_stats, conf->stats_pub_interval, 0);
     ev_register_cron(&ctx, inflight_msg_check, 0, 2e8);
 
     while (1) {
-
         events = ev_poll(&ctx, -1);
-
         if (events < 0) {
-
             /* Signals to all threads. Ignore it for now */
             if (errno == EINTR)
                 continue;
-
             /* Error occured, break the loop */
             break;
         }
-
         for (int i = 0; i < events; ++i) {
-
-            int ev = ev_get_event_type(&ctx, i);
-
-            if (ev & EV_CLOSEFD) {
+            event = ev_get_event_type(&ctx, i);
+            if (event & EV_CLOSEFD) {
                 /* And quit event after that */
                 log_debug("Stopping worker epoll loop. Thread %p exiting.",
                           (void *) pthread_self());
                 ev_read_event(&ctx, i, EV_CLOSEFD, NULL);
                 goto exit;
-            } else if (ev & EV_TIMERFD) {
+            } else if (event & EV_TIMERFD) {
                 ev_read_event(&ctx, i, EV_TIMERFD, NULL);
-            } else if (ev & EV_READ) {
-                /* struct io_event *event = e_events[i].data.ptr; */
+            } else if (event & EV_READ) {
                 void *ptr = NULL;
                 ev_read_event(&ctx, i, EV_EVENTFD, &ptr);
-                struct io_event *event = ptr;
-                /* eventfd_read(event->eventfd, &val); */
-                // TODO free client and remove it from the global map in case
-                // of QUIT command (check return code)
-                struct connection *c = event->client->conn;
-                event->rc = handle_command(event->data.header.bits.type, event);
+                struct io_event *io = ptr;
+                struct connection *c = io->client->conn;
+                io->rc = handle_command(io->data.header.bits.type, io);
                 /* pthread_spin_lock(&io_spinlock); */
-                switch (event->rc) {
+                switch (io->rc) {
                     case REPLY:
                     case RC_NOT_AUTHORIZED:
                     case RC_BAD_USERNAME_OR_PASSWORD:
-                        ev_fire_event(epoll->io_ctx, c->fd, EV_WRITE, event);
+                        ev_fire_event(epoll->io_ctx, c->fd, EV_WRITE, io);
                         break;
                     case CLIENTDC:
                         /* pthread_spin_lock(&io_spinlock); */
-                        event->client->online = false;
+                        io->client->online = false;
                         ev_del_fd(epoll->io_ctx, c->fd);
-                        close_conn(event->client->conn);
-                        hashtable_del(sol.clients, event->client->client_id);
-                        xfree(event);
+                        close_conn(io->client->conn);
+                        hashtable_del(sol.clients, io->client->client_id);
+                        xfree(io);
                         // Update stats
                         info.nclients--;
                         info.nconnections--;
                         /* pthread_spin_unlock(&io_spinlock); */
                         break;
                     default:
-                        ev_fire_event(epoll->io_ctx, c->fd, EV_READ, event->client);
-                        xfree(event);
+                        ev_fire_event(epoll->io_ctx, c->fd, EV_READ, io->client);
+                        xfree(io);
                         break;
                 }
                 /* pthread_spin_unlock(&io_spinlock); */
@@ -897,20 +876,6 @@ static int auth_destructor(struct hashtable_entry *entry) {
     return 0;
 }
 
-/*
- * Helper function, return an itimerspec structure for creating custom timer
- * events to be triggered after being registered in an EPOLL loop
- */
-/* static struct itimerspec get_timer(int sec, unsigned long ns) { */
-/*     struct itimerspec timer; */
-/*     memset(&timer, 0x00, sizeof(timer)); */
-/*     timer.it_value.tv_sec = sec; */
-/*     timer.it_value.tv_nsec = ns; */
-/*     timer.it_interval.tv_sec = sec; */
-/*     timer.it_interval.tv_nsec = ns; */
-/*     return timer; */
-/* } */
-
 int start_server(const char *addr, const char *port) {
 
     /* Initialize global Sol instance */
@@ -942,37 +907,15 @@ int start_server(const char *addr, const char *port) {
 
     struct ev_ctx io_ctx;
     struct ev_ctx w_ctx;
+
     ev_init(&io_ctx, EPOLL_MAX_EVENTS);
     ev_init(&w_ctx, EPOLL_MAX_EVENTS);
+
     struct epoll epoll = {
         .io_ctx = &io_ctx,
         .w_ctx = &w_ctx,
-        /* .io_epollfd = epoll_create1(0), */
-        /* .w_epollfd = epoll_create1(0), */
         .serverfd = sfd
     };
-
-    /* Start the expiration keys check routine */
-    /* struct itimerspec exp_keys_timer = get_timer(conf->stats_pub_interval, 0); */
-    /*  */
-    /* #<{(| And one for the inflight ingoing and outgoing messages with QoS > 0 |)}># */
-    /* struct itimerspec inflight_msgs_timer = get_timer(0, 2e8); */
-    /*  */
-    /* // add expiration keys cron task and inflight messages cron task */
-    /* int exptimerfd = add_cron_task(epoll.w_epollfd, &exp_keys_timer); */
-    /* int inflightfd = add_cron_task(epoll.w_epollfd, &inflight_msgs_timer); */
-    /*  */
-    /* epoll.timerfd[0] = exptimerfd; */
-    /* epoll.timerfd[1] = inflightfd; */
-
-    /*
-     * We need to watch for global eventfd in order to gracefully shutdown IO
-     * thread pool and worker pool
-     */
-    /* ev_watch_fd(&io_ctx, conf->run, EV_READ | EV_CLOSEFD); */
-    /* ev_watch_fd(&w_ctx, conf->run, EV_READ | EV_CLOSEFD); */
-    /* epoll_add(epoll.io_epollfd, conf->run, EPOLLIN, NULL); */
-    /* epoll_add(epoll.w_epollfd, conf->run, EPOLLIN, NULL); */
 
     pthread_t iothreads[IOPOOLSIZE];
     pthread_t workers[WORKERPOOLSIZE];
@@ -980,24 +923,18 @@ int start_server(const char *addr, const char *port) {
     /* Start I/O thread pool */
 
     for (int i = 0; i < IOPOOLSIZE; ++i)
-        pthread_create(&iothreads[i], NULL, &io_worker, &epoll);
+        pthread_create(&iothreads[i], NULL, &io_thread, &epoll);
 
     /* Start Worker thread pool */
 
     for (int i = 0; i < WORKERPOOLSIZE; ++i)
-        pthread_create(&workers[i], NULL, &worker, &epoll);
+        pthread_create(&workers[i], NULL, &worker_thread, &epoll);
 
     log_info("Server start");
     info.start_time = time(NULL);
 
     // Main thread for accept new connections
     accept_loop(&epoll);
-
-    // Stop expire keys check routine
-    /* epoll_del(epoll.w_epollfd, epoll.timerfd[0]); */
-
-    // Stop inflight messages timer fd
-    /* epoll_del(epoll.w_epollfd, epoll.timerfd[1]); */
 
     /* Join started thread pools */
     for (int i = 0; i < IOPOOLSIZE; ++i)
