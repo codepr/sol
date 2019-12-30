@@ -562,9 +562,7 @@ static void *io_worker(void *arg) {
                     || event->rc == RC_BAD_USERNAME_OR_PASSWORD) {
                     log_info("Closing connection with %s: %s %lu",
                              c->ip, solerr(event->rc), sent);
-                    close_conn(c);
-                    xfree(event->client->conn);
-                    xfree(event->client);
+                    hashtable_del(sol.clients, event->client->client_id);
                     // Update stats
                     info.nclients--;
                     info.nconnections--;
@@ -678,8 +676,6 @@ static void *worker(void *arg) {
                     event->rc = reply;
                     epoll_mod(event->epollfd, c->fd, EPOLLOUT, event);
                 } else if (reply == CLIENTDC) {
-                    event->client->online = false;
-                    close_conn(event->client->conn);
                     hashtable_del(sol.clients, event->client->client_id);
                     if (close(event->eventfd) < 0)
                         perror("DISCONNECT close");
@@ -974,7 +970,7 @@ int start_server(const char *addr, const char *port) {
     struct itimerspec exp_keys_timer = get_timer(conf->stats_pub_interval, 0);
 
     /* And one for the inflight ingoing and outgoing messages with QoS > 0 */
-    struct itimerspec inflight_msgs_timer = get_timer(0, 2e8);
+    struct itimerspec inflight_msgs_timer = get_timer(0, 3e8);
 
     // add expiration keys cron task and inflight messages cron task
     int exptimerfd = add_cron_task(epoll.w_epollfd, &exp_keys_timer);

@@ -30,7 +30,7 @@
 #include "core.h"
 
 struct client *sol_client_new(struct connection *c) {
-    struct client *client = xmalloc(sizeof(*client));
+    struct client *client = xcalloc(1, sizeof(*client));
     client->conn = c;
     client->online = true;
     client->clean_session = true;
@@ -38,11 +38,6 @@ struct client *sol_client_new(struct connection *c) {
     client->last_action_time = time(NULL);
     client->lwt_msg = NULL;
     client->session = sol_session_new();
-    for (int i = 0; i < MAX_INFLIGHT_MSGS; ++i) {
-        client->i_acks[i] = NULL;
-        client->i_msgs[i] = NULL;
-        client->in_i_acks[i] = NULL;
-    }
     return client;
 }
 
