@@ -42,15 +42,31 @@ enum ev_type {
 
 struct ev_ctx;
 
+/*
+ * Event struture used as the main carrier of clients informations, it will be
+ * tracked by an array in every context created
+ */
 struct ev {
     int fd;
     int mask;
+    // Either an opaque pointer to client data or a callback for timed events
     union {
         void *data;
         void (*callback)(struct ev_ctx *);
     };
 };
 
+/*
+ * Event loop context, carry the expected number of events to be monitored at
+ * every cycle and an opaque pointer to the backend used as engine
+ * (Select | Epoll | Kqueue).
+ * By now we stick with epoll and skip over select, cause as the current
+ * threaded model employed by the server is not very friendly with select
+ * Level-trigger default setting. But it would be quiet easy abstract over the
+ * select model as well for single threaded uses or in a loop per thread
+ * scenario (currently thanks to epoll Edge-triggered + EPOLLONESHOT we can
+ * share a single loop over multiple threads).
+ */
 struct ev_ctx {
     int events_nr;
     int maxfd;
