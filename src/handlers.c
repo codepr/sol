@@ -75,7 +75,7 @@ void publish_message(struct mqtt_publish *p,
          * of the client, they will be sent out only in case of a
          * clean_session == false connection
          */
-        pthread_spin_lock(&w_spinlock);
+        /* pthread_spin_lock(&w_spinlock); */
         if (sc->online == false && sc->clean_session == false) {
             pkt.publish.header.bits.qos = p->header.bits.qos;
             struct inflight_msg *im =
@@ -127,7 +127,7 @@ void publish_message(struct mqtt_publish *p,
             pkt.publish.pkt_id = 0;
             pub = pack_mqtt_packet(&pkt, PUBLISH);
         }
-        pthread_spin_unlock(&w_spinlock);
+        /* pthread_spin_unlock(&w_spinlock); */
 
         /* pthread_spin_lock(&io_spinlock); */
         payload = bstring_copy(pub, publen);
@@ -135,14 +135,13 @@ void publish_message(struct mqtt_publish *p,
 
         // Trigger write on IO threadpool
         struct io_event *event = xmalloc(sizeof(*event));
-        /* event->epollfd = epollfd; */
         event->ctx = ctx;
         event->rc = REPLY;
         event->client = sc;
         event->reply = payload;
 
-        ev_fire_event(ctx, sc->conn->fd, EV_WRITE, event);
-        /* epoll_mod(event->epollfd, sc->conn->fd, EPOLLOUT, event); */
+        (void) send_data(sc->conn, payload, bstring_len(payload));
+        /* ev_fire_event(ctx, sc->conn->fd, EV_WRITE, on_write, event); */
 
         info.messages_sent++;
 
@@ -186,7 +185,7 @@ static void set_payload_connack(struct io_event *e, unsigned char rc) {
 
 static int connect_handler(struct io_event *e) {
 
-    pthread_spin_lock(&w_spinlock);
+    /* pthread_spin_lock(&w_spinlock); */
 
     struct mqtt_connect *c = &e->data.connect;
     struct client *cc = e->client;
@@ -324,7 +323,7 @@ static int connect_handler(struct io_event *e) {
 
     set_payload_connack(e, RC_CONNECTION_ACCEPTED);
 
-    pthread_spin_unlock(&w_spinlock);
+    /* pthread_spin_unlock(&w_spinlock); */
 
     log_debug("Sending CONNACK to %s r=%u",
               c->payload.client_id, RC_CONNECTION_ACCEPTED);
@@ -333,7 +332,7 @@ static int connect_handler(struct io_event *e) {
 
 clientdc:
 
-    pthread_spin_unlock(&w_spinlock);
+    /* pthread_spin_unlock(&w_spinlock); */
 
     return CLIENTDC;
 
@@ -342,7 +341,7 @@ bad_auth:
               c->payload.client_id, RC_BAD_USERNAME_OR_PASSWORD);  // TODO check for session
     set_payload_connack(e, RC_BAD_USERNAME_OR_PASSWORD);
 
-    pthread_spin_unlock(&w_spinlock);
+    /* pthread_spin_unlock(&w_spinlock); */
 
     return RC_BAD_USERNAME_OR_PASSWORD;
 
@@ -351,7 +350,7 @@ not_authorized:
               c->payload.client_id, RC_NOT_AUTHORIZED); // TODO check for session
     set_payload_connack(e, RC_NOT_AUTHORIZED);
 
-    pthread_spin_unlock(&w_spinlock);
+    /* pthread_spin_unlock(&w_spinlock); */
 
     return RC_NOT_AUTHORIZED;
 }
@@ -373,7 +372,7 @@ static int disconnect_handler(struct io_event *e) {
 
     log_debug("Received DISCONNECT from %s", e->client->client_id);
 
-    pthread_spin_lock(&w_spinlock);
+    /* pthread_spin_lock(&w_spinlock); */
 
     // Remove from subscriptions for now
     if (e->client->session) {
@@ -386,7 +385,7 @@ static int disconnect_handler(struct io_event *e) {
         }
         iter_destroy(it);
     }
-    pthread_spin_unlock(&w_spinlock);
+    /* pthread_spin_unlock(&w_spinlock); */
 
     // TODO remove from all topic where it subscribed
     return CLIENTDC;
@@ -419,7 +418,7 @@ static int subscribe_handler(struct io_event *e) {
 
         log_debug("\t%s (QoS %i)", topic, s->tuples[i].qos);
 
-        pthread_spin_lock(&w_spinlock);
+        /* pthread_spin_lock(&w_spinlock); */
 
         /* Recursive subscribe to all children topics if the topic ends with "/#" */
         if (topic[s->tuples[i].topic_len - 1] == '#' &&
@@ -457,7 +456,7 @@ static int subscribe_handler(struct io_event *e) {
             info.bytes_sent += sent;
         }
 
-        pthread_spin_unlock(&w_spinlock);
+        /* pthread_spin_unlock(&w_spinlock); */
 
         rcs[i] = s->tuples[i].qos;
     }
@@ -559,7 +558,7 @@ static int publish_handler(struct io_event *e) {
 
     // We have to answer to the publisher
 
-    pthread_spin_lock(&w_spinlock);
+    /* pthread_spin_lock(&w_spinlock); */
 
     if (qos == AT_MOST_ONCE)
         goto exit;
@@ -586,13 +585,13 @@ static int publish_handler(struct io_event *e) {
     mqtt_pack_mono(packed, ptype, orig_mid);
     e->reply = bstring_copy(packed, MQTT_ACK_LEN);
 
-    pthread_spin_unlock(&w_spinlock);
+    /* pthread_spin_unlock(&w_spinlock); */
 
     return REPLY;
 
 exit:
 
-    pthread_spin_unlock(&w_spinlock);
+    /* pthread_spin_unlock(&w_spinlock); */
 
     /*
      * We're in the case of AT_MOST_ONCE QoS level, we don't need to sent out
@@ -602,7 +601,7 @@ exit:
 }
 
 static int puback_handler(struct io_event *e) {
-    pthread_spin_lock(&w_spinlock);
+    /* pthread_spin_lock(&w_spinlock); */
     struct client *c = e->client;
     log_debug("Received PUBACK from %s (m%u)",
               c->client_id, e->data.ack.pkt_id);
@@ -614,12 +613,12 @@ static int puback_handler(struct io_event *e) {
         xfree(c->i_acks[e->data.ack.pkt_id]);
         c->i_acks[e->data.ack.pkt_id] = NULL;
     }
-    pthread_spin_unlock(&w_spinlock);
+    /* pthread_spin_unlock(&w_spinlock); */
     return NOREPLY;
 }
 
 static int pubrec_handler(struct io_event *e) {
-    pthread_spin_lock(&w_spinlock);
+    /* pthread_spin_lock(&w_spinlock); */
     struct client *c = e->client;
     log_debug("Received PUBREC from %s (m%u)",
               c->client_id, e->data.ack.pkt_id);
@@ -635,12 +634,12 @@ static int pubrec_handler(struct io_event *e) {
     }
     log_debug("Sending PUBREL to %s (m%u)",
               c->client_id, e->data.ack.pkt_id);
-    pthread_spin_unlock(&w_spinlock);
+    /* pthread_spin_unlock(&w_spinlock); */
     return REPLY;
 }
 
 static int pubrel_handler(struct io_event *e) {
-    pthread_spin_lock(&w_spinlock);
+    /* pthread_spin_lock(&w_spinlock); */
     log_debug("Received PUBREL from %s (m%u)",
               e->client->client_id, e->data.ack.pkt_id);
     struct client *c = e->client;
@@ -653,12 +652,12 @@ static int pubrel_handler(struct io_event *e) {
     log_debug("Sending PUBCOMP to %s (m%u)",
               e->client->client_id, e->data.ack.pkt_id);
     e->reply = bstring_copy(packed, MQTT_ACK_LEN);
-    pthread_spin_unlock(&w_spinlock);
+    /* pthread_spin_unlock(&w_spinlock); */
     return REPLY;
 }
 
 static int pubcomp_handler(struct io_event *e) {
-    pthread_spin_lock(&w_spinlock);
+    /* pthread_spin_lock(&w_spinlock); */
     log_debug("Received PUBCOMP from %s (m%u)",
               e->client->client_id, e->data.ack.pkt_id);
     struct client *c = e->client;
@@ -670,7 +669,7 @@ static int pubcomp_handler(struct io_event *e) {
         xfree(c->i_msgs[e->data.ack.pkt_id]);
         c->i_msgs[e->data.ack.pkt_id] = NULL;
     }
-    pthread_spin_unlock(&w_spinlock);
+    /* pthread_spin_unlock(&w_spinlock); */
     // TODO Remove from inflight PUBACK clients map
     return NOREPLY;
 }

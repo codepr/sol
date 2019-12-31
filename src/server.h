@@ -122,4 +122,6 @@ extern pthread_spinlock_t io_spinlock;
 
 int start_server(const char *, const char *);
 
+void on_write(struct ev_ctx *, void *);
+
 #endif

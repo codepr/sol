@@ -50,10 +50,8 @@ struct ev {
     int fd;
     int mask;
     // Either an opaque pointer to client data or a callback for timed events
-    union {
-        void *data;
-        void (*callback)(struct ev_ctx *);
-    };
+    void *data;
+    void (*callback)(struct ev_ctx *, void *);
 };
 
 /*
@@ -82,18 +80,23 @@ void ev_destroy(struct ev_ctx *);
 
 int ev_poll(struct ev_ctx *, time_t);
 
+int ev_run(struct ev_ctx *);
+
 int ev_watch_fd(struct ev_ctx *, int, int);
 
 int ev_del_fd(struct ev_ctx *, int);
 
 int ev_get_event_type(struct ev_ctx *, int );
 
-int ev_register_event(struct ev_ctx *, int, int, void *);
+int ev_register_event(struct ev_ctx *, int, int,
+                      void (*callback)(struct ev_ctx *, void *), void *);
 
-int ev_register_cron(struct ev_ctx *, void (*callback)(struct ev_ctx *),
+int ev_register_cron(struct ev_ctx *,
+                     void (*callback)(struct ev_ctx *, void *),
                      long long, long long);
 
-int ev_fire_event(struct ev_ctx *, int, int, void *);
+int ev_fire_event(struct ev_ctx *, int, int,
+                  void (*callback)(struct ev_ctx *, void *), void *);
 
 int ev_read_event(struct ev_ctx *, int, int, void **);
 

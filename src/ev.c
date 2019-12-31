@@ -49,7 +49,7 @@ static int epoll_add(int efd, int fd, int evs, void *data) {
     if (data)
         ev.data.ptr = data;
 
-    ev.events = evs | EPOLLHUP | EPOLLERR | EPOLLET | EPOLLONESHOT;
+    ev.events = evs | EPOLLHUP | EPOLLERR | EPOLLET;
 
     return epoll_ctl(efd, EPOLL_CTL_ADD, fd, &ev);
 }
@@ -68,7 +68,7 @@ static int epoll_mod(int efd, int fd, int evs, void *data) {
     if (data)
         ev.data.ptr = data;
 
-    ev.events = evs | EPOLLHUP | EPOLLERR | EPOLLET | EPOLLONESHOT;
+    ev.events = evs | EPOLLHUP | EPOLLERR | EPOLLET;
 
     return epoll_ctl(efd, EPOLL_CTL_MOD, fd, &ev);
 }
@@ -86,7 +86,9 @@ static int epoll_del(int efd, int fd) {
  * Monitored events are the same number as the maximum FD registered in the
  * context.
  */
-static void ev_add_monitored(struct ev_ctx *ctx, int fd, int mask, void *ptr) {
+static void ev_add_monitored(struct ev_ctx *ctx, int fd, int mask,
+                             void (*callback)(struct ev_ctx *, void *),
+                             void *ptr) {
     if (fd > ctx->maxfd) {
         int i = ctx->maxfd;
         ctx->maxfd = fd + 1;
@@ -97,6 +99,7 @@ static void ev_add_monitored(struct ev_ctx *ctx, int fd, int mask, void *ptr) {
     ctx->events_monitored[fd].fd = fd;
     ctx->events_monitored[fd].mask = mask;
     ctx->events_monitored[fd].data = ptr;
+    ctx->events_monitored[fd].callback = callback;
 }
 
 void ev_init(struct ev_ctx *ctx, int events_nr) {
@@ -158,9 +161,24 @@ int ev_poll(struct ev_ctx *ctx, time_t timeout) {
     return epoll_wait(e_api->fd, e_api->events, ctx->events_nr, timeout);
 }
 
+int ev_run(struct ev_ctx *ctx) {
+
+    int n = 0, events = 0;
+    while (1) {
+        n = ev_poll(ctx, -1);
+        if (n < 0)
+            break;
+        for (int i = 0; i < n; ++i) {
+            events = ev_get_event_type(ctx, i);
+            ev_read_event(ctx, i, events, NULL);
+        }
+    }
+    return n;
+}
+
 int ev_watch_fd(struct ev_ctx *ctx, int fd, int mask) {
     struct epoll_api *e_api = ctx->api;
-    ev_add_monitored(ctx, fd, mask, NULL);
+    ev_add_monitored(ctx, fd, mask, NULL, NULL);
     int err = epoll_add(e_api->fd, fd, EPOLLIN, &ctx->events_monitored[fd]);
     return err;
 }
@@ -168,22 +186,26 @@ int ev_watch_fd(struct ev_ctx *ctx, int fd, int mask) {
 int ev_del_fd(struct ev_ctx *ctx, int fd) {
     struct epoll_api *e_api = ctx->api;
     ctx->events_monitored[fd].mask = EV_NONE;
+    ctx->events_monitored[fd].data = NULL;
+    ctx->events_monitored[fd].callback = NULL;
     int err = epoll_del(e_api->fd, fd);
     return err;
 }
 
-int ev_register_event(struct ev_ctx *ctx, int fd, int mask, void *data) {
+int ev_register_event(struct ev_ctx *ctx, int fd, int mask,
+                      void (*callback)(struct ev_ctx *, void *), void *data) {
     struct epoll_api *e_api = ctx->api;
     int ret = 0;
     int op = mask & EV_READ ? EPOLLIN : EPOLLOUT;
-    ev_add_monitored(ctx, fd, mask, data);
+    ev_add_monitored(ctx, fd, mask, callback, data);
     ret = epoll_add(e_api->fd, fd, op, &ctx->events_monitored[fd]);
     if (mask & EV_EVENTFD)
         (void) eventfd_write(fd, 1);
     return ret;
 }
 
-int ev_register_cron(struct ev_ctx *ctx, void (*callback)(struct ev_ctx *),
+int ev_register_cron(struct ev_ctx *ctx,
+                     void (*callback)(struct ev_ctx *, void *),
                      long long s, long long ns) {
 
     struct epoll_api *e_api = ctx->api;
@@ -211,11 +233,12 @@ int ev_register_cron(struct ev_ctx *ctx, void (*callback)(struct ev_ctx *),
     return timerfd;
 }
 
-int ev_fire_event(struct ev_ctx *ctx, int fd, int mask, void *data) {
+int ev_fire_event(struct ev_ctx *ctx, int fd, int mask,
+                  void (*callback)(struct ev_ctx *, void *), void *data) {
     struct epoll_api *e_api = ctx->api;
     int ret = 0;
     int op = mask & EV_READ ? EPOLLIN : EPOLLOUT;
-    ev_add_monitored(ctx, fd, mask, data);
+    ev_add_monitored(ctx, fd, mask, callback, data);
     if (mask & EV_EVENTFD) {
         (void) epoll_add(e_api->fd, fd, op, &ctx->events_monitored[fd]);
         ret = eventfd_write(fd, 1);
@@ -226,22 +249,25 @@ int ev_fire_event(struct ev_ctx *ctx, int fd, int mask, void *data) {
 }
 
 int ev_read_event(struct ev_ctx *ctx, int idx, int mask, void **ptr) {
-    int err = -1;
+    (void) ptr;
+    int err = 0;
     struct epoll_api *e_api = ctx->api;
     struct ev *e = e_api->events[idx].data.ptr;
     int fd = e->fd;
-    if (!(mask & (EV_CLOSEFD | EV_TIMERFD)))
-        *ptr = e->data;
+    /* if (!(mask & (EV_CLOSEFD | EV_TIMERFD))) */
+    /*     *ptr = e->data; */
     if (mask & EV_EVENTFD) {
         eventfd_read(fd, &(eventfd_t){0L});
         err = close(fd);
     } else if (mask & EV_TIMERFD) {
         (void) read(fd, &(long int){0L}, sizeof(long int));
-        err = epoll_mod(e_api->fd, fd, EPOLLIN, e);
-        e->callback(ctx);
+        /* err = epoll_mod(e_api->fd, fd, EPOLLIN, e); */
+        e->callback(ctx, e->data);
     } else if (mask & EV_CLOSEFD) {
         eventfd_read(fd, &(eventfd_t){0L});
-        err = epoll_mod(e_api->fd, fd, EPOLLIN, e);
+        /* err = epoll_mod(e_api->fd, fd, EPOLLIN, e); */
+    } else {
+        e->callback(ctx, e->data);
     }
     return err;
 }
