@@ -58,11 +58,6 @@ struct ev_ctx {
     void *api;
 };
 
-struct epoll_api {
-    int fd;
-    struct epoll_event *events;
-};
-
 void ev_init(struct ev_ctx *, int);
 
 void ev_clone_ctx(struct ev_ctx *, const struct ev_ctx *);

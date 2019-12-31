@@ -44,7 +44,7 @@
 #include "server.h"
 #include "handlers.h"
 #include "hashtable.h"
-#include "eventloop.h"
+#include "ev.h"
 
 /* Seconds in a Sol, easter egg */
 static const double SOL_SECONDS = 88775.24;

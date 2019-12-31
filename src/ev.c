@@ -31,8 +31,13 @@
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
-#include "eventloop.h"
+#include "ev.h"
 #include "util.h"
+
+struct epoll_api {
+    int fd;
+    struct epoll_event *events;
+};
 
 /* Epoll management functions */
 static int epoll_add(int efd, int fd, int evs, void *data) {

@@ -7,7 +7,7 @@
 #include "util.h"
 #include "config.h"
 #include "hashtable.h"
-#include "eventloop.h"
+#include "ev.h"
 
 /* Prototype for a command handler */
 typedef int handler(struct io_event *);
