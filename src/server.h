@@ -63,7 +63,7 @@
  * Number of I/O workers to start, in other words the size of the IO thread
  * pool
  */
-#define IOPOOLSIZE 4
+#define IOPOOLSIZE 1
 
 /* Number of Worker threads, or the size of the worker pool */
 #define WORKERPOOLSIZE 2

@@ -915,12 +915,12 @@ static void on_accept(struct ev_ctx *ctx, void *data) {
         info.nclients++;
         info.nconnections++;
 
-        log_info("Connection from %s", conn->ip);
+        log_info("[%p] Connection from %s", (void *) pthread_self(), conn->ip);
     }
 }
 
 static void on_message(struct ev_ctx *ctx, void *data) {
-    unsigned char *buffer = xmalloc(conf->max_request_size);
+    unsigned char buffer[conf->max_request_size];
     struct io_event *io = xmalloc(sizeof(*io));
     io->ctx = ctx;
     io->rc = 0;
@@ -940,8 +940,7 @@ static void on_message(struct ev_ctx *ctx, void *data) {
          */
         /* Record last action as of now */
         io->client->last_action_time = time(NULL);
-        eventfd_t ev = eventfd(1, EFD_CLOEXEC | EFD_NONBLOCK);
-        ev_fire_event(ctx, ev, EV_READ | EV_EVENTFD, on_payload, io);
+        on_payload(ctx, io);
 
     } else if (rc == -ERRCLIENTDC || rc == -ERRPACKETERR) {
 
@@ -979,7 +978,6 @@ static void on_message(struct ev_ctx *ctx, void *data) {
         info.nconnections--;
         xfree(io);
     }
-    xfree(buffer);
 }
 
 static void on_payload(struct ev_ctx *ctx, void *data) {
@@ -1004,7 +1002,7 @@ static void on_payload(struct ev_ctx *ctx, void *data) {
             info.nconnections--;
             break;
         default:
-            ev_fire_event(io->ctx, c->fd, EV_READ, on_message, io->client);
+            ev_fire_event(ctx, c->fd, EV_READ, on_message, io->client);
             xfree(io);
             break;
     }
@@ -1045,6 +1043,17 @@ void on_write(struct ev_ctx *ctx, void *data) {
     bstring_destroy(io->reply);
     mqtt_packet_release(&io->data, io->data.header.bits.type);
     xfree(io);
+}
+
+void *IO_thread(void *args) {
+    int sfd = *((int *) args);
+    struct ev_ctx ctx;
+    ev_init(&ctx, EPOLL_MAX_EVENTS);
+
+    ev_register_event(&ctx, sfd, EV_READ, on_accept, &sfd);
+
+    ev_run(&ctx);
+    return NULL;
 }
 
 int start_server(const char *addr, const char *port) {
@@ -1106,11 +1115,14 @@ int start_server(const char *addr, const char *port) {
 
     // Main thread for accept new connections
     /* accept_loop(&loop); */
+    /* for (int i = 0; i < IOPOOLSIZE; ++i) */
+    /*     pthread_create(&iothreads[i], NULL, &IO_thread, &sfd); */
+
     struct ev_ctx ctx;
     ev_init(&ctx, EPOLL_MAX_EVENTS);
 
     ev_register_cron(&ctx, publish_stats, conf->stats_pub_interval, 0);
-    ev_register_cron(&ctx, inflight_msg_check, 0, 2e8);
+    ev_register_cron(&ctx, inflight_msg_check, 0, 9e8);
 
     ev_register_event(&ctx, sfd, EV_READ, on_accept, &sfd);
 
