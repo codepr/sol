@@ -299,6 +299,9 @@ static ssize_t recv_packet(struct connection *c, unsigned char **buf,
      */
     ret = recv_data(c, *buf, 2);
 
+    if (ret == -ERREAGAIN)
+        return -ERREAGAIN;
+
     if (ret <= 0)
         return -ERRCLIENTDC;
 
@@ -493,58 +496,63 @@ static void *io_worker(void *arg) {
                  */
                 struct connection *c = event->client->conn;
                 int rc = read_data(c, buffer, &event->data);
-                if (rc == 0) {
-                    /*
-                     * All is ok, raise an event to the worker poll EPOLL and
-                     * link it with the IO event containing the decode payload
-                     * ready to be processed
-                     */
-                    eventfd_t ev = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-                    event->eventfd = ev;
-                    epoll_add(epoll->w_epollfd, ev, EPOLLIN, event);
+                switch (rc) {
+                    case 0:
+                        /*
+                         * All is ok, raise an event to the worker poll EPOLL and
+                         * link it with the IO event containing the decode payload
+                         * ready to be processed
+                         */
+                        event->eventfd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+                        epoll_add(epoll->w_epollfd,
+                                  event->eventfd, EPOLLIN, event);
 
-                    /* Record last action as of now */
-                    event->client->last_action_time = time(NULL);
+                        /* Record last action as of now */
+                        event->client->last_action_time = time(NULL);
 
-                    /* Fire an event toward the worker thread pool */
-                    eventfd_write(ev, 1);
-
-                } else if (rc == -ERRCLIENTDC || rc == -ERRPACKETERR) {
-
-                    /*
-                     * We got an unexpected error or a disconnection from the
-                     * client side, remove client from the global map and
-                     * free resources allocated such as io_event structure and
-                     * paired payload
-                     */
-                    pthread_spin_lock(&io_spinlock);
-                    log_error("Closing connection with %s: %s",
-                              event->client->conn->ip, solerr(rc));
-                    // Publish, if present, LWT message
-                    if (event->client->lwt_msg) {
-                        char *tname = (char *) event->client->lwt_msg->topic;
-                        struct topic *t = sol_topic_get(&sol, tname);
-                        publish_message(event->client->lwt_msg, t, event->epollfd);
-                    }
-                    event->client->online = false;
-                    // Clean resources
-                    close_conn(event->client->conn);
-                    // Remove from subscriptions for now
-                    if (event->client->session) {
-                        struct list *subs = event->client->session->subscriptions;
-                        struct iterator *it = iter_new(subs, list_iter_next);
-                        FOREACH (it) {
-                            log_debug("Deleting %s from topic %s",
-                                      event->client->client_id,
-                                      ((struct topic *) it->ptr)->name);
-                            topic_del_subscriber(it->ptr, event->client, false);
+                        /* Fire an event toward the worker thread pool */
+                        eventfd_write(event->eventfd, 1);
+                        break;
+                    case -ERRCLIENTDC:
+                    case -ERRPACKETERR:
+                        /*
+                         * We got an unexpected error or a disconnection from the
+                         * client side, remove client from the global map and
+                         * free resources allocated such as io_event structure and
+                         * paired payload
+                         */
+                        pthread_spin_lock(&io_spinlock);
+                        log_error("Closing connection with %s: %s",
+                                  event->client->conn->ip, solerr(rc));
+                        // Publish, if present, LWT message
+                        if (event->client->lwt_msg) {
+                            char *tname = (char *) event->client->lwt_msg->topic;
+                            struct topic *t = sol_topic_get(&sol, tname);
+                            publish_message(event->client->lwt_msg, t, event->epollfd);
                         }
-                        iter_destroy(it);
-                    }
-                    info.nclients--;
-                    info.nconnections--;
-                    xfree(event);
-                    pthread_spin_unlock(&io_spinlock);
+                        event->client->online = false;
+                        // Clean resources
+                        close_conn(event->client->conn);
+                        // Remove from subscriptions for now
+                        if (event->client->session) {
+                            struct list *subs = event->client->session->subscriptions;
+                            struct iterator *it = iter_new(subs, list_iter_next);
+                            FOREACH (it) {
+                                log_debug("Deleting %s from topic %s",
+                                          event->client->client_id,
+                                          ((struct topic *) it->ptr)->name);
+                                topic_del_subscriber(it->ptr, event->client, false);
+                            }
+                            iter_destroy(it);
+                        }
+                        info.nclients--;
+                        info.nconnections--;
+                        xfree(event);
+                        pthread_spin_unlock(&io_spinlock);
+                        break;
+                    case -ERREAGAIN:
+                        epoll_mod(epoll->io_epollfd, c->fd, EPOLLIN, event->client);
+                        break;
                 }
             } else if (e_events[i].events & EPOLLOUT) {
 

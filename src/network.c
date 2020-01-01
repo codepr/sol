@@ -43,6 +43,7 @@
 #include "util.h"
 #include "config.h"
 #include "network.h"
+#include "server.h"
 
 /* Set non-blocking socket */
 int set_nonblocking(int fd) {
@@ -265,7 +266,7 @@ ssize_t recv_bytes(int fd, unsigned char *buf, size_t bufsize) {
 
         if ((n = recv(fd, buf, bufsize - total, 0)) < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                break;
+                goto eagain;
             } else
                 goto err;
         }
@@ -277,6 +278,12 @@ ssize_t recv_bytes(int fd, unsigned char *buf, size_t bufsize) {
         total += n;
     }
 
+    return total;
+
+eagain:
+
+    if (total == 0)
+        return -ERREAGAIN;
     return total;
 
 err:
@@ -460,7 +467,7 @@ ssize_t ssl_recv_bytes(SSL *ssl, unsigned char *buf, size_t bufsize) {
                 || (err == SSL_ERROR_SYSCALL && !errno))
                 return 0;  // Connection closed
             if (errno == EAGAIN || errno == EWOULDBLOCK)
-                break;
+                goto eagain;
             else
                 goto err;
         }
@@ -472,6 +479,12 @@ ssize_t ssl_recv_bytes(SSL *ssl, unsigned char *buf, size_t bufsize) {
         total += n;
     }
 
+    return total;
+
+eagain:
+
+    if (total == 0)
+        return -ERREAGAIN;
     return total;
 
 err:

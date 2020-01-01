@@ -50,6 +50,7 @@
 #define ERRCLIENTDC         1
 #define ERRPACKETERR        2
 #define ERRMAXREQSIZE       3
+#define ERREAGAIN           4
 
 /* Return code of handler functions, signaling if there's data payload to be
  * sent out or if the server just need to re-arm closure for reading incoming
