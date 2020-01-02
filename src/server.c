@@ -59,15 +59,6 @@ struct sol_info info;
 struct sol sol;
 
 /*
- * Guards the access to the main database structure, the trie underlying the
- * topic DB and all the hashtable/lists involved
- */
-/* pthread_spinlock_t w_spinlock; */
-
-/* Guards the EPOLL event changing between different threads */
-/* pthread_spinlock_t io_spinlock; */
-
-/*
  * TCP server, based on I/O multiplexing but sharing I/O and work loads between
  * thread pools. The main thread have the exclusive responsibility of accepting
  * connections and pass them to IO threads.
@@ -169,98 +160,6 @@ static const char *solerr(int rc) {
             return "Unknown error";
     }
 }
-
-/*
- * Handle incoming connections, create a a fresh new struct client structure
- * and link it to the fd, ready to be set in EPOLLIN event, then pass the
- * connection to the IO EPOLL loop, waited by the IO thread pool.
- */
-/* static void accept_loop(struct eventloop *loop) { */
-/*  */
-/*     int event = 0, events = 0; */
-/*     struct ev_ctx ctx; */
-/*     ev_init(&ctx, EPOLL_MAX_EVENTS); */
-/*  */
-/*     #<{(| */
-/*      * We want to watch for events incoming on the server descriptor (e.g. new */
-/*      * connections) */
-/*      |)}># */
-/*     ev_watch_fd(&ctx, loop->serverfd, EV_READ); */
-/*  */
-/*     #<{(| */
-/*      * And also to the global event fd, this one is useful to gracefully */
-/*      * interrupt polling and thread execution */
-/*      |)}># */
-/*     ev_watch_fd(&ctx, conf->run, EV_READ | EV_CLOSEFD); */
-/*  */
-/*     while (1) { */
-/*         events = ev_poll(&ctx, -1); */
-/*         if (events < 0) { */
-/*             #<{(| Signals to all threads. Ignore it for now |)}># */
-/*             if (errno == EINTR) */
-/*                 continue; */
-/*             #<{(| Error occured, break the loop |)}># */
-/*             break; */
-/*         } */
-/*         for (int i = 0; i < events; ++i) { */
-/*             event = ev_get_event_type(&ctx, i); */
-/*             if (event & EV_CLOSEFD) { */
-/*                 #<{(| And quit event after that |)}># */
-/*                 log_debug("Stopping accept loop. Thread %p exiting.", */
-/*                           (void *) pthread_self()); */
-/*                 ev_read_event(&ctx, i, EV_CLOSEFD, NULL); */
-/*                 goto exit; */
-/*  */
-/*             } else if ((event & EV_READ) && */
-/*                        ev_get_fd(&ctx, i) == loop->serverfd) { */
-/*  */
-/*                 while (1) { */
-/*  */
-/*                     #<{(| */
-/*                      * Accept a new incoming connection assigning ip address */
-/*                      * and socket descriptor to the connection structure */
-/*                      * pointer passed as argument */
-/*                      |)}># */
-/*                     struct connection *conn = conf->use_ssl ? \ */
-/*                                               connection_new(sol.ssl_ctx) : \ */
-/*                                               connection_new(NULL); */
-/*                     int fd = accept_connection(conn, loop->serverfd); */
-/*                     if (fd == 0) */
-/*                         continue; */
-/*                     if (fd < 0) { */
-/*                         close_connection(conn); */
-/*                         xfree(conn); */
-/*                         break; */
-/*                     } */
-/*                     #<{(| */
-/*                      * Create a client structure to handle his context */
-/*                      * connection */
-/*                      |)}># */
-/*                     struct client *client = sol_client_new(conn); */
-/*                     if (!conn || !client) */
-/*                         return; */
-/*  */
-/*                     #<{(| Add it to the epoll loop |)}># */
-/*                     ev_register_event(loop->io_ctx, fd, EV_READ, client); */
-/*  */
-/*                     #<{(| Rearm server fd to accept new connections |)}># */
-/*                     ev_fire_event(&ctx, loop->serverfd, EV_READ, NULL); */
-/*  */
-/*                     #<{(| Record the new client connected |)}># */
-/*                     info.nclients++; */
-/*                     info.nconnections++; */
-/*  */
-/*                     log_info("Connection from %s", conn->ip); */
-/*                 } */
-/*             } */
-/*         } */
-/*     } */
-/*  */
-/* exit: */
-/*  */
-/*     ev_destroy(&ctx); */
-/*     return; */
-/* } */
 
 /*
  * Parse packet header, it is required at least the Fixed Header of each
@@ -416,244 +315,6 @@ errdc:
 }
 
 /*
- * IO worker function, wait for events on a dedicated epoll descriptor which
- * is shared among multiple threads for input and output only, following the
- * normal EPOLL semantic, EPOLLIN for incoming bytes to be unpacked and
- * processed by a worker thread, EPOLLOUT for bytes incoming from a worker
- * thread, ready to be delivered out.
- */
-/* static void *io_thread(void *arg) { */
-/*  */
-/*     struct eventloop *loop = arg; */
-/*     int event = 0, events = 0; */
-/*     ssize_t sent = 0; */
-/*  */
-/*     struct ev_ctx ctx; */
-/*     ev_clone_ctx(&ctx, loop->io_ctx); */
-/*     #<{(| */
-/*      * And also to the global event fd, this one is useful to gracefully */
-/*      * interrupt polling and thread execution */
-/*      |)}># */
-/*     ev_watch_fd(&ctx, conf->run, EV_READ | EV_CLOSEFD); */
-/*  */
-/*     ev_register_cron(&ctx, publish_stats, conf->stats_pub_interval, 0); */
-/*  */
-/*     #<{(| Raw bytes buffer to handle input from client |)}># */
-/*     unsigned char *buffer = xmalloc(conf->max_request_size); */
-/*  */
-/*     while (1) { */
-/*         events = ev_poll(&ctx, -1); */
-/*         if (events < 0) { */
-/*             #<{(| Signals to all threads. Ignore it for now |)}># */
-/*             if (errno == EINTR) */
-/*                 continue; */
-/*             #<{(| Error occured, break the loop |)}># */
-/*             break; */
-/*         } */
-/*         for (int i = 0; i < events; ++i) { */
-/*             event = ev_get_event_type(&ctx, i); */
-/*             if (event & EV_CLOSEFD) { */
-/*                 #<{(| And quit event after that |)}># */
-/*                 log_debug("Stopping IO epoll loop. Thread %p exiting.", */
-/*                           (void *) pthread_self()); */
-/*                 ev_read_event(&ctx, i, EV_CLOSEFD, NULL); */
-/*                 goto exit; */
-/*             } else if (event & EV_TIMERFD) { */
-/*                 ev_read_event(&ctx, i, EV_TIMERFD, NULL); */
-/*             } else if (event & EV_READ) { */
-/*  */
-/*                 #<{(| pthread_spin_lock(&io_spinlock); |)}># */
-/*                 struct io_event *io = xmalloc(sizeof(*io)); */
-/*                 io->ctx = &ctx; */
-/*                 io->rc = 0; */
-/*                 ev_read_event(&ctx, i, EV_NONE, (void **) &io->client); */
-/*                 #<{(| */
-/*                  * Received a bunch of data from a client, after the creation */
-/*                  * of an IO event we need to read the bytes and encoding the */
-/*                  * content according to the protocol */
-/*                  |)}># */
-/*                 struct connection *c = io->client->conn; */
-/*                 int rc = read_data(c, buffer, &io->data); */
-/*                 if (rc == 0) { */
-/*                     #<{(| */
-/*                      * All is ok, raise an event to the worker poll EPOLL and */
-/*                      * link it with the IO event containing the decode payload */
-/*                      * ready to be processed */
-/*                      |)}># */
-/*                     #<{(| Record last action as of now |)}># */
-/*                     io->client->last_action_time = time(NULL); */
-/*                     #<{(| Fire an event toward the worker thread pool |)}># */
-/*                     eventfd_t ev = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK); */
-/*                     ev_fire_event(loop->w_ctx, ev, EV_READ | EV_EVENTFD, io); */
-/*  */
-/*                 } else if (rc == -ERRCLIENTDC || rc == -ERRPACKETERR) { */
-/*  */
-/*                     #<{(| */
-/*                      * We got an unexpected error or a disconnection from the */
-/*                      * client side, remove client from the global map and */
-/*                      * free resources allocated such as io_event structure and */
-/*                      * paired payload */
-/*                      |)}># */
-/*                     log_error("Closing connection with %s: %s", */
-/*                               io->client->conn->ip, solerr(rc)); */
-/*                     // Publish, if present, LWT message */
-/*                     if (io->client->lwt_msg) { */
-/*                         char *tname = (char *) io->client->lwt_msg->topic; */
-/*                         struct topic *t = sol_topic_get(&sol, tname); */
-/*                         publish_message(io->client->lwt_msg, t, io->ctx); */
-/*                     } */
-/*                     io->client->online = false; */
-/*                     // Clean resources */
-/*                     ev_del_fd(&ctx, c->fd); */
-/*                     close_connection(io->client->conn); */
-/*                     // Remove from subscriptions for now */
-/*                     if (io->client->session) { */
-/*                         struct list *subs = io->client->session->subscriptions; */
-/*                         struct iterator *it = iter_new(subs, list_iter_next); */
-/*                         FOREACH (it) { */
-/*                             log_debug("Deleting %s from topic %s", */
-/*                                       io->client->client_id, */
-/*                                       ((struct topic *) it->ptr)->name); */
-/*                             topic_del_subscriber(it->ptr, io->client, false); */
-/*                         } */
-/*                         iter_destroy(it); */
-/*                     } */
-/*                     info.nclients--; */
-/*                     info.nconnections--; */
-/*                     xfree(io); */
-/*                 } */
-/*                 #<{(| pthread_spin_unlock(&io_spinlock); |)}># */
-/*             } else if (event & EV_WRITE) { */
-/*                 #<{(| pthread_spin_lock(&io_spinlock); |)}># */
-/*                 void *ptr = NULL; */
-/*                 ev_read_event(&ctx, i, EV_NONE, &ptr); */
-/*                 struct io_event *io = ptr; */
-/*  */
-/*                 #<{(| */
-/*                  * Write out to client, after a request has been processed in */
-/*                  * worker thread routine. Just send out all bytes stored in the */
-/*                  * reply buffer to the reply file descriptor. */
-/*                  |)}># */
-/*                 struct connection *c = io->client->conn; */
-/*                 sent = send_data(c, io->reply, bstring_len(io->reply)); */
-/*                 if (sent <= 0 || io->rc == RC_NOT_AUTHORIZED */
-/*                     || io->rc == RC_BAD_USERNAME_OR_PASSWORD) { */
-/*                     log_info("Closing connection with %s: %s %lu", */
-/*                              c->ip, solerr(io->rc), sent); */
-/*                     hashtable_del(sol.clients, io->client->client_id); */
-/*                     // Update stats */
-/*                     info.nclients--; */
-/*                     info.nconnections--; */
-/*                 } else { */
-/*                     #<{(| */
-/*                      * Rearm descriptor, we're using EPOLLONESHOT feature to */
-/*                      * avoid race condition and thundering herd issues on */
-/*                      * multithreaded EPOLL */
-/*                      |)}># */
-/*                     ev_fire_event(&ctx, c->fd, EV_READ, io->client); */
-/*                 } */
-/*  */
-/*                 // Update information stats */
-/*                 info.bytes_sent += sent < 0 ? 0 : sent; */
-/*  */
-/*                 #<{(| Free resource, ACKs will be free'd closing the server |)}># */
-/*                 bstring_destroy(io->reply); */
-/*                 mqtt_packet_release(&io->data, io->data.header.bits.type); */
-/*                 xfree(io); */
-/*                 #<{(| pthread_spin_unlock(&io_spinlock); |)}># */
-/*             } */
-/*         } */
-/*     } */
-/*  */
-/* exit: */
-/*  */
-/*     xfree(buffer); */
-/*     ev_destroy(&ctx); */
-/*  */
-/*     return NULL; */
-/* } */
-
-/*
- * Worker function, like io_worker, wait for events on a dedicated epoll
- * descriptor, shared among multiple threads, awaits for events incoming from
- * the IO workers to be processed and schedule them back to the IO side for
- * the answer.
- */
-/* static void *worker_thread(void *arg) { */
-/*  */
-/*     struct eventloop *loop = arg; */
-/*     int event = 0, events = 0; */
-/*     struct ev_ctx ctx; */
-/*     ev_clone_ctx(&ctx, loop->w_ctx); */
-/*     #<{(| */
-/*      * And also to the global event fd, this one is useful to gracefully */
-/*      * interrupt polling and thread execution */
-/*      |)}># */
-/*     ev_watch_fd(&ctx, conf->run, EV_READ | EV_CLOSEFD); */
-/*  */
-/*     ev_register_cron(&ctx, inflight_msg_check, 0, 2e8); */
-/*  */
-/*     while (1) { */
-/*         events = ev_poll(&ctx, -1); */
-/*         if (events < 0) { */
-/*             #<{(| Signals to all threads. Ignore it for now |)}># */
-/*             if (errno == EINTR) */
-/*                 continue; */
-/*             #<{(| Error occured, break the loop |)}># */
-/*             break; */
-/*         } */
-/*         for (int i = 0; i < events; ++i) { */
-/*             event = ev_get_event_type(&ctx, i); */
-/*             if (event & EV_CLOSEFD) { */
-/*                 #<{(| And quit event after that |)}># */
-/*                 log_debug("Stopping worker epoll loop. Thread %p exiting.", */
-/*                           (void *) pthread_self()); */
-/*                 ev_read_event(&ctx, i, EV_CLOSEFD, NULL); */
-/*                 goto exit; */
-/*             } else if (event & EV_TIMERFD) { */
-/*                 ev_read_event(&ctx, i, EV_TIMERFD, NULL); */
-/*             } else if (event & EV_READ) { */
-/*                 void *ptr = NULL; */
-/*                 ev_read_event(&ctx, i, EV_EVENTFD, &ptr); */
-/*                 struct io_event *io = ptr; */
-/*                 struct connection *c = io->client->conn; */
-/*                 io->rc = handle_command(io->data.header.bits.type, io); */
-/*                 #<{(| pthread_spin_lock(&io_spinlock); |)}># */
-/*                 switch (io->rc) { */
-/*                     case REPLY: */
-/*                     case RC_NOT_AUTHORIZED: */
-/*                     case RC_BAD_USERNAME_OR_PASSWORD: */
-/*                         ev_fire_event(io->ctx, c->fd, EV_WRITE, io); */
-/*                         break; */
-/*                     case CLIENTDC: */
-/*                         #<{(| pthread_spin_lock(&io_spinlock); |)}># */
-/*                         io->client->online = false; */
-/*                         ev_del_fd(loop->io_ctx, c->fd); */
-/*                         close_connection(io->client->conn); */
-/*                         hashtable_del(sol.clients, io->client->client_id); */
-/*                         xfree(io); */
-/*                         // Update stats */
-/*                         info.nclients--; */
-/*                         info.nconnections--; */
-/*                         #<{(| pthread_spin_unlock(&io_spinlock); |)}># */
-/*                         break; */
-/*                     default: */
-/*                         ev_fire_event(io->ctx, c->fd, EV_READ, io->client); */
-/*                         xfree(io); */
-/*                         break; */
-/*                 } */
-/*                 #<{(| pthread_spin_unlock(&io_spinlock); |)}># */
-/*             } */
-/*         } */
-/*     } */
-/*  */
-/* exit: */
-/*  */
-/*     ev_destroy(&ctx); */
-/*     return NULL; */
-/* } */
-
-/*
  * Publish statistics periodic task, it will be called once every N config
  * defined seconds, it publish some informations on predefined topics
  */
@@ -760,7 +421,6 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
     time_t now = time(NULL);
     unsigned char *pub = NULL;
     ssize_t sent;
-    /* pthread_spin_lock(&w_spinlock); */
     struct iterator *it = iter_new(sol.clients, hashtable_iter_next);
     FOREACH (it) {
         struct client *c = it->ptr;
@@ -799,7 +459,6 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
         }
     }
     iter_destroy(it);
-    /* pthread_spin_unlock(&w_spinlock); */
 }
 
 /*
@@ -877,6 +536,11 @@ static void on_accept(struct ev_ctx *, void *);
 static void on_message(struct ev_ctx *, void *);
 static void on_payload(struct ev_ctx *, void *);
 
+/*
+ * Handle incoming connections, create a a fresh new struct client structure
+ * and link it to the fd, ready to be set in EPOLLIN event, then pass the
+ * connection to the IO EPOLL loop, waited by the IO thread pool.
+ */
 static void on_accept(struct ev_ctx *ctx, void *data) {
     int serverfd = *((int *) data);
     while (1) {
@@ -921,17 +585,18 @@ static void on_accept(struct ev_ctx *ctx, void *data) {
 
 static void on_message(struct ev_ctx *ctx, void *data) {
     unsigned char buffer[conf->max_request_size];
-    struct io_event *io = xmalloc(sizeof(*io));
-    io->ctx = ctx;
-    io->rc = 0;
-    io->client = data;
+    /* struct io_event *io = xmalloc(sizeof(*io)); */
+    struct io_event io;
+    io.ctx = ctx;
+    io.rc = 0;
+    io.client = data;
     /*
      * Received a bunch of data from a client, after the creation
      * of an IO event we need to read the bytes and encoding the
      * content according to the protocol
      */
-    struct connection *c = io->client->conn;
-    int rc = read_data(c, buffer, &io->data);
+    struct connection *c = io.client->conn;
+    int rc = read_data(c, buffer, &io.data);
     if (rc == 0) {
         /*
          * All is ok, raise an event to the worker poll EPOLL and
@@ -939,8 +604,8 @@ static void on_message(struct ev_ctx *ctx, void *data) {
          * ready to be processed
          */
         /* Record last action as of now */
-        io->client->last_action_time = time(NULL);
-        on_payload(ctx, io);
+        io.client->last_action_time = time(NULL);
+        on_payload(ctx, &io);
 
     } else if (rc == -ERRCLIENTDC || rc == -ERRPACKETERR) {
 
@@ -951,32 +616,32 @@ static void on_message(struct ev_ctx *ctx, void *data) {
          * paired payload
          */
         log_error("Closing connection with %s: %s",
-                  io->client->conn->ip, solerr(rc));
+                  io.client->conn->ip, solerr(rc));
         // Publish, if present, LWT message
-        if (io->client->lwt_msg) {
-            char *tname = (char *) io->client->lwt_msg->topic;
+        if (io.client->lwt_msg) {
+            char *tname = (char *) io.client->lwt_msg->topic;
             struct topic *t = sol_topic_get(&sol, tname);
-            publish_message(io->client->lwt_msg, t, io->ctx);
+            publish_message(io.client->lwt_msg, t, io.ctx);
         }
-        io->client->online = false;
+        io.client->online = false;
         // Clean resources
         ev_del_fd(ctx, c->fd);
-        close_connection(io->client->conn);
+        close_connection(io.client->conn);
         // Remove from subscriptions for now
-        if (io->client->session) {
-            struct list *subs = io->client->session->subscriptions;
+        if (io.client->session) {
+            struct list *subs = io.client->session->subscriptions;
             struct iterator *it = iter_new(subs, list_iter_next);
             FOREACH (it) {
                 log_debug("Deleting %s from topic %s",
-                          io->client->client_id,
+                          io.client->client_id,
                           ((struct topic *) it->ptr)->name);
-                topic_del_subscriber(it->ptr, io->client, false);
+                topic_del_subscriber(it->ptr, io.client, false);
             }
             iter_destroy(it);
         }
         info.nclients--;
         info.nconnections--;
-        xfree(io);
+        /* xfree(io); */
     }
 }
 
@@ -996,14 +661,14 @@ static void on_payload(struct ev_ctx *ctx, void *data) {
             ev_del_fd(ctx, c->fd);
             close_connection(io->client->conn);
             hashtable_del(sol.clients, io->client->client_id);
-            xfree(io);
+            /* xfree(io); */
             // Update stats
             info.nclients--;
             info.nconnections--;
             break;
         default:
             ev_fire_event(ctx, c->fd, EV_READ, on_message, io->client);
-            xfree(io);
+            /* xfree(io); */
             break;
     }
 }
@@ -1042,9 +707,16 @@ void on_write(struct ev_ctx *ctx, void *data) {
     /* Free resource, ACKs will be free'd closing the server */
     bstring_destroy(io->reply);
     mqtt_packet_release(&io->data, io->data.header.bits.type);
-    xfree(io);
+    /* xfree(io); */
 }
 
+/*
+ * IO worker function, wait for events on a dedicated epoll descriptor which
+ * is shared among multiple threads for input and output only, following the
+ * normal EPOLL semantic, EPOLLIN for incoming bytes to be unpacked and
+ * processed by a worker thread, EPOLLOUT for bytes incoming from a worker
+ * thread, ready to be delivered out.
+ */
 void *IO_thread(void *args) {
     int sfd = *((int *) args);
     struct ev_ctx ctx;
@@ -1067,9 +739,6 @@ int start_server(const char *addr, const char *port) {
     if (conf->allow_anonymous == false)
         config_read_passwd_file(conf->password_file, sol.authentications);
 
-    /* pthread_spin_init(&w_spinlock, PTHREAD_PROCESS_SHARED); */
-    /* pthread_spin_init(&io_spinlock, PTHREAD_PROCESS_SHARED); */
-
     /* Generate stats topics */
     for (int i = 0; i < SYS_TOPICS; i++)
         sol_topic_put(&sol, topic_new(xstrdup(sys_topics[i])));
@@ -1085,38 +754,8 @@ int start_server(const char *addr, const char *port) {
                           conf->certfile, conf->keyfile);
     }
 
-    /* struct ev_ctx io_ctx; */
-    /* struct ev_ctx w_ctx; */
-    /*  */
-    /* ev_init(&io_ctx, EPOLL_MAX_EVENTS); */
-    /* ev_init(&w_ctx, EPOLL_MAX_EVENTS); */
-    /*  */
-    /* struct eventloop loop = { */
-    /*     .io_ctx = &io_ctx, */
-    /*     .w_ctx = &w_ctx, */
-    /*     .serverfd = sfd */
-    /* }; */
-
-    /* pthread_t iothreads[IOPOOLSIZE]; */
-    /* pthread_t workers[WORKERPOOLSIZE]; */
-    /*  */
-    /* #<{(| Start I/O thread pool |)}># */
-    /*  */
-    /* for (int i = 0; i < IOPOOLSIZE; ++i) */
-    /*     pthread_create(&iothreads[i], NULL, &io_thread, &loop); */
-    /*  */
-    /* #<{(| Start Worker thread pool |)}># */
-    /*  */
-    /* for (int i = 0; i < WORKERPOOLSIZE; ++i) */
-    /*     pthread_create(&workers[i], NULL, &worker_thread, &loop); */
-
     log_info("Server start");
     info.start_time = time(NULL);
-
-    // Main thread for accept new connections
-    /* accept_loop(&loop); */
-    /* for (int i = 0; i < IOPOOLSIZE; ++i) */
-    /*     pthread_create(&iothreads[i], NULL, &IO_thread, &sfd); */
 
     struct ev_ctx ctx;
     ev_init(&ctx, EPOLL_MAX_EVENTS);
@@ -1128,16 +767,7 @@ int start_server(const char *addr, const char *port) {
 
     ev_run(&ctx);
 
-    /* Join started thread pools */
-    /* for (int i = 0; i < IOPOOLSIZE; ++i) */
-    /*     pthread_join(iothreads[i], NULL); */
-    /*  */
-    /* for (int i = 0; i < WORKERPOOLSIZE; ++i) */
-    /*     pthread_join(workers[i], NULL); */
-    /*  */
     ev_destroy(&ctx);
-    /* ev_destroy(&w_ctx); */
-    /* ev_destroy(&io_ctx); */
     hashtable_destroy(sol.clients);
     hashtable_destroy(sol.sessions);
     hashtable_destroy(sol.authentications);
@@ -1147,9 +777,6 @@ int start_server(const char *addr, const char *port) {
         SSL_CTX_free(sol.ssl_ctx);
         openssl_cleanup();
     }
-
-    /* pthread_spin_destroy(&w_spinlock); */
-    /* pthread_spin_destroy(&io_spinlock); */
 
     log_info("Sol v%s exiting", VERSION);
 
