@@ -119,20 +119,21 @@ static mqtt_pack_handler *pack_handlers[13] = {
 int mqtt_encode_length(unsigned char *buf, size_t len) {
 
     int bytes = 0;
+    short encoded = 0;
 
 	do {
 
         if (bytes + 1 > MAX_LEN_BYTES)
             return bytes;
 
-		char d = len % 128;
+		encoded = len % 128;
 		len /= 128;
 
 		/* if there are more digits to encode, set the top bit of this digit */
 		if (len > 0)
-			d |= 0x80;
+			encoded |= 128;
 
-		buf[bytes++] = d;
+		buf[bytes++] = encoded;
 
     } while (len > 0);
 
@@ -456,13 +457,23 @@ static unsigned char *pack_mqtt_publish(const union mqtt_packet *pkt) {
     if (pkt->publish.header.bits.qos > AT_MOST_ONCE)
         pktlen += sizeof(uint16_t);
 
+    int remaninglen_offset = 0;
+    if ((pktlen - 1) > 0x200000)
+        remaninglen_offset = 3;
+    else if ((pktlen - 1) > 0x4000)
+        remaninglen_offset = 2;
+    else if ((pktlen - 1) > 0x80)
+        remaninglen_offset = 1;
+
+    pktlen += remaninglen_offset;
+
     unsigned char *packed = xmalloc(pktlen);
     unsigned char *ptr = packed;
 
     pack(ptr++, "B", pkt->publish.header.byte);
 
     // Total len of the packet excluding fixed header len
-    len += (pktlen - MQTT_HEADER_LEN);
+    len += (pktlen - MQTT_HEADER_LEN - remaninglen_offset);
 
     /*
      * TODO handle case where step is > 1, e.g. when a message longer than 128
