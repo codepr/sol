@@ -489,6 +489,24 @@ static void conn_tls_close(struct connection *c) {
         perror("close");
 }
 
+void connection_init(struct connection *conn, const SSL_CTX *ssl_ctx) {
+    conn->fd = -1;
+    conn->ssl = NULL; // Will be filled in case of TLS connection on accept
+    conn->ctx = (SSL_CTX *) ssl_ctx;
+    if (ssl_ctx) {
+        // We need a TLS connection
+        conn->accept = conn_tls_accept;
+        conn->send = conn_tls_send;
+        conn->recv = conn_tls_recv;
+        conn->close = conn_tls_close;
+    } else {
+        conn->accept = conn_accept;
+        conn->send = conn_send;
+        conn->recv = conn_recv;
+        conn->close = conn_close;
+    }
+}
+
 /*
  * Simple abstraction over a socket connection, based on the connection type,
  * sets plain accept, read, write and close functions or the TLS version once.

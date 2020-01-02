@@ -140,7 +140,7 @@ void publish_message(struct mqtt_publish *p,
         /* event->client = sc; */
         /* event->reply = payload; */
 
-        (void) send_data(sc->conn, pub, publen);
+        (void) send_data(&sc->conn, pub, publen);
         /* ev_fire_event(ctx, sc->conn->fd, EV_WRITE, on_write, event); */
         xfree(pub);
 
@@ -252,15 +252,15 @@ static int connect_handler(struct io_event *e) {
     }
 
     // TODO just return error_code and handle it on `on_read`
-    if (hashtable_exists(sol.clients, c->payload.client_id)) {
+    /* if (hashtable_exists(sol.clients, c->payload.client_id)) { */
 
         // Already connected client, 2 CONNECT packet should be interpreted as
         // a violation of the protocol, causing disconnection of the client
 
-        log_info("Received double CONNECT from %s, disconnecting client",
-                 c->payload.client_id);
-        goto clientdc;
-    }
+        /* log_info("Received double CONNECT from %s, disconnecting client", */
+                 /* c->payload.client_id); */
+        /* goto clientdc; */
+    /* } */
 
     log_info("New client connected as %s (c%i, k%u)",
              c->payload.client_id,
@@ -273,7 +273,8 @@ static int connect_handler(struct io_event *e) {
      */
     size_t cid_len = strlen((const char *) c->payload.client_id);
     memcpy(e->client->client_id, c->payload.client_id, cid_len + 1);
-    hashtable_put(sol.clients, e->client->client_id, e->client);
+
+    /* hashtable_put(sol.clients, e->client->client_id, e->client); */
 
     // Add LWT topic and message if present
     if (c->bits.will) {
@@ -331,11 +332,11 @@ static int connect_handler(struct io_event *e) {
 
     return REPLY;
 
-clientdc:
+/* clientdc: */
 
     /* pthread_spin_unlock(&w_spinlock); */
 
-    return CLIENTDC;
+    /* return CLIENTDC; */
 
 bad_auth:
     log_debug("Sending CONNACK to %s rc=%u",
@@ -447,7 +448,7 @@ static int subscribe_handler(struct io_event *e) {
         // Retained message? Publish it
         // TODO move to IO threadpool
         if (t->retained_msg) {
-            ssize_t sent = send_data(e->client->conn, t->retained_msg,
+            ssize_t sent = send_data(&e->client->conn, t->retained_msg,
                                      bstring_len(t->retained_msg));
             if (sent < 0)
                 log_error("Error publishing to %s: %s",

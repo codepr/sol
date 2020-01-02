@@ -421,9 +421,13 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
     time_t now = time(NULL);
     unsigned char *pub = NULL;
     ssize_t sent;
-    struct iterator *it = iter_new(sol.clients, hashtable_iter_next);
-    FOREACH (it) {
-        struct client *c = it->ptr;
+    /* struct iterator *it = iter_new(sol.clients, hashtable_iter_next); */
+    /* FOREACH (it) { */
+    for (int i = 0; i < 1024; ++i) {
+        /* struct client *c = it->ptr; */
+        struct client *c = &sol.clients[i];
+        if (c->online == false)
+            continue;
         for (int i = 1; i < MAX_INFLIGHT_MSGS; ++i) {
             // TODO remove 20 hardcoded value
             // Messages
@@ -433,7 +437,7 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
                 // Serialize the packet and send it out again
                 pub = pack_mqtt_packet(c->i_msgs[i]->packet, c->i_msgs[i]->type);
                 bstring payload = bstring_copy(pub, c->i_msgs[i]->size);
-                if ((sent = send_data(c->i_msgs[i]->client->conn,
+                if ((sent = send_data(&c->i_msgs[i]->client->conn,
                                       payload, bstring_len(payload))) < 0)
                     log_error("Error re-sending %s", strerror(errno));
 
@@ -448,7 +452,7 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
                 // Serialize the packet and send it out again
                 pub = pack_mqtt_packet(c->i_acks[i]->packet, c->i_acks[i]->type);
                 bstring payload = bstring_copy(pub, c->i_acks[i]->size);
-                if ((sent = send_data(c->i_acks[i]->client->conn,
+                if ((sent = send_data(&c->i_acks[i]->client->conn,
                                       payload, bstring_len(payload))) < 0)
                     log_error("Error re-sending %s", strerror(errno));
 
@@ -458,25 +462,26 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
             }
         }
     }
-    iter_destroy(it);
+    /* iter_destroy(it); */
 }
 
 /*
  * Cleanup function to be passed in as destructor to the Hashtable for
  * connecting clients
  */
-static int client_destructor(struct hashtable_entry *entry) {
+/* static int client_destructor(struct hashtable_entry *entry) { */
+static int client_destructor(struct client *client) {
 
-    if (!entry)
+    if (!client)
         return -1;
 
-    struct client *client = entry->val;
+    /* struct client *client = entry->val; */
 
-    if (client->conn) {
-        if (client->online == true)
-            close_connection(client->conn);
-        xfree(client->conn);
-    }
+    /* if (client->conn) { */
+        /* if (client->online == true) */
+    close_connection(&client->conn);
+        /* xfree(client->conn); */
+    /* } */
 
     if (client->session) {
         list_destroy(client->session->subscriptions, 0);
@@ -496,7 +501,7 @@ static int client_destructor(struct hashtable_entry *entry) {
     if (client->lwt_msg)
         xfree(client->lwt_msg);
 
-    xfree(client);
+    /* xfree(client); */
 
     return 0;
 }
@@ -550,27 +555,31 @@ static void on_accept(struct ev_ctx *ctx, void *data) {
          * and socket descriptor to the connection structure
          * pointer passed as argument
          */
-        struct connection *conn = conf->use_ssl ? \
-                                  connection_new(sol.ssl_ctx) : \
-                                  connection_new(NULL);
-        int fd = accept_connection(conn, serverfd);
+        /* struct connection *conn = conf->use_ssl ? \ */
+        /*                           connection_new(sol.ssl_ctx) : \ */
+        /*                           connection_new(NULL); */
+        struct connection conn;
+        connection_init(&conn, conf->use_ssl ? sol.ssl_ctx : NULL);
+        int fd = accept_connection(&conn, serverfd);
         if (fd == 0)
             continue;
         if (fd < 0) {
-            close_connection(conn);
-            xfree(conn);
+            close_connection(&conn);
+            /* xfree(conn); */
             break;
         }
         /*
          * Create a client structure to handle his context
          * connection
          */
-        struct client *client = sol_client_new(conn);
-        if (!conn || !client)
-            return;
+        /* struct client *client = sol_client_new(conn); */
+        client_init(&sol.clients[fd]);
+        sol.clients[fd].conn = conn;
+        /* if (!conn || !client) */
+        /*     return; */
 
         /* Add it to the epoll loop */
-        ev_register_event(ctx, fd, EV_READ, on_message, client);
+        ev_register_event(ctx, fd, EV_READ, on_message, &sol.clients[fd]);
 
         /* Rearm server fd to accept new connections */
         ev_fire_event(ctx, serverfd, EV_READ, on_accept, data);
@@ -579,7 +588,7 @@ static void on_accept(struct ev_ctx *ctx, void *data) {
         info.nclients++;
         info.nconnections++;
 
-        log_info("[%p] Connection from %s", (void *) pthread_self(), conn->ip);
+        log_info("[%p] Connection from %s", (void *) pthread_self(), conn.ip);
     }
 }
 
@@ -595,7 +604,7 @@ static void on_message(struct ev_ctx *ctx, void *data) {
      * of an IO event we need to read the bytes and encoding the
      * content according to the protocol
      */
-    struct connection *c = io.client->conn;
+    struct connection *c = &io.client->conn;
     int rc = read_data(c, buffer, &io.data);
     if (rc == 0) {
         /*
@@ -616,7 +625,7 @@ static void on_message(struct ev_ctx *ctx, void *data) {
          * paired payload
          */
         log_error("Closing connection with %s: %s",
-                  io.client->conn->ip, solerr(rc));
+                  io.client->conn.ip, solerr(rc));
         // Publish, if present, LWT message
         if (io.client->lwt_msg) {
             char *tname = (char *) io.client->lwt_msg->topic;
@@ -626,7 +635,7 @@ static void on_message(struct ev_ctx *ctx, void *data) {
         io.client->online = false;
         // Clean resources
         ev_del_fd(ctx, c->fd);
-        close_connection(io.client->conn);
+        close_connection(&io.client->conn);
         // Remove from subscriptions for now
         if (io.client->session) {
             struct list *subs = io.client->session->subscriptions;
@@ -647,7 +656,7 @@ static void on_message(struct ev_ctx *ctx, void *data) {
 
 static void on_payload(struct ev_ctx *ctx, void *data) {
     struct io_event *io = data;
-    struct connection *c = io->client->conn;
+    struct connection *c = &io->client->conn;
     io->rc = handle_command(io->data.header.bits.type, io);
     switch (io->rc) {
         case REPLY:
@@ -659,8 +668,9 @@ static void on_payload(struct ev_ctx *ctx, void *data) {
         case CLIENTDC:
             io->client->online = false;
             ev_del_fd(ctx, c->fd);
-            close_connection(io->client->conn);
-            hashtable_del(sol.clients, io->client->client_id);
+            close_connection(&io->client->conn);
+            client_destructor(io->client);
+            /* hashtable_del(sol.clients, io->client->client_id); */
             /* xfree(io); */
             // Update stats
             info.nclients--;
@@ -681,14 +691,15 @@ void on_write(struct ev_ctx *ctx, void *data) {
      * worker thread routine. Just send out all bytes stored in the
      * reply buffer to the reply file descriptor.
      */
-    struct connection *c = io->client->conn;
+    struct connection *c = &io->client->conn;
     ssize_t sent = send_data(c, io->reply, bstring_len(io->reply));
     if (sent <= 0 || io->rc == RC_NOT_AUTHORIZED
         || io->rc == RC_BAD_USERNAME_OR_PASSWORD) {
         log_info("Closing connection with %s: %s %lu",
                  c->ip, solerr(io->rc), sent);
         ev_del_fd(ctx, c->fd);
-        hashtable_del(sol.clients, io->client->client_id);
+        client_destructor(io->client);
+        /* hashtable_del(sol.clients, io->client->client_id); */
         // Update stats
         info.nclients--;
         info.nconnections--;
@@ -728,11 +739,21 @@ void *IO_thread(void *args) {
     return NULL;
 }
 
+void *thread(void *arg) {
+    int sfd = *((int *) arg);
+    struct ev_ctx ctx;
+    ev_init(&ctx, EPOLL_MAX_EVENTS);
+    ev_register_event(&ctx, sfd, EV_READ, on_accept, &sfd);
+    ev_run(&ctx);
+    ev_destroy(&ctx);
+    return NULL;
+}
+
 int start_server(const char *addr, const char *port) {
 
     /* Initialize global Sol instance */
     trie_init(&sol.topics, NULL);
-    sol.clients = hashtable_new(client_destructor);
+    /* sol.clients = hashtable_new(client_destructor); */
     sol.sessions = hashtable_new(session_destructor);
     sol.authentications = hashtable_new(auth_destructor);
 
@@ -765,10 +786,20 @@ int start_server(const char *addr, const char *port) {
 
     ev_register_event(&ctx, sfd, EV_READ, on_accept, &sfd);
 
+    /* pthread_t io, ioo, iooo, ioooo, iooooo, ioooooo, iooooooo; */
+    /* pthread_create(&io, NULL, &thread, &sfd); */
+    /* pthread_create(&ioo, NULL, &thread, &sfd); */
+    /* pthread_create(&iooo, NULL, &thread, &sfd); */
+    /* pthread_create(&ioooo, NULL, &thread, &sfd); */
+    /* pthread_create(&iooooo, NULL, &thread, &sfd); */
+    /* pthread_create(&ioooooo, NULL, &thread, &sfd); */
+    /* pthread_create(&iooooooo, NULL, &thread, &sfd); */
     ev_run(&ctx);
 
+    /* pthread_join(io, NULL); */
+
     ev_destroy(&ctx);
-    hashtable_destroy(sol.clients);
+    /* hashtable_destroy(sol.clients); */
     hashtable_destroy(sol.sessions);
     hashtable_destroy(sol.authentications);
 

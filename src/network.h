@@ -54,6 +54,8 @@ struct connection {
     void (*close) (struct connection *);
 };
 
+void connection_init(struct connection *, const SSL_CTX *);
+
 struct connection *connection_new(const SSL_CTX *);
 
 int accept_connection(struct connection *, int);

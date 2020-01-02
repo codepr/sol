@@ -60,6 +60,23 @@ struct topic {
 };
 
 /*
+ * Wrapper structure around a connected client, each client can be a publisher
+ * or a subscriber, it can be used to track sessions too.
+ */
+struct client {
+    bool online;  // just a boolean will be fine for now
+    bool clean_session;
+    char client_id[MQTT_CLIENT_ID_LEN];
+    struct connection conn;
+    struct session *session;
+    unsigned long last_action_time;
+    struct mqtt_publish *lwt_msg;
+    struct inflight_msg *i_acks[MAX_INFLIGHT_MSGS];
+    struct inflight_msg *i_msgs[MAX_INFLIGHT_MSGS];
+    struct inflight_msg *in_i_acks[MAX_INFLIGHT_MSGS];
+};
+
+/*
  * Main structure, a global instance will be instantiated at start, tracking
  * topics, connected clients and registered closures.
  *
@@ -67,7 +84,8 @@ struct topic {
  * messages to push out and acks respectively.
  */
 struct sol {
-    HashTable *clients;
+    // HashTable *clients;
+    struct client clients[1024];
     Trie topics;
     HashTable *sessions;
     HashTable *authentications;
@@ -83,28 +101,13 @@ struct session {
     struct inflight_msg **msg_queue;
 };
 
-/*
- * Wrapper structure around a connected client, each client can be a publisher
- * or a subscriber, it can be used to track sessions too.
- */
-struct client {
-    bool online;  // just a boolean will be fine for now
-    bool clean_session;
-    char client_id[MQTT_CLIENT_ID_LEN];
-    struct connection *conn;
-    struct session *session;
-    unsigned long last_action_time;
-    struct mqtt_publish *lwt_msg;
-    struct inflight_msg *i_acks[MAX_INFLIGHT_MSGS];
-    struct inflight_msg *i_msgs[MAX_INFLIGHT_MSGS];
-    struct inflight_msg *in_i_acks[MAX_INFLIGHT_MSGS];
-};
-
 struct subscriber {
     unsigned qos;
     struct client *client;
     unsigned refs;
 };
+
+void client_init(struct client *);
 
 struct client *sol_client_new(struct connection *);
 
