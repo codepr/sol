@@ -28,6 +28,7 @@
 #ifndef EV_H
 #define EV_H
 
+#include <pthread.h>
 #include <sys/time.h>
 
 enum ev_type {
@@ -37,7 +38,8 @@ enum ev_type {
     EV_DISCONNECT = 0x04,
     EV_EVENTFD    = 0x08,
     EV_TIMERFD    = 0x10,
-    EV_CLOSEFD    = 0x20
+    EV_QUEUEFD    = 0x20,
+    EV_CLOSEFD    = 0x30
 };
 
 struct ev_ctx;
@@ -68,6 +70,8 @@ struct ev {
 struct ev_ctx {
     int events_nr;
     int maxfd;
+    int qfd;
+    pthread_t ev_id;
     struct ev *events_monitored;
     void *api;
 };

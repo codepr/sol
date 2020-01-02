@@ -28,6 +28,7 @@
 #include <time.h>
 #include <string.h>
 #include <unistd.h>
+#include <mqueue.h>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
@@ -107,11 +108,14 @@ void ev_init(struct ev_ctx *ctx, int events_nr) {
     e_api->fd = epoll_create1(0);
     e_api->events = xcalloc(events_nr, sizeof(struct epoll_event));
     ctx->api = e_api;
+    ctx->ev_id = pthread_self();
     ctx->maxfd = events_nr;
     ctx->events_nr = events_nr;
     ctx->events_monitored = xcalloc(events_nr, sizeof(struct ev));
     for (int i = 0; i < events_nr; ++i)
         ctx->events_monitored[i].mask = EV_NONE;
+    ctx->qfd = mq_open((void *) ctx->ev_id, O_RDWR | O_NONBLOCK);
+    ev_watch_fd(ctx, ctx->qfd, EV_READ|EV_QUEUEFD);
 }
 
 /*
@@ -137,6 +141,8 @@ void ev_destroy(struct ev_ctx *ctx) {
             ctx->events_monitored[i].mask != EV_NONE)
             ev_del_fd(ctx, ctx->events_monitored[i].fd);
     }
+    ev_del_fd(ctx, ctx->qfd);
+    mq_close(ctx->qfd);
     xfree(((struct epoll_api *) ctx->api)->events);
     xfree(ctx->events_monitored);
     xfree(ctx->api);
@@ -146,9 +152,9 @@ int ev_get_event_type(struct ev_ctx *ctx, int idx) {
     struct epoll_api *e_api = ctx->api;
     int events = e_api->events[idx].events;
     int ev_mask = ((struct ev *) e_api->events[idx].data.ptr)->mask;
-    // We want to remember the previous events only if they're not of type
-    // CLOSE or TIMER
-    int mask = ev_mask & (EV_CLOSEFD|EV_TIMERFD) ? ev_mask : 0;
+    // We want to remember the previous events only if they're of type
+    // CLOSE, TIMER or QUEUE
+    int mask = ev_mask & (EV_CLOSEFD|EV_TIMERFD|EV_QUEUEFD) ? ev_mask : 0;
     if (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
         mask |= EV_DISCONNECT;
     else
@@ -242,6 +248,9 @@ int ev_fire_event(struct ev_ctx *ctx, int fd, int mask,
     if (mask & EV_EVENTFD) {
         (void) epoll_add(e_api->fd, fd, op, &ctx->events_monitored[fd]);
         ret = eventfd_write(fd, 1);
+    } else if (mask & EV_QUEUEFD) {
+        struct ev *e = &ctx->events_monitored[fd];
+        ret = mq_send(ctx->qfd, (const char *) e, sizeof(*e), 0);
     } else {
         ret = epoll_mod(e_api->fd, fd, op, &ctx->events_monitored[fd]);
     }
@@ -263,6 +272,10 @@ int ev_read_event(struct ev_ctx *ctx, int idx, int mask, void **ptr) {
         (void) read(fd, &(long int){0L}, sizeof(long int));
         /* err = epoll_mod(e_api->fd, fd, EPOLLIN, e); */
         e->callback(ctx, e->data);
+    } else if (mask & EV_QUEUEFD) {
+        struct ev e;
+        err = mq_receive(ctx->qfd, (char *) &e, sizeof(e), NULL);
+        e.callback(ctx, e.data);
     } else if (mask & EV_CLOSEFD) {
         eventfd_read(fd, &(eventfd_t){0L});
         /* err = epoll_mod(e_api->fd, fd, EPOLLIN, e); */
