@@ -48,7 +48,7 @@ void publish_message(struct mqtt_publish *p,
 
     unsigned char qos = p->header.bits.qos;
     size_t publen = 0;
-    bstring payload = NULL;
+    /* bstring payload = NULL; */
     unsigned char *pub = NULL;
     union mqtt_packet pkt = { .publish = *p };
 
@@ -130,18 +130,19 @@ void publish_message(struct mqtt_publish *p,
         /* pthread_spin_unlock(&w_spinlock); */
 
         /* pthread_spin_lock(&io_spinlock); */
-        payload = bstring_copy(pub, publen);
-        xfree(pub);
+        /* payload = bstring_copy(pub, publen); */
+        /* xfree(pub); */
 
         // Trigger write on IO threadpool
-        struct io_event *event = xmalloc(sizeof(*event));
-        event->ctx = ctx;
-        event->rc = REPLY;
-        event->client = sc;
-        event->reply = payload;
+        /* struct io_event *event = xmalloc(sizeof(*event)); */
+        /* event->ctx = ctx; */
+        /* event->rc = REPLY; */
+        /* event->client = sc; */
+        /* event->reply = payload; */
 
-        (void) send_data(sc->conn, payload, bstring_len(payload));
+        (void) send_data(sc->conn, pub, publen);
         /* ev_fire_event(ctx, sc->conn->fd, EV_WRITE, on_write, event); */
+        xfree(pub);
 
         info.messages_sent++;
 

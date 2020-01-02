@@ -1135,6 +1135,7 @@ int start_server(const char *addr, const char *port) {
     /* for (int i = 0; i < WORKERPOOLSIZE; ++i) */
     /*     pthread_join(workers[i], NULL); */
     /*  */
+    ev_destroy(&ctx);
     /* ev_destroy(&w_ctx); */
     /* ev_destroy(&io_ctx); */
     hashtable_destroy(sol.clients);
