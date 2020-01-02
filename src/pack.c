@@ -463,7 +463,7 @@ long long unpack_integer(unsigned char **buf, char size) {
             *buf += 8;
             break;
         case 'Q':
-            val = unpacku16(*buf);
+            val = unpacku64(*buf);
             *buf += 8;
             break;
     }
