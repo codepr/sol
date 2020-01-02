@@ -94,6 +94,17 @@ void publish_message(struct mqtt_publish *p,
                 p->topiclen + p->payloadlen;
             // Add 2 bytes to make space for packet identifier
             publen += sizeof(uint16_t);
+
+            int remaninglen_offset = 0;
+            if ((publen - 1) > 0x200000)
+                remaninglen_offset = 3;
+            else if ((publen - 1) > 0x4000)
+                remaninglen_offset = 2;
+            else if ((publen - 1) > 0x80)
+                remaninglen_offset = 1;
+
+            publen += remaninglen_offset;
+
             pkt.publish.pkt_id = next_free_mid(sc->i_msgs);
             pkt.publish.header.bits.qos = p->header.bits.qos;
             pub = pack_mqtt_packet(&pkt, PUBLISH);
@@ -122,6 +133,16 @@ void publish_message(struct mqtt_publish *p,
              */
             publen = MQTT_HEADER_LEN + sizeof(uint16_t) +
                 p->topiclen + p->payloadlen;
+
+            int remaninglen_offset = 0;
+            if ((publen - 1) > 0x200000)
+                remaninglen_offset = 3;
+            else if ((publen - 1) > 0x4000)
+                remaninglen_offset = 2;
+            else if ((publen - 1) > 0x80)
+                remaninglen_offset = 1;
+
+            publen += remaninglen_offset;
             pkt.publish.header.bits.qos = 0;
             pkt.publish.pkt_id = 0;
             pub = pack_mqtt_packet(&pkt, PUBLISH);
