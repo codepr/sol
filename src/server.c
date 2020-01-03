@@ -162,6 +162,8 @@ static const char *solerr(int rc) {
             return "Error reading packet";
         case -ERRMAXREQSIZE:
             return "Packet sent exceeds max size accepted";
+        case -ERREAGAIN:
+            return "Socket FD EAGAIN";
         case RC_UNACCEPTABLE_PROTOCOL_VERSION:
             return "[MQTT] Unknown protocol version";
         case RC_IDENTIFIER_REJECTED:
