@@ -531,7 +531,7 @@ static int auth_destructor(struct hashtable_entry *entry) {
 
 static void on_accept(struct ev_ctx *, void *);
 static void on_message(struct ev_ctx *, void *);
-static void on_payload(struct ev_ctx *, void *);
+static void process_message(struct ev_ctx *, void *);
 
 /*
  * Handle incoming connections, create a a fresh new struct client structure
@@ -604,7 +604,7 @@ static void on_message(struct ev_ctx *ctx, void *data) {
          */
         /* Record last action as of now */
         io.client->last_action_time = time(NULL);
-        on_payload(ctx, &io);
+        process_message(ctx, &io);
 
     } else if (rc == -ERRCLIENTDC || rc == -ERRPACKETERR) {
 
@@ -646,7 +646,8 @@ static void on_message(struct ev_ctx *ctx, void *data) {
     }
 }
 
-static void on_payload(struct ev_ctx *ctx, void *data) {
+static void process_message(struct ev_ctx *ctx, void *data) {
+    ssize_t sent = 0LL;
     struct io_event *io = data;
     struct connection *c = &io->client->conn;
     io->rc = handle_command(io->data.header.bits.type, io);
@@ -654,7 +655,35 @@ static void on_payload(struct ev_ctx *ctx, void *data) {
         case REPLY:
         case RC_NOT_AUTHORIZED:
         case RC_BAD_USERNAME_OR_PASSWORD:
-            on_write(ctx, io);
+            /*
+             * Write out to client, after a request has been processed in
+             * worker thread routine. Just send out all bytes stored in the
+             * reply buffer to the reply file descriptor.
+             */
+            sent = send_data(c, io->reply, bstring_len(io->reply));
+            if (sent <= 0 || io->rc == RC_NOT_AUTHORIZED
+                || io->rc == RC_BAD_USERNAME_OR_PASSWORD) {
+                log_info("Closing connection with %s: %s %lu",
+                         c->ip, solerr(io->rc), sent);
+                ev_del_fd(ctx, c->fd);
+                client_destructor(io->client);
+                // Update stats
+                info.nclients--;
+                info.nconnections--;
+            } else {
+                /*
+                 * Rearm descriptor making it ready to receive input,
+                 * on_message will be the callback to be used.
+                 */
+                ev_fire_event(ctx, c->fd, EV_READ, on_message, io->client);
+            }
+
+            // Update information stats
+            info.bytes_sent += sent < 0 ? 0 : sent;
+
+            /* Free resource, ACKs will be free'd closing the server */
+            bstring_destroy(io->reply);
+            mqtt_packet_release(&io->data, io->data.header.bits.type);
             break;
         case CLIENTDC:
             ev_del_fd(ctx, c->fd);
@@ -667,42 +696,6 @@ static void on_payload(struct ev_ctx *ctx, void *data) {
             ev_fire_event(ctx, c->fd, EV_READ, on_message, io->client);
             break;
     }
-}
-
-void on_write(struct ev_ctx *ctx, void *data) {
-    struct io_event *io = data;
-
-    /*
-     * Write out to client, after a request has been processed in
-     * worker thread routine. Just send out all bytes stored in the
-     * reply buffer to the reply file descriptor.
-     */
-    struct connection *c = &io->client->conn;
-    ssize_t sent = send_data(c, io->reply, bstring_len(io->reply));
-    if (sent <= 0 || io->rc == RC_NOT_AUTHORIZED
-        || io->rc == RC_BAD_USERNAME_OR_PASSWORD) {
-        log_info("Closing connection with %s: %s %lu",
-                 c->ip, solerr(io->rc), sent);
-        ev_del_fd(ctx, c->fd);
-        client_destructor(io->client);
-        // Update stats
-        info.nclients--;
-        info.nconnections--;
-    } else {
-        /*
-         * Rearm descriptor, we're using EPOLLONESHOT feature to
-         * avoid race condition and thundering herd issues on
-         * multithreaded EPOLL
-         */
-        ev_fire_event(ctx, c->fd, EV_READ, on_message, io->client);
-    }
-
-    // Update information stats
-    info.bytes_sent += sent < 0 ? 0 : sent;
-
-    /* Free resource, ACKs will be free'd closing the server */
-    bstring_destroy(io->reply);
-    mqtt_packet_release(&io->data, io->data.header.bits.type);
 }
 
 /*
