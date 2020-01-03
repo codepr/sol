@@ -205,6 +205,9 @@ static ssize_t recv_packet(struct connection *c, unsigned char **buf,
      */
     ret = recv_data(c, *buf, 2);
 
+    if (ret == -ERREAGAIN)
+        return -ERREAGAIN;
+
     if (ret <= 0)
         return -ERRCLIENTDC;
 
@@ -608,53 +611,58 @@ static void on_message(struct ev_ctx *ctx, void *data) {
      */
     struct connection *c = &io.client->conn;
     int rc = read_data(c, buffer, &io.data);
-    if (rc == 0) {
-        /*
-         * All is ok, raise an event to the worker poll EPOLL and
-         * link it with the IO event containing the decode payload
-         * ready to be processed
-         */
-        /* Record last action as of now */
-        io.client->last_action_time = time(NULL);
-        process_message(ctx, &io);
-
-    } else if (rc == -ERRCLIENTDC || rc == -ERRPACKETERR) {
-
-        /*
-         * We got an unexpected error or a disconnection from the
-         * client side, remove client from the global map and
-         * free resources allocated such as io_event structure and
-         * paired payload
-         */
-        log_error("Closing connection with %s: %s",
-                  io.client->conn.ip, solerr(rc));
-        // Publish, if present, LWT message
-        if (io.client->lwt_msg) {
-            char *tname = (char *) io.client->lwt_msg->topic;
-            struct topic *t = sol_topic_get(&sol, tname);
-            struct mqtt_packet lwt = {
-                .header = (union mqtt_header) { .byte = PUBLISH_B },
-                .publish = *io.client->lwt_msg
-            };
-            publish_message(&lwt, t, io.ctx);
-        }
-        // Clean resources
-        ev_del_fd(ctx, c->fd);
-        // Remove from subscriptions for now
-        if (io.client->session) {
-            struct list *subs = io.client->session->subscriptions;
-            struct iterator *it = iter_new(subs, list_iter_next);
-            FOREACH (it) {
-                log_debug("Deleting %s from topic %s",
-                          io.client->client_id,
-                          ((struct topic *) it->ptr)->name);
-                topic_del_subscriber(it->ptr, io.client, false);
+    switch (rc) {
+        case 0:
+            /*
+             * All is ok, raise an event to the worker poll EPOLL and
+             * link it with the IO event containing the decode payload
+             * ready to be processed
+             */
+            /* Record last action as of now */
+            io.client->last_action_time = time(NULL);
+            process_message(ctx, &io);
+            break;
+        case -ERRCLIENTDC:
+        case -ERRPACKETERR:
+            /*
+             * We got an unexpected error or a disconnection from the
+             * client side, remove client from the global map and
+             * free resources allocated such as io_event structure and
+             * paired payload
+             */
+            log_error("Closing connection with %s: %s",
+                      io.client->conn.ip, solerr(rc));
+            // Publish, if present, LWT message
+            if (io.client->lwt_msg) {
+                char *tname = (char *) io.client->lwt_msg->topic;
+                struct topic *t = sol_topic_get(&sol, tname);
+                struct mqtt_packet lwt = {
+                    .header = (union mqtt_header) { .byte = PUBLISH_B },
+                    .publish = *io.client->lwt_msg
+                };
+                publish_message(&lwt, t, io.ctx);
             }
-            iter_destroy(it);
-        }
-        client_destructor(io.client);
-        info.nclients--;
-        info.nconnections--;
+            // Clean resources
+            ev_del_fd(ctx, c->fd);
+            // Remove from subscriptions for now
+            if (io.client->session) {
+                struct list *subs = io.client->session->subscriptions;
+                struct iterator *it = iter_new(subs, list_iter_next);
+                FOREACH (it) {
+                    log_debug("Deleting %s from topic %s",
+                              io.client->client_id,
+                              ((struct topic *) it->ptr)->name);
+                    topic_del_subscriber(it->ptr, io.client, false);
+                }
+                iter_destroy(it);
+            }
+            client_destructor(io.client);
+            info.nclients--;
+            info.nconnections--;
+            break;
+        case -ERREAGAIN:
+            ev_fire_event(ctx, c->fd, EV_READ, on_message, io.client);
+            break;
     }
 }
 
