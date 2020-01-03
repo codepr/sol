@@ -21,8 +21,7 @@ there's probably some corner cases, not deeply investigated yet.
 - Wildcards (#) on subscriptions
 - Authentication through username and password
 - SSL/TLS connections (almost ready)
-- Multiplexing IO shared on multiple threads with separation between accepting,
-  IO operations and processing.
+- Multiplexing IO with abstraction over backend.
 
 ### To be implemented
 
