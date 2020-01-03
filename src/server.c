@@ -300,21 +300,16 @@ static int read_data(struct connection *c, unsigned char *buf,
     bytes = recv_packet(c, &buf, &header);
 
     /*
-     * Looks like we got a client disconnection.
+     * Looks like we got a client disconnection or If a not correct packet
+     * received, we must free the buffer and reset the handler to the request
+     * again, setting EPOLL to EPOLLIN
      *
      * TODO: Set a error_handler for ERRMAXREQSIZE instead of dropping client
      *       connection, explicitly returning an informative error code to the
      *       client connected.
      */
-    if (bytes == -ERRCLIENTDC || bytes == -ERRMAXREQSIZE)
-        goto errdc;
-
-    /*
-     * If a not correct packet received, we must free the buffer and reset the
-     * handler to the request again, setting EPOLL to EPOLLIN
-     */
-    if (bytes == -ERRPACKETERR)
-        goto exit;
+    if (bytes < 0)
+        goto err;
 
     info.bytes_recv += bytes;
 
@@ -328,13 +323,9 @@ static int read_data(struct connection *c, unsigned char *buf,
 
     // Disconnect packet received
 
-exit:
+err:
 
-    return -ERRPACKETERR;
-
-errdc:
-
-    return -ERRCLIENTDC;
+    return bytes;
 }
 
 /*
@@ -626,6 +617,7 @@ static void on_message(struct ev_ctx *ctx, void *data) {
             break;
         case -ERRCLIENTDC:
         case -ERRPACKETERR:
+        case -ERRMAXREQSIZE:
             /*
              * We got an unexpected error or a disconnection from the
              * client side, remove client from the global map and

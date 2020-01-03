@@ -34,7 +34,7 @@
 
 // Default parameters
 
-#define VERSION                     "0.12.0"
+#define VERSION                     "0.12.1"
 #define DEFAULT_SOCKET_FAMILY       INET
 #define DEFAULT_LOG_LEVEL           DEBUG
 #define DEFAULT_LOG_PATH            "/tmp/sol.log"
