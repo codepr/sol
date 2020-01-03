@@ -716,11 +716,16 @@ static void process_message(struct ev_ctx *ctx, struct io_event *io) {
  * processed by a worker thread, EPOLLOUT for bytes incoming from a worker
  * thread, ready to be delivered out.
  */
-void *IO_thread(void *args) {
+void *eventloop_start(void *args) {
     int sfd = *((int *) args);
     struct ev_ctx ctx;
     ev_init(&ctx, EPOLL_MAX_EVENTS);
+    // Register listening FD with on_accept callback
     ev_register_event(&ctx, sfd, EV_READ, on_accept, &sfd);
+    // Register periodic tasks
+    ev_register_cron(&ctx, publish_stats, conf->stats_pub_interval, 0);
+    ev_register_cron(&ctx, inflight_msg_check, 0, 9e8);
+    // Start the loop, blocking call
     ev_run(&ctx);
     ev_destroy(&ctx);
     return NULL;
@@ -756,17 +761,9 @@ int start_server(const char *addr, const char *port) {
     log_info("Server start");
     info.start_time = time(NULL);
 
-    struct ev_ctx ctx;
-    ev_init(&ctx, EPOLL_MAX_EVENTS);
+    // start eventloop, could be spread on multiple threads
+    eventloop_start(&sfd);
 
-    ev_register_cron(&ctx, publish_stats, conf->stats_pub_interval, 0);
-    ev_register_cron(&ctx, inflight_msg_check, 0, 9e8);
-
-    ev_register_event(&ctx, sfd, EV_READ, on_accept, &sfd);
-
-    ev_run(&ctx);
-
-    ev_destroy(&ctx);
     hashtable_destroy(sol.sessions);
     hashtable_destroy(sol.authentications);
     // free client resources
