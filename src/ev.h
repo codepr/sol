@@ -78,14 +78,35 @@ void ev_destroy(struct ev_ctx *);
 
 int ev_poll(struct ev_ctx *, time_t);
 
+/*
+ * Blocks forever in a loop polling for events with ev_poll calls. At every
+ * cycle executes callbacks registered with each event
+ */
 int ev_run(struct ev_ctx *);
 
+/*
+ * Add a single FD to the underlying backend of the event loop. Equal to
+ * ev_fire_event just without an event to be carried. Useful to add simple
+ * descritors like a listening socket o message queue FD.
+ */
 int ev_watch_fd(struct ev_ctx *, int, int);
 
+/*
+ * Remove a FD from the loop, even tho a close syscall is sufficient to remove
+ * the FD from the underlying backend such as EPOLL/SELECT, this call ensure
+ * that any associated events is cleaned out an set to EV_NONE
+ */
 int ev_del_fd(struct ev_ctx *, int);
 
+// TODO remove from exposed, make it static
 int ev_get_event_type(struct ev_ctx *, int );
 
+/*
+ * Register a new event, semantically it's equal to ev_register_event but
+ * it's meant to be used when an FD is not already watched by the event loop.
+ * It could be easily integrated in ev_fire_event call but I prefer maintain
+ * the samantic separation of responsibilities.
+ */
 int ev_register_event(struct ev_ctx *, int, int,
                       void (*callback)(struct ev_ctx *, void *), void *);
 
@@ -93,11 +114,17 @@ int ev_register_cron(struct ev_ctx *,
                      void (*callback)(struct ev_ctx *, void *),
                      long long, long long);
 
+/*
+ * Register a new event for the next loop cycle to a FD. Equal to ev_watch_fd
+ * but allow to carry an event object for the next cycle.
+ */
 int ev_fire_event(struct ev_ctx *, int, int,
                   void (*callback)(struct ev_ctx *, void *), void *);
 
+// TODO remove from exposed, make it static
 int ev_read_event(struct ev_ctx *, int, int, void **);
 
+// TODO remove from exposed, make it static
 int ev_get_fd(const struct ev_ctx *, int);
 
 #endif

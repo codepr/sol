@@ -340,6 +340,10 @@ static int unpack_mqtt_ack(unsigned char *buf,
     return MQTT_OK;
 }
 
+/*
+ * Main unpacking function entry point. Call the correct unpacking function
+ * through a dispatch table
+ */
 int mqtt_unpack(unsigned char *buf, struct mqtt_packet *pkt,
                 unsigned char byte, size_t len) {
 
@@ -359,6 +363,8 @@ int mqtt_unpack(unsigned char *buf, struct mqtt_packet *pkt,
 
 /*
  * MQTT packets packing functions
+ *
+ * Meant to be called through a dispatch table, with command opcode as index
  */
 
 static size_t pack_mqtt_header(const union mqtt_header *hdr,
@@ -443,6 +449,10 @@ static size_t pack_mqtt_publish(const struct mqtt_packet *pkt,
     return pktlen;
 }
 
+/*
+ * Main packing function entry point. Call the correct packing function through
+ * a dispatch table
+ */
 size_t mqtt_pack(const struct mqtt_packet *pkt, unsigned char *buf) {
     unsigned type = pkt->header.bits.type;
     if (type == PINGREQ || type == PINGRESP)
@@ -545,7 +555,7 @@ int mqtt_pack_mono(unsigned char *buf, unsigned char op, unsigned short id) {
     pack(buf++, "B", byte);
     buf += mqtt_encode_length(buf, MQTT_HEADER_LEN);
     pack(buf, "H", id);
-    return 4;
+    return 4;  // u8=1 + u16=2 + 1 byte for remaining bytes field
 }
 
 size_t mqtt_size(const struct mqtt_packet *pkt, size_t *len) {
@@ -565,11 +575,11 @@ size_t mqtt_size(const struct mqtt_packet *pkt, size_t *len) {
             break;
     }
     int remaninglen_offset = 0;
-    if ((size - 1) > 0x200000)
+    if ((size - 1) > 0x200000)      // 3 bytes <= 128 * 128 * 128
         remaninglen_offset = 3;
-    else if ((size - 1) > 0x4000)
+    else if ((size - 1) > 0x4000)   // 2 bytes <= 128 * 128
         remaninglen_offset = 2;
-    else if ((size - 1) > 0x80)
+    else if ((size - 1) > 0x80)     // 1 byte  <= 128
         remaninglen_offset = 1;
     size += remaninglen_offset;
     if (len)
