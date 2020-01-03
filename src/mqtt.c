@@ -156,14 +156,14 @@ size_t mqtt_decode_length(unsigned char **buf, unsigned *pos) {
  * MQTT unpacking functions
  */
 
-static size_t unpack_mqtt_connect(unsigned char *raw,
+static size_t unpack_mqtt_connect(unsigned char *buf,
                                   struct mqtt_packet *pkt, size_t len) {
 
     /*
      * For now we ignore checks on protocol name and reserved bits, just skip
      * to the 8th byte
      */
-    raw += 7;
+    buf += 7;
 
     unsigned int cid_len = 0;
 
@@ -171,55 +171,55 @@ static size_t unpack_mqtt_connect(unsigned char *raw,
      * Read variable header byte flags, followed by keepalive MSB and LSB
      * (2 bytes word) and the client ID length (2 bytes here again)
      */
-    unpack(raw, "BHH", &pkt->connect.byte,
+    unpack(buf, "BHH", &pkt->connect.byte,
            &pkt->connect.payload.keepalive, &cid_len);
 
-    raw += 5;
+    buf += 5;
 
     /* Read the client id */
     if (cid_len > 0) {
-        memcpy(pkt->connect.payload.client_id, raw, cid_len);
+        memcpy(pkt->connect.payload.client_id, buf, cid_len);
         pkt->connect.payload.client_id[cid_len] = '\0';
-        raw += cid_len;
+        buf += cid_len;
     }
 
     /* Read the will topic and message if will is set on flags */
     if (pkt->connect.bits.will == 1) {
 
-        uint16_t will_topic_len = unpack_integer(&raw, 'H');
-        pkt->connect.payload.will_topic = unpack_bytes(&raw, will_topic_len);
+        uint16_t will_topic_len = unpack_integer(&buf, 'H');
+        pkt->connect.payload.will_topic = unpack_bytes(&buf, will_topic_len);
 
-        uint16_t will_message_len = unpack_integer(&raw, 'H');
-        pkt->connect.payload.will_message = unpack_bytes(&raw, will_message_len);
+        uint16_t will_message_len = unpack_integer(&buf, 'H');
+        pkt->connect.payload.will_message = unpack_bytes(&buf, will_message_len);
     }
 
     /* Read the username if username flag is set */
     if (pkt->connect.bits.username == 1) {
-        uint16_t username_len = unpack_integer(&raw, 'H');
-        pkt->connect.payload.username = unpack_bytes(&raw, username_len);
+        uint16_t username_len = unpack_integer(&buf, 'H');
+        pkt->connect.payload.username = unpack_bytes(&buf, username_len);
     }
 
     /* Read the password if password flag is set */
     if (pkt->connect.bits.password == 1) {
-        uint16_t password_len = unpack_integer(&raw, 'H');
-        pkt->connect.payload.password = unpack_bytes(&raw, password_len);
+        uint16_t password_len = unpack_integer(&buf, 'H');
+        pkt->connect.payload.password = unpack_bytes(&buf, password_len);
     }
 
     return len;
 }
 
-static size_t unpack_mqtt_publish(unsigned char *raw,
+static size_t unpack_mqtt_publish(unsigned char *buf,
                                   struct mqtt_packet *pkt, size_t len) {
     /* Read topic length and topic of the soon-to-be-published message */
-    uint16_t topic_len = unpack_integer(&raw, 'H');
+    uint16_t topic_len = unpack_integer(&buf, 'H');
     pkt->publish.topiclen = topic_len;
-    pkt->publish.topic = unpack_bytes(&raw, topic_len);
+    pkt->publish.topic = unpack_bytes(&buf, topic_len);
 
     uint64_t message_len = len;
 
     /* Read packet id */
     if (pkt->header.bits.qos > AT_MOST_ONCE) {
-        pkt->publish.pkt_id = unpack_integer(&raw, 'H');
+        pkt->publish.pkt_id = unpack_integer(&buf, 'H');
         message_len -= sizeof(uint16_t);
     }
 
@@ -229,19 +229,19 @@ static size_t unpack_mqtt_publish(unsigned char *raw,
      */
     message_len -= (sizeof(uint16_t) + topic_len);
     pkt->publish.payloadlen = message_len;
-    pkt->publish.payload = unpack_bytes(&raw, message_len);
+    pkt->publish.payload = unpack_bytes(&buf, message_len);
 
     return len;
 }
 
-static size_t unpack_mqtt_subscribe(unsigned char *raw,
+static size_t unpack_mqtt_subscribe(unsigned char *buf,
                                     struct mqtt_packet *pkt, size_t len) {
 
     struct mqtt_subscribe subscribe;
     subscribe.tuples = NULL;
 
     /* Read packet id */
-    subscribe.pkt_id = unpack_integer(&raw, 'H');
+    subscribe.pkt_id = unpack_integer(&buf, 'H');
     len -= sizeof(uint16_t);
 
     /*
@@ -255,16 +255,16 @@ static size_t unpack_mqtt_subscribe(unsigned char *raw,
     while (len > 0) {
 
         /* Read length bytes of the first topic filter */
-        unsigned int topic_len = unpack_integer(&raw, 'H');
+        unsigned int topic_len = unpack_integer(&buf, 'H');
         len -= sizeof(uint16_t);
 
         /* We have to make room for additional incoming tuples */
         subscribe.tuples = xrealloc(subscribe.tuples,
                                     (i+1) * sizeof(*subscribe.tuples));
         subscribe.tuples[i].topic_len = topic_len;
-        subscribe.tuples[i].topic = unpack_bytes(&raw, topic_len);
+        subscribe.tuples[i].topic = unpack_bytes(&buf, topic_len);
         len -= topic_len;
-        subscribe.tuples[i].qos = unpack_integer(&raw, 'B');
+        subscribe.tuples[i].qos = unpack_integer(&buf, 'B');
         len -= sizeof(uint8_t);
         i++;
     }
@@ -275,14 +275,14 @@ static size_t unpack_mqtt_subscribe(unsigned char *raw,
     return len;
 }
 
-static size_t unpack_mqtt_unsubscribe(unsigned char *raw,
+static size_t unpack_mqtt_unsubscribe(unsigned char *buf,
                                       struct mqtt_packet *pkt, size_t len) {
 
     struct mqtt_unsubscribe unsubscribe;
     unsubscribe.tuples = NULL;
 
     /* Read packet id */
-    unsubscribe.pkt_id = unpack_integer(&raw, 'H');
+    unsubscribe.pkt_id = unpack_integer(&buf, 'H');
     len -= sizeof(uint16_t);
 
     /*
@@ -295,14 +295,14 @@ static size_t unpack_mqtt_unsubscribe(unsigned char *raw,
     while (len > 0) {
 
         /* Read length bytes of the first topic filter */
-        uint16_t topic_len = unpack_integer(&raw, 'H');
+        uint16_t topic_len = unpack_integer(&buf, 'H');
         len -= sizeof(uint16_t);
 
         /* We have to make room for additional incoming tuples */
         unsubscribe.tuples = xrealloc(unsubscribe.tuples,
                                       (i+1) * sizeof(*unsubscribe.tuples));
         unsubscribe.tuples[i].topic_len = topic_len;
-        unsubscribe.tuples[i].topic = unpack_bytes(&raw, topic_len);
+        unsubscribe.tuples[i].topic = unpack_bytes(&buf, topic_len);
         len -= topic_len;
 
         i++;
@@ -314,13 +314,13 @@ static size_t unpack_mqtt_unsubscribe(unsigned char *raw,
     return len;
 }
 
-static size_t unpack_mqtt_ack(unsigned char *raw,
+static size_t unpack_mqtt_ack(unsigned char *buf,
                               struct mqtt_packet *pkt, size_t len) {
-    pkt->ack = (struct mqtt_ack) { .pkt_id = unpacku16(raw) };
+    pkt->ack = (struct mqtt_ack) { .pkt_id = unpacku16(buf) };
     return len;
 }
 
-int mqtt_unpack(unsigned char *raw, struct mqtt_packet *pkt,
+int mqtt_unpack(unsigned char *buf, struct mqtt_packet *pkt,
                 unsigned char byte, size_t len) {
 
     int rc = MQTT_OK;
@@ -332,7 +332,7 @@ int mqtt_unpack(unsigned char *raw, struct mqtt_packet *pkt,
     if (type >= PINGREQ && type <= DISCONNECT)
         return rc;
 
-    if (unpack_handlers[type](raw, pkt, len) != len)
+    if (unpack_handlers[type](buf, pkt, len) != len)
         rc = -MQTT_ERR;
 
     return rc;
