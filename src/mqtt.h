@@ -31,6 +31,10 @@
 #include <stdio.h>
 #include "pack.h"
 
+// Packing/ubpacking error codes
+#define MQTT_OK    0
+#define MQTT_ERR   1
+
 #define MQTT_HEADER_LEN     2
 #define MQTT_ACK_LEN        4
 #define MQTT_CLIENT_ID_LEN  24  // including nul char
@@ -89,7 +93,6 @@ union mqtt_header {
 };
 
 struct mqtt_connect {
-    union mqtt_header header;
     union {
         unsigned char byte;
         struct {
@@ -113,7 +116,6 @@ struct mqtt_connect {
 };
 
 struct mqtt_connack {
-    union mqtt_header header;
     union {
         unsigned char byte;
         struct {
@@ -125,7 +127,6 @@ struct mqtt_connack {
 };
 
 struct mqtt_subscribe {
-    union mqtt_header header;
     unsigned short pkt_id;
     unsigned short tuples_len;
     struct {
@@ -137,7 +138,6 @@ struct mqtt_subscribe {
 
 
 struct mqtt_unsubscribe {
-    union mqtt_header header;
     unsigned short pkt_id;
     unsigned short tuples_len;
     struct {
@@ -147,14 +147,12 @@ struct mqtt_unsubscribe {
 };
 
 struct mqtt_suback {
-    union mqtt_header header;
     unsigned short pkt_id;
     unsigned short rcslen;
     unsigned char *rcs;
 };
 
 struct mqtt_publish {
-    union mqtt_header header;
     unsigned short pkt_id;
     unsigned short topiclen;
     unsigned char *topic;
@@ -163,7 +161,6 @@ struct mqtt_publish {
 };
 
 struct mqtt_ack {
-    union mqtt_header header;
     unsigned short pkt_id;
 };
 
@@ -176,46 +173,48 @@ typedef union mqtt_header mqtt_pingreq;
 typedef union mqtt_header mqtt_pingresp;
 typedef union mqtt_header mqtt_disconnect;
 
-union mqtt_packet {
-    // This will cover PUBACK, PUBREC, PUBREL, PUBCOMP and UNSUBACK
-    struct mqtt_ack ack;
-    // This will cover PINGREQ, PINGRESP and DISCONNECT
+struct mqtt_packet {
     union mqtt_header header;
-    struct mqtt_connect connect;
-    struct mqtt_connack connack;
-    struct mqtt_suback suback;
-    struct mqtt_publish publish;
-    struct mqtt_subscribe subscribe;
-    struct mqtt_unsubscribe unsubscribe;
+    union {
+        // This will cover PUBACK, PUBREC, PUBREL, PUBCOMP and UNSUBACK
+        struct mqtt_ack ack;
+        // This will cover PINGREQ, PINGRESP and DISCONNECT
+        mqtt_pingreq pingreq;
+        struct mqtt_connect connect;
+        struct mqtt_connack connack;
+        struct mqtt_suback suback;
+        struct mqtt_publish publish;
+        struct mqtt_subscribe subscribe;
+        struct mqtt_unsubscribe unsubscribe;
+    };
 };
 
 int mqtt_encode_length(unsigned char *, size_t);
 
 size_t mqtt_decode_length(unsigned char **, unsigned *);
 
-int unpack_mqtt_packet(unsigned char *, union mqtt_packet *, unsigned char, size_t);
+int mqtt_unpack(unsigned char *, struct mqtt_packet *, unsigned char, size_t);
 
-unsigned char *pack_mqtt_packet(const union mqtt_packet *, unsigned);
+size_t mqtt_pack(const struct mqtt_packet *, unsigned char *);
 
 union mqtt_header *mqtt_packet_header(unsigned char);
 
-struct mqtt_ack *mqtt_packet_ack(unsigned char , unsigned short);
+/* MQTT Build helpers */
 
-struct mqtt_connack *mqtt_packet_connack(unsigned char ,
-                                         unsigned char ,
-                                         unsigned char);
+void mqtt_ack(struct mqtt_packet *, unsigned short);
 
-struct mqtt_suback *mqtt_packet_suback(unsigned char, unsigned short,
-                                       unsigned char *, unsigned short);
+void mqtt_connack(struct mqtt_packet *, unsigned char , unsigned char);
 
-struct mqtt_publish *mqtt_packet_publish(unsigned char, unsigned short, size_t,
-                                         unsigned char *,
-                                         size_t, unsigned char *);
+void mqtt_suback(struct mqtt_packet *, unsigned short,
+                 unsigned char *, unsigned short);
 
-void mqtt_packet_release(union mqtt_packet *, unsigned);
+void mqtt_publish(struct mqtt_packet *, unsigned short, size_t,
+                  unsigned char *, size_t, unsigned char *);
 
-void mqtt_set_dup(union mqtt_packet *, int);
+void mqtt_packet_release(struct mqtt_packet *, unsigned);
 
-void mqtt_pack_mono(unsigned char *, unsigned char, unsigned short);
+void mqtt_set_dup(struct mqtt_packet *);
+
+int mqtt_pack_mono(unsigned char *, unsigned char, unsigned short);
 
 #endif
