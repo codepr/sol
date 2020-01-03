@@ -38,8 +38,8 @@
  * Epoll default settings for concurrent events monitored and timeout, -1
  * means no timeout at all, blocking undefinitely
  */
-#define EPOLL_MAX_EVENTS    1024
-#define EPOLL_TIMEOUT       -1
+#define EVENTLOOP_MAX_EVENTS    1024
+#define EVENTLOOP_TIMEOUT       -1
 
 /* Error codes for packet reception, signaling respectively
  * - client disconnection

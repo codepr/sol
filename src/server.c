@@ -724,10 +724,10 @@ static void process_message(struct ev_ctx *ctx, struct io_event *io) {
  * processed by a worker thread, EPOLLOUT for bytes incoming from a worker
  * thread, ready to be delivered out.
  */
-void *eventloop_start(void *args) {
+static void *eventloop_start(void *args) {
     int sfd = *((int *) args);
     struct ev_ctx ctx;
-    ev_init(&ctx, EPOLL_MAX_EVENTS);
+    ev_init(&ctx, EVENTLOOP_MAX_EVENTS);
     // Register listening FD with on_accept callback
     ev_register_event(&ctx, sfd, EV_READ, on_accept, &sfd);
     // Register periodic tasks
