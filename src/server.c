@@ -108,6 +108,17 @@ struct eventloop {
     struct ev_ctx *w_ctx;
 };
 
+// CALLBACKS for the eventloop
+static void on_accept(struct ev_ctx *, void *);
+
+static void on_message(struct ev_ctx *, void *);
+
+/*
+ * Processing message function, will be applied on fully formed mqtt packet
+ * received on on_message callback
+ */
+static void process_message(struct ev_ctx *, struct io_event *);
+
 /*
  * Statistics topics, published every N seconds defined by configuration
  * interval
@@ -529,10 +540,6 @@ static int auth_destructor(struct hashtable_entry *entry) {
     return 0;
 }
 
-static void on_accept(struct ev_ctx *, void *);
-static void on_message(struct ev_ctx *, void *);
-static void process_message(struct ev_ctx *, void *);
-
 /*
  * Handle incoming connections, create a a fresh new struct client structure
  * and link it to the fd, ready to be set in EPOLLIN event, then pass the
@@ -646,9 +653,8 @@ static void on_message(struct ev_ctx *ctx, void *data) {
     }
 }
 
-static void process_message(struct ev_ctx *ctx, void *data) {
+static void process_message(struct ev_ctx *ctx, struct io_event *io) {
     ssize_t sent = 0LL;
-    struct io_event *io = data;
     struct connection *c = &io->client->conn;
     io->rc = handle_command(io->data.header.bits.type, io);
     switch (io->rc) {
