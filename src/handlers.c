@@ -433,7 +433,7 @@ static int subscribe_handler(struct io_event *e) {
     log_debug("Sending SUBACK to %s", c->client_id);
 
     e->reply = bstring_copy(packed, len);
-    mqtt_packet_release(&pkt, SUBACK);
+    mqtt_packet_destroy(&pkt, SUBACK);
 
     return REPLY;
 }
@@ -458,7 +458,7 @@ static int unsubscribe_handler(struct io_event *e) {
     log_debug("Sending UNSUBACK to %s", c->client_id);
 
     e->reply = bstring_copy(packed, MQTT_ACK_LEN);
-    mqtt_packet_release(&e->data, UNSUBACK);
+    mqtt_packet_destroy(&e->data, UNSUBACK);
 
     return REPLY;
 }

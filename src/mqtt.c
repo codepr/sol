@@ -279,6 +279,7 @@ static size_t unpack_mqtt_unsubscribe(unsigned char *raw,
                                       struct mqtt_packet *pkt, size_t len) {
 
     struct mqtt_unsubscribe unsubscribe;
+    unsubscribe.tuples = NULL;
 
     /* Read packet id */
     unsubscribe.pkt_id = unpack_integer(&raw, 'H');
@@ -468,7 +469,7 @@ void mqtt_packet_publish(struct mqtt_packet *pkt, unsigned short pkt_id,
     };
 }
 
-void mqtt_packet_release(struct mqtt_packet *pkt, unsigned type) {
+void mqtt_packet_destroy(struct mqtt_packet *pkt, unsigned type) {
 
     switch (type) {
         case CONNECT:

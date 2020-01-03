@@ -694,7 +694,7 @@ static void process_message(struct ev_ctx *ctx, struct io_event *io) {
 
             /* Free resource, ACKs will be free'd closing the server */
             bstring_destroy(io->reply);
-            mqtt_packet_release(&io->data, io->data.header.bits.type);
+            mqtt_packet_destroy(&io->data, io->data.header.bits.type);
             break;
         case CLIENTDC:
             ev_del_fd(ctx, c->fd);

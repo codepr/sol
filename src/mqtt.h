@@ -40,12 +40,12 @@
 #define MQTT_CLIENT_ID_LEN  24  // including nul char
 
 // Return codes for connect packet
-#define RC_CONNECTION_ACCEPTED              0x00
-#define RC_UNACCEPTABLE_PROTOCOL_VERSION    0x01
-#define RC_IDENTIFIER_REJECTED              0x02
-#define RC_SERVER_UNAVAILABLE               0x03
-#define RC_BAD_USERNAME_OR_PASSWORD         0x04
-#define RC_NOT_AUTHORIZED                   0x05
+#define RC_CONNECTION_ACCEPTED           0x00
+#define RC_UNACCEPTABLE_PROTOCOL_VERSION 0x01
+#define RC_IDENTIFIER_REJECTED           0x02
+#define RC_SERVER_UNAVAILABLE            0x03
+#define RC_BAD_USERNAME_OR_PASSWORD      0x04
+#define RC_NOT_AUTHORIZED                0x05
 
 /*
  * Stub bytes, useful for generic replies, these represent the first byte in
@@ -89,7 +89,6 @@ union mqtt_header {
         unsigned dup : 1;
         unsigned type : 4;
     } bits;
-
 };
 
 struct mqtt_connect {
@@ -135,7 +134,6 @@ struct mqtt_subscribe {
         unsigned qos;
     } *tuples;
 };
-
 
 struct mqtt_unsubscribe {
     unsigned short pkt_id;
@@ -189,18 +187,42 @@ struct mqtt_packet {
     };
 };
 
+/*
+ * Encoding packet length function, follows the OASIS specs, encode the total
+ * length of the packet excluding header and the space for the encoding itself
+ * into a 1-4 bytes using the continuation bit technique to allow a dynamic
+ * storing size:
+ * Using the first 7 bits of a byte we can store values till 127 and use the
+ * last bit as a switch to notify if the subsequent byte is used to store
+ * remaining length or not.
+ * Returns the number of bytes used to store the value passed.
+ */
 int mqtt_encode_length(unsigned char *, size_t);
 
+/*
+ * The reverse of the encoding function, returns the value of the size decoded
+ */
 size_t mqtt_decode_length(unsigned char **, unsigned *);
 
+/*
+ * Pack to binary an MQTT packet, internally it uses a dispatch table to call
+ * the right pack function based on the packet opcode.
+ */
 int mqtt_unpack(unsigned char *, struct mqtt_packet *, unsigned char, size_t);
 
+/*
+ * Unpack from binary to an mqtt_packet structure. Internally it uses a
+ * dispatch table to call the right unpack function based on the opcode
+ * expected to read.
+ */
 size_t mqtt_pack(const struct mqtt_packet *, unsigned char *);
 
-union mqtt_header *mqtt_packet_header(unsigned char);
-
-/* MQTT Build helpers */
-
+/*
+ * MQTT Build helpers
+ *
+ * They receive a pointer to a struct mqtt_packet and additional informations
+ * to be stored inside. Just plain builder functions.
+ */
 void mqtt_ack(struct mqtt_packet *, unsigned short);
 
 void mqtt_connack(struct mqtt_packet *, unsigned char , unsigned char);
@@ -211,12 +233,25 @@ void mqtt_suback(struct mqtt_packet *, unsigned short,
 void mqtt_publish(struct mqtt_packet *, unsigned short, size_t,
                   unsigned char *, size_t, unsigned char *);
 
-void mqtt_packet_release(struct mqtt_packet *, unsigned);
+/*
+ * Release the memory allocated through helpers function calls based on the
+ * opcode of the MQTT packet passed
+ */
+void mqtt_packet_destroy(struct mqtt_packet *, unsigned);
 
 void mqtt_set_dup(struct mqtt_packet *);
 
+/*
+ * Helper function used to pack ACK packets, mono as the single field `packet
+ * identifier` that ACKs packet carries
+ */
 int mqtt_pack_mono(unsigned char *, unsigned char, unsigned short);
 
+/*
+ * Returns the size of a packet. Useful to pack functions to know the expected
+ * buffer size of the packet based on the opcode. Accept an optional pointer
+ * to get the len reserved for storing the remaining length of the full packet
+ */
 size_t mqtt_size(const struct mqtt_packet *, size_t *);
 
 #endif

@@ -76,9 +76,9 @@
  * passed back to the IO epoll loop to be written back to the requesting client
  */
 struct io_event {
-    struct ev_ctx *ctx;
     int rc;
     bstring reply;
+    struct ev_ctx *ctx;
     struct client *client;
     struct mqtt_packet data;
 };
