@@ -151,7 +151,7 @@ static void publish_stats(struct ev_ctx *, void *);
  * Periodic routine to check for incomplete transactions on QoS > 0 to be
  * concluded
  */
-/* static void inflight_msg_check(struct ev_ctx *, void *); */
+static void inflight_msg_check(struct ev_ctx *, void *);
 
 /* Simple error_code to string function, to be refined */
 static const char *solerr(int rc) {

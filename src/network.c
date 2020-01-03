@@ -42,6 +42,7 @@
 #include <openssl/err.h>
 #include "util.h"
 #include "config.h"
+#include "server.h"
 #include "network.h"
 
 /* Set non-blocking socket */
@@ -244,7 +245,7 @@ ssize_t send_bytes(int fd, const unsigned char *buf, size_t len) {
         n = send(fd, buf + total, bytesleft, MSG_NOSIGNAL);
         if (n == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
-                break;
+                goto eagain;
             else
                 goto err;
         }
@@ -253,6 +254,10 @@ ssize_t send_bytes(int fd, const unsigned char *buf, size_t len) {
     }
 
     return total;
+
+eagain:
+
+    return total == 0 ? -ERREAGAIN : total;
 
 err:
 
@@ -272,9 +277,9 @@ ssize_t recv_bytes(int fd, unsigned char *buf, size_t bufsize) {
     while (total < (ssize_t) bufsize) {
 
         if ((n = recv(fd, buf, bufsize - total, 0)) < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                break;
-            } else
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                goto eagain;
+            else
                 goto err;
         }
 
@@ -286,6 +291,10 @@ ssize_t recv_bytes(int fd, unsigned char *buf, size_t bufsize) {
     }
 
     return total;
+
+eagain:
+
+    return total == 0 ? -ERREAGAIN : total;
 
 err:
 
@@ -384,7 +393,7 @@ ssize_t ssl_send_bytes(SSL *ssl, const unsigned char *buf, size_t len) {
                 || (err == SSL_ERROR_SYSCALL && !errno))
                 return 0;  // Connection closed
             if (errno == EAGAIN || errno == EWOULDBLOCK)
-                break;
+                goto eagain;
             else
                 goto err;
         }
@@ -393,6 +402,10 @@ ssize_t ssl_send_bytes(SSL *ssl, const unsigned char *buf, size_t len) {
     }
 
     return total;
+
+eagain:
+
+    return total == 0 ? -ERREAGAIN : total;
 
 err:
 
@@ -417,7 +430,7 @@ ssize_t ssl_recv_bytes(SSL *ssl, unsigned char *buf, size_t bufsize) {
                 || (err == SSL_ERROR_SYSCALL && !errno))
                 return 0;  // Connection closed
             if (errno == EAGAIN || errno == EWOULDBLOCK)
-                break;
+                goto eagain;
             else
                 goto err;
         }
@@ -430,6 +443,10 @@ ssize_t ssl_recv_bytes(SSL *ssl, unsigned char *buf, size_t bufsize) {
     }
 
     return total;
+
+eagain:
+
+    return total == 0 ? -ERREAGAIN : total;
 
 err:
 
@@ -519,21 +536,7 @@ struct connection *connection_new(const SSL_CTX *ssl_ctx) {
     struct connection *conn = xmalloc(sizeof(*conn));
     if (!conn)
         return NULL;
-    conn->fd = -1;
-    conn->ssl = NULL; // Will be filled in case of TLS connection on accept
-    conn->ctx = (SSL_CTX *) ssl_ctx;
-    if (ssl_ctx) {
-        // We need a TLS connection
-        conn->accept = conn_tls_accept;
-        conn->send = conn_tls_send;
-        conn->recv = conn_tls_recv;
-        conn->close = conn_tls_close;
-    } else {
-        conn->accept = conn_accept;
-        conn->send = conn_send;
-        conn->recv = conn_recv;
-        conn->close = conn_close;
-    }
+    connection_init(conn, ssl_ctx);
     return conn;
 }
 
