@@ -28,16 +28,12 @@
 #include <string.h>
 #include "util.h"
 #include "core.h"
+#include "config.h"
 
 struct client *sol_client_new(struct connection *c) {
     struct client *client = xcalloc(1, sizeof(*client));
+    client_init(client);
     client->conn = *c;
-    client->online = true;
-    client->clean_session = true;
-    client->client_id[0] = '\0';
-    client->last_action_time = time(NULL);
-    client->lwt_msg = NULL;
-    client->session = sol_session_new();
     return client;
 }
 

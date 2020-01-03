@@ -112,6 +112,8 @@ struct eventloop {
     struct ev_ctx *io_ctx;
     struct ev_ctx *w_ctx;
 };
+// XXX temporary
+static unsigned char *buffer;
 
 // CALLBACKS for the eventloop
 static void on_accept(struct ev_ctx *, void *);
@@ -487,7 +489,6 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
  * Cleanup function to be passed in as destructor to the Hashtable for
  * connecting clients
  */
-/* static int client_destructor(struct hashtable_entry *entry) { */
 static int client_destructor(struct client *client) {
 
     if (!client || client->online == false)
@@ -601,7 +602,6 @@ static void on_accept(struct ev_ctx *ctx, void *data) {
 }
 
 static void on_message(struct ev_ctx *ctx, void *data) {
-    unsigned char buffer[conf->max_request_size];
     struct io_event io;
     io.ctx = ctx;
     io.rc = 0;
@@ -743,6 +743,7 @@ static void *eventloop_start(void *args) {
 
 int start_server(const char *addr, const char *port) {
 
+    buffer = xcalloc(conf->max_request_size, sizeof(unsigned char));
     /* Initialize global Sol instance */
     trie_init(&sol.topics, NULL);
     sol.maxfd = BASE_CLIENTS_NUM - 1;
@@ -776,6 +777,7 @@ int start_server(const char *addr, const char *port) {
 
     hashtable_destroy(sol.sessions);
     hashtable_destroy(sol.authentications);
+    xfree(buffer);
     // free client resources
     for (int i = 0; i < sol.maxfd; ++i)
         client_destructor(&sol.clients[i]);
