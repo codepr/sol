@@ -80,7 +80,7 @@ struct io_event {
     int rc;
     bstring reply;
     struct client *client;
-    union mqtt_packet data;
+    struct mqtt_packet data;
 };
 
 /* Global informations statistics structure */

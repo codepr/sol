@@ -135,7 +135,7 @@ static void publish_stats(struct ev_ctx *, void *);
  * Periodic routine to check for incomplete transactions on QoS > 0 to be
  * concluded
  */
-static void inflight_msg_check(struct ev_ctx *, void *);
+/* static void inflight_msg_check(struct ev_ctx *, void *); */
 
 /* Simple error_code to string function, to be refined */
 static const char *solerr(int rc) {
@@ -263,7 +263,7 @@ err:
 
 /* Handle incoming requests, after being accepted or after a reply */
 static int read_data(struct connection *c, unsigned char *buf,
-                     union mqtt_packet *pkt) {
+                     struct mqtt_packet *pkt) {
 
     ssize_t bytes = 0;
     unsigned char header = 0;
@@ -299,7 +299,7 @@ static int read_data(struct connection *c, unsigned char *buf,
      * Unpack received bytes into a mqtt_packet structure and execute the
      * correct handler based on the type of the operation.
      */
-    unpack_mqtt_packet(buf, pkt, header, bytes);
+    mqtt_unpack(buf, pkt, header, bytes);
 
     return 0;
 
@@ -346,64 +346,66 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     sprintf(mem, "%lld", memory);
 
     // $SOL/uptime
-    struct mqtt_publish p = {
+    struct mqtt_packet p = {
         .header = (union mqtt_header) { .byte = PUBLISH_B },
-        .pkt_id = 0,
-        .topiclen = strlen(sys_topics[2]),
-        .topic = (unsigned char *) sys_topics[2],
-        .payloadlen = strlen(utime),
-        .payload = (unsigned char *) &utime
+        .publish = (struct mqtt_publish) {
+            .pkt_id = 0,
+            .topiclen = strlen(sys_topics[2]),
+            .topic = (unsigned char *) sys_topics[2],
+            .payloadlen = strlen(utime),
+            .payload = (unsigned char *) &utime
+        }
     };
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), ctx);
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.publish.topic), ctx);
 
     // $SOL/broker/uptime/sol
-    p.topiclen = strlen(sys_topics[3]);
-    p.topic = (unsigned char *) sys_topics[3];
-    p.payloadlen = strlen(sutime);
-    p.payload = (unsigned char *) &sutime;
+    p.publish.topiclen = strlen(sys_topics[3]);
+    p.publish.topic = (unsigned char *) sys_topics[3];
+    p.publish.payloadlen = strlen(sutime);
+    p.publish.payload = (unsigned char *) &sutime;
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), ctx);
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.publish.topic), ctx);
 
     // $SOL/broker/clients/connected
-    p.topiclen = strlen(sys_topics[4]);
-    p.topic = (unsigned char *) sys_topics[4];
-    p.payloadlen = strlen(cclients);
-    p.payload = (unsigned char *) &cclients;
+    p.publish.topiclen = strlen(sys_topics[4]);
+    p.publish.topic = (unsigned char *) sys_topics[4];
+    p.publish.payloadlen = strlen(cclients);
+    p.publish.payload = (unsigned char *) &cclients;
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), ctx);
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.publish.topic), ctx);
 
     // $SOL/broker/bytes/sent
-    p.topiclen = strlen(sys_topics[6]);
-    p.topic = (unsigned char *) sys_topics[6];
-    p.payloadlen = strlen(bsent);
-    p.payload = (unsigned char *) &bsent;
+    p.publish.topiclen = strlen(sys_topics[6]);
+    p.publish.topic = (unsigned char *) sys_topics[6];
+    p.publish.payloadlen = strlen(bsent);
+    p.publish.payload = (unsigned char *) &bsent;
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), ctx);
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.publish.topic), ctx);
 
     // $SOL/broker/messages/sent
-    p.topiclen = strlen(sys_topics[8]);
-    p.topic = (unsigned char *) sys_topics[8];
-    p.payloadlen = strlen(msent);
-    p.payload = (unsigned char *) &msent;
+    p.publish.topiclen = strlen(sys_topics[8]);
+    p.publish.topic = (unsigned char *) sys_topics[8];
+    p.publish.payloadlen = strlen(msent);
+    p.publish.payload = (unsigned char *) &msent;
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), ctx);
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.publish.topic), ctx);
 
     // $SOL/broker/messages/received
-    p.topiclen = strlen(sys_topics[9]);
-    p.topic = (unsigned char *) sys_topics[9];
-    p.payloadlen = strlen(mrecv);
-    p.payload = (unsigned char *) &mrecv;
+    p.publish.topiclen = strlen(sys_topics[9]);
+    p.publish.topic = (unsigned char *) sys_topics[9];
+    p.publish.payloadlen = strlen(mrecv);
+    p.publish.payload = (unsigned char *) &mrecv;
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), ctx);
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.publish.topic), ctx);
 
     // $SOL/broker/memory/used
-    p.topiclen = strlen(sys_topics[10]);
-    p.topic = (unsigned char *) sys_topics[10];
-    p.payloadlen = strlen(mem);
-    p.payload = (unsigned char *) &mem;
+    p.publish.topiclen = strlen(sys_topics[10]);
+    p.publish.topic = (unsigned char *) sys_topics[10];
+    p.publish.payloadlen = strlen(mem);
+    p.publish.payload = (unsigned char *) &mem;
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.topic), ctx);
+    publish_message(&p, sol_topic_get(&sol, (const char *) p.publish.topic), ctx);
 
 }
 
@@ -417,14 +419,10 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
  */
 static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
     (void) data;
-    (void)ctx;
+    (void) ctx;
     time_t now = time(NULL);
-    unsigned char *pub = NULL;
     ssize_t sent;
-    /* struct iterator *it = iter_new(sol.clients, hashtable_iter_next); */
-    /* FOREACH (it) { */
     for (int i = 0; i < 1024; ++i) {
-        /* struct client *c = it->ptr; */
         struct client *c = &sol.clients[i];
         if (c->online == false)
             continue;
@@ -433,12 +431,12 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
             // Messages
             if (c->i_msgs[i] && (now - c->i_msgs[i]->sent_timestamp) > 20) {
                 // Set DUP flag to 1
-                mqtt_set_dup(c->i_msgs[i]->packet, c->i_msgs[i]->type);
+                mqtt_set_dup(c->i_msgs[i]->packet);
                 // Serialize the packet and send it out again
-                pub = pack_mqtt_packet(c->i_msgs[i]->packet, c->i_msgs[i]->type);
-                bstring payload = bstring_copy(pub, c->i_msgs[i]->size);
+                unsigned char pub[c->i_msgs[i]->size];
+                mqtt_pack(c->i_msgs[i]->packet, pub);
                 if ((sent = send_data(&c->i_msgs[i]->client->conn,
-                                      payload, bstring_len(payload))) < 0)
+                                      pub, c->i_msgs[i]->size)) < 0)
                     log_error("Error re-sending %s", strerror(errno));
 
                 // Update information stats
@@ -448,12 +446,12 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
             // ACKs
             if (c->i_acks[i] && (now - c->i_acks[i]->sent_timestamp) > 20) {
                 // Set DUP flag to 1
-                mqtt_set_dup(c->i_acks[i]->packet, c->i_acks[i]->type);
+                mqtt_set_dup(c->i_acks[i]->packet);
                 // Serialize the packet and send it out again
-                pub = pack_mqtt_packet(c->i_acks[i]->packet, c->i_acks[i]->type);
-                bstring payload = bstring_copy(pub, c->i_acks[i]->size);
+                unsigned char pub[c->i_acks[i]->size];
+                mqtt_pack(c->i_acks[i]->packet, pub);
                 if ((sent = send_data(&c->i_acks[i]->client->conn,
-                                      payload, bstring_len(payload))) < 0)
+                                      pub, c->i_acks[i]->size)) < 0)
                     log_error("Error re-sending %s", strerror(errno));
 
                 // Update information stats
@@ -462,7 +460,6 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
             }
         }
     }
-    /* iter_destroy(it); */
 }
 
 /*
@@ -475,13 +472,7 @@ static int client_destructor(struct client *client) {
     if (!client)
         return -1;
 
-    /* struct client *client = entry->val; */
-
-    /* if (client->conn) { */
-        /* if (client->online == true) */
     close_connection(&client->conn);
-        /* xfree(client->conn); */
-    /* } */
 
     if (client->session) {
         list_destroy(client->session->subscriptions, 0);
@@ -501,7 +492,7 @@ static int client_destructor(struct client *client) {
     if (client->lwt_msg)
         xfree(client->lwt_msg);
 
-    /* xfree(client); */
+    client->online = false;
 
     return 0;
 }
@@ -555,9 +546,6 @@ static void on_accept(struct ev_ctx *ctx, void *data) {
          * and socket descriptor to the connection structure
          * pointer passed as argument
          */
-        /* struct connection *conn = conf->use_ssl ? \ */
-        /*                           connection_new(sol.ssl_ctx) : \ */
-        /*                           connection_new(NULL); */
         struct connection conn;
         connection_init(&conn, conf->use_ssl ? sol.ssl_ctx : NULL);
         int fd = accept_connection(&conn, serverfd);
@@ -565,18 +553,14 @@ static void on_accept(struct ev_ctx *ctx, void *data) {
             continue;
         if (fd < 0) {
             close_connection(&conn);
-            /* xfree(conn); */
             break;
         }
         /*
          * Create a client structure to handle his context
          * connection
          */
-        /* struct client *client = sol_client_new(conn); */
         client_init(&sol.clients[fd]);
         sol.clients[fd].conn = conn;
-        /* if (!conn || !client) */
-        /*     return; */
 
         /* Add it to the epoll loop */
         ev_register_event(ctx, fd, EV_READ, on_message, &sol.clients[fd]);
@@ -594,7 +578,6 @@ static void on_accept(struct ev_ctx *ctx, void *data) {
 
 static void on_message(struct ev_ctx *ctx, void *data) {
     unsigned char buffer[conf->max_request_size];
-    /* struct io_event *io = xmalloc(sizeof(*io)); */
     struct io_event io;
     io.ctx = ctx;
     io.rc = 0;
@@ -630,7 +613,11 @@ static void on_message(struct ev_ctx *ctx, void *data) {
         if (io.client->lwt_msg) {
             char *tname = (char *) io.client->lwt_msg->topic;
             struct topic *t = sol_topic_get(&sol, tname);
-            publish_message(io.client->lwt_msg, t, io.ctx);
+            struct mqtt_packet lwt = {
+                .header = (union mqtt_header) { .byte = PUBLISH_B },
+                .publish = *io.client->lwt_msg
+            };
+            publish_message(&lwt, t, io.ctx);
         }
         io.client->online = false;
         // Clean resources
@@ -650,7 +637,6 @@ static void on_message(struct ev_ctx *ctx, void *data) {
         }
         info.nclients--;
         info.nconnections--;
-        /* xfree(io); */
     }
 }
 
@@ -663,22 +649,18 @@ static void on_payload(struct ev_ctx *ctx, void *data) {
         case RC_NOT_AUTHORIZED:
         case RC_BAD_USERNAME_OR_PASSWORD:
             on_write(ctx, io);
-            /* ev_fire_event(ctx, c->fd, EV_WRITE, on_write, io); */
             break;
         case CLIENTDC:
             io->client->online = false;
             ev_del_fd(ctx, c->fd);
             close_connection(&io->client->conn);
             client_destructor(io->client);
-            /* hashtable_del(sol.clients, io->client->client_id); */
-            /* xfree(io); */
             // Update stats
             info.nclients--;
             info.nconnections--;
             break;
         default:
             ev_fire_event(ctx, c->fd, EV_READ, on_message, io->client);
-            /* xfree(io); */
             break;
     }
 }
@@ -699,7 +681,6 @@ void on_write(struct ev_ctx *ctx, void *data) {
                  c->ip, solerr(io->rc), sent);
         ev_del_fd(ctx, c->fd);
         client_destructor(io->client);
-        /* hashtable_del(sol.clients, io->client->client_id); */
         // Update stats
         info.nclients--;
         info.nconnections--;
@@ -718,7 +699,6 @@ void on_write(struct ev_ctx *ctx, void *data) {
     /* Free resource, ACKs will be free'd closing the server */
     bstring_destroy(io->reply);
     mqtt_packet_release(&io->data, io->data.header.bits.type);
-    /* xfree(io); */
 }
 
 /*
@@ -753,7 +733,7 @@ int start_server(const char *addr, const char *port) {
 
     /* Initialize global Sol instance */
     trie_init(&sol.topics, NULL);
-    /* sol.clients = hashtable_new(client_destructor); */
+    memset(sol.clients, 0x00, 1024 * sizeof(struct client));
     sol.sessions = hashtable_new(session_destructor);
     sol.authentications = hashtable_new(auth_destructor);
 
@@ -786,20 +766,9 @@ int start_server(const char *addr, const char *port) {
 
     ev_register_event(&ctx, sfd, EV_READ, on_accept, &sfd);
 
-    /* pthread_t io, ioo, iooo, ioooo, iooooo, ioooooo, iooooooo; */
-    /* pthread_create(&io, NULL, &thread, &sfd); */
-    /* pthread_create(&ioo, NULL, &thread, &sfd); */
-    /* pthread_create(&iooo, NULL, &thread, &sfd); */
-    /* pthread_create(&ioooo, NULL, &thread, &sfd); */
-    /* pthread_create(&iooooo, NULL, &thread, &sfd); */
-    /* pthread_create(&ioooooo, NULL, &thread, &sfd); */
-    /* pthread_create(&iooooooo, NULL, &thread, &sfd); */
     ev_run(&ctx);
 
-    /* pthread_join(io, NULL); */
-
     ev_destroy(&ctx);
-    /* hashtable_destroy(sol.clients); */
     hashtable_destroy(sol.sessions);
     hashtable_destroy(sol.authentications);
 

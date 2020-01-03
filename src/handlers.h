@@ -4,7 +4,7 @@
 #include "core.h"
 #include "server.h"
 
-void publish_message(struct mqtt_publish *, const struct topic *, struct ev_ctx *);
+void publish_message(struct mqtt_packet *, const struct topic *, struct ev_ctx *);
 
 int handle_command(unsigned, struct io_event *);
 

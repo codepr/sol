@@ -217,4 +217,6 @@ void mqtt_set_dup(struct mqtt_packet *);
 
 int mqtt_pack_mono(unsigned char *, unsigned char, unsigned short);
 
+size_t mqtt_size(const struct mqtt_packet *, size_t *);
+
 #endif

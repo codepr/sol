@@ -134,7 +134,7 @@ struct topic *sol_topic_get_or_create(struct sol *sol, const char *name) {
 }
 
 struct inflight_msg *inflight_msg_new(struct client *c,
-                                      union mqtt_packet *p,
+                                      struct mqtt_packet *p,
                                       int type, size_t size) {
     struct inflight_msg *imsg = xmalloc(sizeof(*imsg));
     imsg->client = c;

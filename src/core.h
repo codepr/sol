@@ -50,7 +50,7 @@ struct inflight_msg {
     int type;
     time_t sent_timestamp;
     unsigned long size;
-    union mqtt_packet *packet;
+    struct mqtt_packet *packet;
 };
 
 struct topic {
@@ -112,7 +112,7 @@ void client_init(struct client *);
 struct client *sol_client_new(struct connection *);
 
 struct inflight_msg *inflight_msg_new(struct client *,
-                                      union mqtt_packet *, int, size_t);
+                                      struct mqtt_packet *, int, size_t);
 
 struct topic *topic_new(const char *);
 
