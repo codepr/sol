@@ -38,6 +38,7 @@
 #include "pack.h"
 
 #define MAX_INFLIGHT_MSGS 65536
+#define BASE_CLIENTS_NUM  1024
 
 /*
  * Pending messages remaining to be sent out, they can be either PUBLISH or
@@ -84,8 +85,7 @@ struct client {
  * messages to push out and acks respectively.
  */
 struct sol {
-    // HashTable *clients;
-    struct client clients[1024];
+    struct client *clients;
     Trie topics;
     HashTable *sessions;
     HashTable *authentications;

@@ -150,13 +150,8 @@ int ev_run(struct ev_ctx *ctx) {
     int n = 0, events = 0;
     while (1) {
         n = ev_poll(ctx, -1);
-        if (n < 0) {
-            /* Signals to all threads. Ignore it for now */
-            if (errno == EINTR)
-                continue;
-            /* Error occured, break the loop */
+        if (n < 0)
             break;
-        }
         for (int i = 0; i < n; ++i) {
             events = ev_get_event_type(ctx, i);
             ev_read_event(ctx, i, events, NULL);

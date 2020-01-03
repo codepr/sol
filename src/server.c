@@ -493,6 +493,7 @@ static int client_destructor(struct client *client) {
         xfree(client->lwt_msg);
 
     client->online = false;
+    client->client_id[0] = '\0';
 
     return 0;
 }
@@ -712,17 +713,6 @@ void *IO_thread(void *args) {
     int sfd = *((int *) args);
     struct ev_ctx ctx;
     ev_init(&ctx, EPOLL_MAX_EVENTS);
-
-    ev_register_event(&ctx, sfd, EV_READ, on_accept, &sfd);
-
-    ev_run(&ctx);
-    return NULL;
-}
-
-void *thread(void *arg) {
-    int sfd = *((int *) arg);
-    struct ev_ctx ctx;
-    ev_init(&ctx, EPOLL_MAX_EVENTS);
     ev_register_event(&ctx, sfd, EV_READ, on_accept, &sfd);
     ev_run(&ctx);
     ev_destroy(&ctx);
@@ -733,7 +723,7 @@ int start_server(const char *addr, const char *port) {
 
     /* Initialize global Sol instance */
     trie_init(&sol.topics, NULL);
-    memset(sol.clients, 0x00, 1024 * sizeof(struct client));
+    sol.clients = xcalloc(BASE_CLIENTS_NUM, sizeof(struct client));
     sol.sessions = hashtable_new(session_destructor);
     sol.authentications = hashtable_new(auth_destructor);
 
@@ -771,6 +761,7 @@ int start_server(const char *addr, const char *port) {
     ev_destroy(&ctx);
     hashtable_destroy(sol.sessions);
     hashtable_destroy(sol.authentications);
+    xfree(sol.clients);
 
     /* Destroy SSL context, if any present */
     if (conf->use_ssl == true) {
