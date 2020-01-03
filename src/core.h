@@ -85,6 +85,7 @@ struct client {
  * messages to push out and acks respectively.
  */
 struct sol {
+    int maxfd;
     struct client *clients;
     Trie topics;
     HashTable *sessions;

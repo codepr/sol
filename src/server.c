@@ -422,7 +422,7 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
     (void) ctx;
     time_t now = time(NULL);
     ssize_t sent;
-    for (int i = 0; i < 1024; ++i) {
+    for (int i = 0; i < sol.maxfd; ++i) {
         struct client *c = &sol.clients[i];
         if (c->online == false)
             continue;
@@ -469,7 +469,7 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
 /* static int client_destructor(struct hashtable_entry *entry) { */
 static int client_destructor(struct client *client) {
 
-    if (!client)
+    if (!client || client->online == false)
         return -1;
 
     close_connection(&client->conn);
@@ -556,6 +556,12 @@ static void on_accept(struct ev_ctx *ctx, void *data) {
             close_connection(&conn);
             break;
         }
+
+        // Resize client pool if needed
+        if (fd > sol.maxfd) {
+            sol.maxfd = fd;
+            sol.clients = xrealloc(sol.clients, sol.maxfd);
+        }
         /*
          * Create a client structure to handle his context
          * connection
@@ -620,10 +626,8 @@ static void on_message(struct ev_ctx *ctx, void *data) {
             };
             publish_message(&lwt, t, io.ctx);
         }
-        io.client->online = false;
         // Clean resources
         ev_del_fd(ctx, c->fd);
-        close_connection(&io.client->conn);
         // Remove from subscriptions for now
         if (io.client->session) {
             struct list *subs = io.client->session->subscriptions;
@@ -636,6 +640,7 @@ static void on_message(struct ev_ctx *ctx, void *data) {
             }
             iter_destroy(it);
         }
+        client_destructor(io.client);
         info.nclients--;
         info.nconnections--;
     }
@@ -652,9 +657,7 @@ static void on_payload(struct ev_ctx *ctx, void *data) {
             on_write(ctx, io);
             break;
         case CLIENTDC:
-            io->client->online = false;
             ev_del_fd(ctx, c->fd);
-            close_connection(&io->client->conn);
             client_destructor(io->client);
             // Update stats
             info.nclients--;
@@ -723,6 +726,7 @@ int start_server(const char *addr, const char *port) {
 
     /* Initialize global Sol instance */
     trie_init(&sol.topics, NULL);
+    sol.maxfd = BASE_CLIENTS_NUM - 1;
     sol.clients = xcalloc(BASE_CLIENTS_NUM, sizeof(struct client));
     sol.sessions = hashtable_new(session_destructor);
     sol.authentications = hashtable_new(auth_destructor);
@@ -761,6 +765,9 @@ int start_server(const char *addr, const char *port) {
     ev_destroy(&ctx);
     hashtable_destroy(sol.sessions);
     hashtable_destroy(sol.authentications);
+    // free client resources
+    for (int i = 0; i < sol.maxfd; ++i)
+        client_destructor(&sol.clients[i]);
     xfree(sol.clients);
 
     /* Destroy SSL context, if any present */
