@@ -59,40 +59,45 @@ struct sol_info info;
 struct sol sol;
 
 /*
- * TCP server, based on I/O multiplexing but sharing I/O and work loads between
- * thread pools. The main thread have the exclusive responsibility of accepting
- * connections and pass them to IO threads.
- * From now on read and write operations for the connection will be handled by
- * a dedicated thread pool, which after every read will decode the bytearray
- * according to the protocol definition of each packet and finally pass the
- * resulting packet to the worker thread pool, where, according to the OPCODE
- * of the packet, the operation will be executed and the result will be
- * returned back to the IO thread that will write back to the client the
- * response packed into a bytestream.
+ * TCP server, based on I/O multiplexing abstraction called ev_ctx. Each thread
+ * (if any) should have his own ev_ctx and thus being responsible of a subset
+ * of clients.
+ * At the init of the server, the ev_ctx will be instructed to run some
+ * periodic tasks and to run a callback on_accept on new connections. From now
+ * on start a simple juggling of callbacks to be scheduled on the event loop,
+ * typically after being accepted a connection his handle (fd) will be added to
+ * the backend of the loop (this case we're using EPOLL as a backend but also
+ * KQUEUE or SELECT/POLL should be easy to plug-in) and on_message will be run
+ * every time there's new data incoming. If a complete packet is received and
+ * correctly parsed it will be processed by calling the right handler from the
+ * handler module, based on the command it carries and a response will be fired
+ * back.
  *
- *      MAIN              1...N              1...N
+ *            MAIN THREAD
+ *             [EV_CTX]
  *
- *    [EV_CTX]        [IO EV_CTX]         [WORK EV_CTX]
- *  ACCEPT THREAD    IO THREAD POOL    WORKER THREAD POOL
- *  -------------    --------------    ------------------
- *        |                 |                  |
- *      ACCEPT              |                  |
- *        | --------------> |                  |
- *        |          READ AND DECODE           |
- *        |                 | ---------------> |
- *        |                 |                WORK
- *        |                 | <--------------- |
- *        |               WRITE                |
- *        |                 |                  |
- *      ACCEPT              |                  |
- *        | --------------> |                  |
+ *    ON_ACCEPT         ON_MESSAGE
+ *  -------------    --------------
+ *        |                 |
+ *      ACCEPT              |
+ *        | --------------> |
+ *        |          READ AND DECODE
+ *        |                 |
+ *        |                 |
+ *        |              PROCESS
+ *        |                 |
+ *        |                 |
+ *        |               WRITE
+ *        |                 |
+ *      ACCEPT              |
+ *        | --------------> |
  *
- * By tuning the number of IO threads and worker threads based on the number of
- * core of the host machine, it is possible to increase the number of served
- * concurrent requests per seconds.
- * The access to shared data strucures on the worker thread pool is guarded by
- * a spinlock, and being generally fast operations it shouldn't suffer high
- * contentions by the threads and thus being really fast.
+ * Right now we're using a single thread, but the whole method could be easily
+ * distributed across a threadpool, by paying attention to the shared critical
+ * parts on handler module.
+ * The access to shared data strucures on the worker thread pool could be
+ * guarded by a spinlock, and being generally fast operations it shouldn't
+ * suffer high contentions by the threads and thus being really fast.
  */
 
 /*
