@@ -338,7 +338,7 @@ unsigned int pack(unsigned char *buf, char *format, ...) {
  *  (string is extracted based on its stored length, but 's' can be
  *  prepended with a max length)
  */
-void unpack(unsigned char *buf, char *format, ...) {
+unsigned int unpack(unsigned char *buf, char *format, ...) {
     va_list ap;
 
     signed char *b;              // 8-bit
@@ -356,6 +356,8 @@ void unpack(unsigned char *buf, char *format, ...) {
     char *s;
     unsigned int maxstrlen = 0;
 
+    unsigned int size = 0;
+
     va_start(ap, format);
 
     for(; *format != '\0'; format++) {
@@ -367,47 +369,55 @@ void unpack(unsigned char *buf, char *format, ...) {
                 else
                     *b = -1 - (unsigned char) (0xffu - *buf);
                 buf++;
+                size += 1;
                 break;
 
             case 'B': // 8-bit unsigned
                 B = va_arg(ap, unsigned char*);
                 *B = *buf++;
+                size += 1;
                 break;
 
             case 'h': // 16-bit
                 h = va_arg(ap, int*);
                 *h = unpacki16(buf);
                 buf += 2;
+                size += 2;
                 break;
 
             case 'H': // 16-bit unsigned
                 H = va_arg(ap, unsigned int*);
                 *H = unpacku16(buf);
                 buf += 2;
+                size += 2;
                 break;
 
             case 'i': // 32-bit
                 i = va_arg(ap, long int*);
                 *i = unpacki32(buf);
                 buf += 4;
+                size += 4;
                 break;
 
             case 'I': // 32-bit unsigned
                 I = va_arg(ap, unsigned long int*);
                 *I = unpacku32(buf);
                 buf += 4;
+                size += 4;
                 break;
 
             case 'q': // 64-bit
                 q = va_arg(ap, long long int*);
                 *q = unpacki64(buf);
                 buf += 8;
+                size += 8;
                 break;
 
             case 'Q': // 64-bit unsigned
                 Q = va_arg(ap, unsigned long long int*);
                 *Q = unpacku64(buf);
                 buf += 8;
+                size += 8;
                 break;
 
             case 's': // string
@@ -415,6 +425,7 @@ void unpack(unsigned char *buf, char *format, ...) {
                 memcpy(s, buf, maxstrlen);
                 s[maxstrlen] = '\0';
                 buf += maxstrlen;
+                size += maxstrlen;
                 break;
 
             default:
@@ -427,6 +438,8 @@ void unpack(unsigned char *buf, char *format, ...) {
     }
 
     va_end(ap);
+
+    return size;
 }
 
 /* Helper functions */

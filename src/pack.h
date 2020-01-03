@@ -128,7 +128,7 @@ unsigned int pack(unsigned char *, char *, ...);
  *  (string is extracted based on its stored length, but 's' can be
  *  prepended with a max length)
  */
-void unpack(unsigned char *, char *, ...);
+unsigned int unpack(unsigned char *, char *, ...);
 
 long long unpack_integer(unsigned char **, char);
 
