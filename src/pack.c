@@ -68,8 +68,7 @@ bstring bstring_dup(const bstring src) {
 
 /* Same as bstring_copy but setting the entire content of the string to 0 */
 bstring bstring_empty(size_t len) {
-    unsigned char *str = xmalloc(len);
-    memset(str, 0x00, len);
+    unsigned char *str = xcalloc(len, sizeof(unsigned char));
     return str;
 }
 

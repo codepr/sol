@@ -74,8 +74,6 @@ struct ev_ctx {
 
 void ev_init(struct ev_ctx *, int);
 
-void ev_clone_ctx(struct ev_ctx *, const struct ev_ctx *);
-
 void ev_destroy(struct ev_ctx *);
 
 int ev_poll(struct ev_ctx *, time_t);

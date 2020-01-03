@@ -26,6 +26,7 @@
  */
 
 #include <time.h>
+#include <errno.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/epoll.h>
@@ -114,23 +115,6 @@ void ev_init(struct ev_ctx *ctx, int events_nr) {
         ctx->events_monitored[i].mask = EV_NONE;
 }
 
-/*
- * Clone function, just take the inner FD of the context and create another
- * context to it. Useful when a client needs to watch over a set of FDs using
- * his own event array, not shared between different threads for example.
- */
-void ev_clone_ctx(struct ev_ctx *ctx, const struct ev_ctx *src) {
-    struct epoll_api *e_api = xmalloc(sizeof(*e_api));
-    e_api->fd = ((struct epoll_api *) src->api)->fd;
-    e_api->events = xcalloc(src->events_nr, sizeof(struct epoll_event));
-    ctx->api = e_api;
-    ctx->maxfd = src->events_nr;
-    ctx->events_nr = src->events_nr;
-    ctx->events_monitored = xcalloc(src->events_nr, sizeof(struct ev));
-    for (int i = 0; i < src->events_nr; ++i)
-        ctx->events_monitored[i].mask = EV_NONE;
-}
-
 void ev_destroy(struct ev_ctx *ctx) {
     for (int i = 0; i < ctx->maxfd; ++i) {
         if (!(ctx->events_monitored[i].mask & EV_CLOSEFD) &&
@@ -166,8 +150,13 @@ int ev_run(struct ev_ctx *ctx) {
     int n = 0, events = 0;
     while (1) {
         n = ev_poll(ctx, -1);
-        if (n < 0)
+        if (n < 0) {
+            /* Signals to all threads. Ignore it for now */
+            if (errno == EINTR)
+                continue;
+            /* Error occured, break the loop */
             break;
+        }
         for (int i = 0; i < n; ++i) {
             events = ev_get_event_type(ctx, i);
             ev_read_event(ctx, i, events, NULL);
