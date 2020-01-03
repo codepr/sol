@@ -243,18 +243,14 @@ int ev_read_event(struct ev_ctx *ctx, int idx, int mask, void **ptr) {
     struct epoll_api *e_api = ctx->api;
     struct ev *e = e_api->events[idx].data.ptr;
     int fd = e->fd;
-    /* if (!(mask & (EV_CLOSEFD | EV_TIMERFD))) */
-    /*     *ptr = e->data; */
     if (mask & EV_EVENTFD) {
         eventfd_read(fd, &(eventfd_t){0L});
         err = close(fd);
     } else if (mask & EV_TIMERFD) {
         (void) read(fd, &(long int){0L}, sizeof(long int));
-        /* err = epoll_mod(e_api->fd, fd, EPOLLIN, e); */
         e->callback(ctx, e->data);
     } else if (mask & EV_CLOSEFD) {
         eventfd_read(fd, &(eventfd_t){0L});
-        /* err = epoll_mod(e_api->fd, fd, EPOLLIN, e); */
     } else {
         e->callback(ctx, e->data);
     }
