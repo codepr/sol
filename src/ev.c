@@ -198,7 +198,7 @@ static int ev_api_get_event_type(struct ev_ctx *ctx, int idx) {
 }
 
 static int ev_api_poll(struct ev_ctx *ctx, time_t timeout) {
-    struct timeval *tv = timeout > 0 ? &(struct timeval){ timeout, 0 } : NULL;
+    struct timeval *tv = timeout > 0 ? &(struct timeval){ 0, timeout * 1000 } : NULL;
     struct select_api *s_api = ctx->api;
     memcpy(&s_api->_rfds, &s_api->rfds, sizeof(fd_set));
     memcpy(&s_api->_wfds, &s_api->wfds, sizeof(fd_set));
