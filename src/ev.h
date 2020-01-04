@@ -122,9 +122,6 @@ int ev_fire_event(struct ev_ctx *, int, int,
                   void (*callback)(struct ev_ctx *, void *), void *);
 
 // TODO remove from exposed, make it static
-int ev_read_event(struct ev_ctx *, int, int, void **);
-
-// TODO remove from exposed, make it static
-int ev_get_fd(const struct ev_ctx *, int);
+int ev_read_event(struct ev_ctx *, int, int);
 
 #endif
