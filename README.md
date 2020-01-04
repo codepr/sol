@@ -21,7 +21,8 @@ there's probably some corner cases, not deeply investigated yet.
 - Wildcards (#) on subscriptions
 - Authentication through username and password
 - SSL/TLS connections (almost ready)
-- Multiplexing IO with abstraction over backend.
+- Multiplexing IO with abstraction over backend, currently supports
+  select/poll/epoll choosing the better implementation.
 
 ### To be implemented
 
