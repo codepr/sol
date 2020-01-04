@@ -69,7 +69,7 @@ struct ev_ctx {
     int events_nr;
     int maxfd;
     struct ev *events_monitored;
-    void *api;
+    void *api; // opaque pointer to platform defined backends
 };
 
 void ev_init(struct ev_ctx *, int);

@@ -294,7 +294,7 @@ ssize_t recv_bytes(int fd, unsigned char *buf, size_t bufsize) {
 
 eagain:
 
-    return total == 0 ? -ERREAGAIN : total;
+    return total;
 
 err:
 
@@ -526,7 +526,7 @@ void connection_init(struct connection *conn, const SSL_CTX *ssl_ctx) {
 
 /*
  * Simple abstraction over a socket connection, based on the connection type,
- * sets plain accept, read, write and close functions or the TLS version once.
+ * sets plain accept, read, write and close functions or the TLS version one.
  *
  * This structure allows to ignore some details at a higher level where we can
  * simply call accept, send, recv or close without actually worrying of the

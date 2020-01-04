@@ -60,6 +60,13 @@ struct topic {
     HashTable *subscribers;
 };
 
+enum client_status {
+    WAITING_HEADER,
+    WAITING_LENGTH,
+    WAITING_DATA,
+    SENDING_DATA
+};
+
 /*
  * Wrapper structure around a connected client, each client can be a publisher
  * or a subscriber, it can be used to track sessions too.
@@ -67,6 +74,11 @@ struct topic {
 struct client {
     bool online;  // just a boolean will be fine for now
     bool clean_session;
+    int pos;
+    int read;
+    int toread;
+    int status;
+    unsigned char *buf;
     char client_id[MQTT_CLIENT_ID_LEN];
     struct connection conn;
     struct session *session;

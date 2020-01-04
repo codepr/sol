@@ -41,6 +41,11 @@ void client_init(struct client *client) {
     client->online = true;
     client->clean_session = true;
     client->client_id[0] = '\0';
+    client->status = WAITING_HEADER;
+    client->pos = 0;
+    client->read = 0;
+    client->toread = 0;
+    client->buf = xcalloc(conf->max_request_size, sizeof(unsigned char));
     client->last_action_time = time(NULL);
     client->lwt_msg = NULL;
     client->session = sol_session_new();
