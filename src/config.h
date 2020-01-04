@@ -32,6 +32,20 @@
 #include <stdbool.h>
 #include "hashtable.h"
 
+// Eventloop backend check
+#ifdef __linux__
+#define EPOLL 1
+#define EVENTLOOP_BACKEND "epoll"
+#elif (defined(__APPLE__) && defined(MAC_OS_X_VERSION_10_6)) \
+    || defined(__FreeBSD__) || defined(__OpenBSD__) || defined (__NetBSD__)
+#define KQUEUE 1
+#define EVENTLOOP_BACKEND "kqueue"
+#else
+#define SELECT 1
+#define EVENTLOOP_BACKEND "select"
+#endif
+
+
 // Default parameters
 
 #define VERSION                     "0.12.1"

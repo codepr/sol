@@ -344,6 +344,7 @@ void config_print(void) {
         log_info("\tlogpath: %s", config.logpath);
         const char *human_memory = memory_to_string(config.max_memory);
         log_info("Max memory: %s", human_memory);
+        log_info("Event loop backend: %s", EVENTLOOP_BACKEND);
         xfree((char *) human_memory);
         xfree((char *) human_rsize);
     }

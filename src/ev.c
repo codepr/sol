@@ -34,8 +34,7 @@
 #include <sys/timerfd.h>
 #include "ev.h"
 #include "util.h"
-
-#define SELECT 1
+#include "config.h"
 
 #ifdef EPOLL
 
@@ -166,6 +165,7 @@ static int ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
     }
     return err;
 }
+
 #else // EPOLL
 
 struct select_api {
@@ -198,10 +198,11 @@ static int ev_api_get_event_type(struct ev_ctx *ctx, int idx) {
 }
 
 static int ev_api_poll(struct ev_ctx *ctx, time_t timeout) {
+    struct timeval *tv = timeout > 0 ? &(struct timeval){ timeout, 0 } : NULL;
     struct select_api *s_api = ctx->api;
     memcpy(&s_api->_rfds, &s_api->rfds, sizeof(fd_set));
     memcpy(&s_api->_wfds, &s_api->wfds, sizeof(fd_set));
-    int err = select(ctx->maxfd + 1, &s_api->_rfds, &s_api->_wfds, NULL, NULL);
+    int err = select(ctx->maxfd + 1, &s_api->_rfds, &s_api->_wfds, NULL, tv);
     if (err < 0)
         return err;
     return ctx->maxfd + 1;
