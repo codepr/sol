@@ -29,14 +29,15 @@
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/epoll.h>
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
 #include "ev.h"
 #include "util.h"
 #include "config.h"
 
-#ifdef EPOLL
+#if defined(EPOLL)
+
+#include <sys/epoll.h>
 
 struct epoll_api {
     int fd;
@@ -138,12 +139,10 @@ static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
     struct epoll_api *e_api = ctx->api;
     int ret = 0;
     int op = mask & EV_READ ? EPOLLIN : EPOLLOUT;
-    if (mask & EV_EVENTFD) {
-        (void) epoll_add(e_api->fd, fd, op, &ctx->events_monitored[fd]);
-        ret = eventfd_write(fd, 1);
-    } else {
+    if (mask & EV_EVENTFD)
+        ret = epoll_add(e_api->fd, fd, op, &ctx->events_monitored[fd]);
+    else
         ret = epoll_mod(e_api->fd, fd, op, &ctx->events_monitored[fd]);
-    }
     return ret;
 }
 
@@ -166,15 +165,150 @@ static int ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
     return err;
 }
 
-#else // EPOLL
+#elif defined(POLL)
+
+#include <poll.h>
+
+struct poll_api {
+    int nfds;
+    int events_monitored;
+    struct pollfd *fds;
+};
+
+static void ev_api_init(struct ev_ctx *ctx, int events_nr) {
+    struct poll_api *p_api = xmalloc(sizeof(*p_api));
+    p_api->nfds = 0;
+    p_api->fds = xcalloc(events_nr, sizeof(struct pollfd));
+    p_api->events_monitored = events_nr;
+    ctx->api = p_api;
+    ctx->maxfd = events_nr;
+}
+
+static void ev_api_destroy(struct ev_ctx *ctx) {
+    xfree(((struct poll_api *) ctx->api)->fds);
+    xfree(ctx->api);
+}
+
+static int ev_api_get_event_type(struct ev_ctx *ctx, int idx) {
+    struct poll_api *p_api = ctx->api;
+    int fd = p_api->fds[idx].fd;
+    int ev_mask = ctx->events_monitored[fd].mask;
+    // We want to remember the previous events only if they're not of type
+    // CLOSE or TIMER
+    int mask = ev_mask & (EV_CLOSEFD|EV_TIMERFD) ? ev_mask : 0;
+    if (p_api->fds[idx].revents & (POLLHUP|POLLERR)) mask |= EV_DISCONNECT;
+    if (p_api->fds[idx].revents & POLLIN) mask |= EV_READ;
+    if (p_api->fds[idx].revents & POLLOUT) mask |= EV_WRITE;
+    return mask;
+}
+
+static int ev_api_poll(struct ev_ctx *ctx, time_t timeout) {
+    struct poll_api *p_api = ctx->api;
+    int err = poll(p_api->fds, p_api->nfds, timeout);
+    if (err < 0)
+        return err;
+    return p_api->nfds;
+}
+
+/*
+ * Poll maintain in his state the number of file descriptor it monitor in a
+ * fixed size array just like the events we monitor over the primitive. If a
+ * resize is needed cause the number of fds have reached the length of the fds
+ * array, we must increase its size.
+ */
+static int ev_api_watch_fd(struct ev_ctx *ctx, int fd) {
+    struct poll_api *p_api = ctx->api;
+    p_api->fds[p_api->nfds].fd = fd;
+    p_api->fds[p_api->nfds].events = POLLIN;
+    p_api->nfds++;
+    if (p_api->nfds >= p_api->events_monitored) {
+        p_api->events_monitored *= 2;
+        p_api->fds = xrealloc(p_api->fds,
+                              p_api->events_monitored * sizeof(struct pollfd));
+    }
+    return 0;
+}
+
+static int ev_api_del_fd(struct ev_ctx *ctx, int fd) {
+    struct poll_api *p_api = ctx->api;
+    for (int i = 0; i < p_api->nfds; ++i) {
+        if (p_api->fds[i].fd == fd) {
+            p_api->fds[i].fd = -1;
+            p_api->fds[i].events = 0;
+            // Resize fds array
+            for(int j = i; j < p_api->nfds; ++j)
+                p_api->fds[j].fd = p_api->fds[j + 1].fd;
+            p_api->nfds--;
+            break;
+        }
+    }
+    return 0;
+}
+
+/*
+ * We have to check for resize even here just like ev_api_watch_fd.
+ */
+static int ev_api_register_event(struct ev_ctx *ctx, int fd, int mask) {
+    struct poll_api *p_api = ctx->api;
+    p_api->fds[p_api->nfds].fd = fd;
+    p_api->fds[p_api->nfds].events = mask & EV_READ ? POLLIN : POLLOUT;
+    p_api->nfds++;
+    if (p_api->nfds >= p_api->events_monitored) {
+        p_api->events_monitored *= 2;
+        p_api->fds = xrealloc(p_api->fds,
+                              p_api->events_monitored * sizeof(struct pollfd));
+    }
+    return 0;
+}
+
+static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
+    struct poll_api *p_api = ctx->api;
+    int ret = 0;
+    for (int i = 0; i < p_api->nfds; ++i) {
+        if (p_api->fds[i].fd == fd) {
+            p_api->fds[i].events = mask & EV_READ ? POLLIN : POLLOUT;
+            break;
+        }
+    }
+    return ret;
+}
+
+static int ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
+    if (mask == EV_NONE)
+        return 0;
+    int err = 0;
+    struct poll_api *p_api = ctx->api;
+    int fd = p_api->fds[idx].fd;
+    struct ev *e = &ctx->events_monitored[fd];
+    if (mask & EV_EVENTFD) {
+        eventfd_read(fd, &(eventfd_t){0L});
+        err = close(fd);
+    } else if (mask & EV_TIMERFD) {
+        err = read(fd, &(unsigned long int){0L}, sizeof(unsigned long int));
+        if (err > 0)
+            e->callback(ctx, e->data);
+    } else if (mask & EV_CLOSEFD) {
+        eventfd_read(fd, &(eventfd_t){0L});
+    } else {
+        e->callback(ctx, e->data);
+    }
+    return err;
+}
+
+#elif defined(SELECT)
 
 struct select_api {
     fd_set rfds, wfds;
+    // Copy of the original fdset arrays to re-initialize them after each cycle
     fd_set _rfds, _wfds;
 };
 
 static void ev_api_init(struct ev_ctx *ctx, int events_nr) {
-    (void) events_nr;
+    /*
+     * fd_set is an array of 32 i32 and each FD is represented by a bit so
+     * 32 x 32 = 1024 as hard limit
+     */
+    assert(events_nr < 1024);
     struct select_api *s_api = xmalloc(sizeof(*s_api));
     FD_ZERO(&s_api->rfds);
     FD_ZERO(&s_api->wfds);
@@ -200,6 +334,7 @@ static int ev_api_get_event_type(struct ev_ctx *ctx, int idx) {
 static int ev_api_poll(struct ev_ctx *ctx, time_t timeout) {
     struct timeval *tv = timeout > 0 ? &(struct timeval){ 0, timeout * 1000 } : NULL;
     struct select_api *s_api = ctx->api;
+    // Re-initialize fdset arrays cause select call side-effect the originals
     memcpy(&s_api->_rfds, &s_api->rfds, sizeof(fd_set));
     memcpy(&s_api->_wfds, &s_api->wfds, sizeof(fd_set));
     int err = select(ctx->maxfd + 1, &s_api->_rfds, &s_api->_wfds, NULL, tv);
@@ -230,8 +365,6 @@ static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
     struct select_api *s_api = ctx->api;
     int ret = 0;
     FD_SET(fd, mask & EV_READ ? &s_api->rfds : &s_api->wfds);
-    if (mask & EV_EVENTFD)
-        ret = eventfd_write(fd, 1);
     return ret;
 }
 
@@ -266,6 +399,11 @@ static int ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
 static void ev_add_monitored(struct ev_ctx *ctx, int fd, int mask,
                              void (*callback)(struct ev_ctx *, void *),
                              void *ptr) {
+    /*
+     * TODO check for fd <= 1024 if using SELECT
+     * That is because FD_SETSIZE is fixed to 1024, fd_set is an array of 32
+     * i32 and each FD is represented by a bit so 32 x 32 = 1024 as hard limit
+     */
     if (fd > ctx->maxfd) {
         int i = ctx->maxfd;
         ctx->maxfd = fd;
@@ -366,8 +504,12 @@ int ev_register_cron(struct ev_ctx *ctx,
 
 int ev_fire_event(struct ev_ctx *ctx, int fd, int mask,
                   void (*callback)(struct ev_ctx *, void *), void *data) {
+    int ret = 0;
     ev_add_monitored(ctx, fd, mask, callback, data);
-    return ev_api_fire_event(ctx, fd, mask);
+    ret = ev_api_fire_event(ctx, fd, mask);
+    if (mask & EV_EVENTFD)
+        ret = eventfd_write(fd, 1);
+    return ret;
 }
 
 int ev_read_event(struct ev_ctx *ctx, int idx, int mask) {
