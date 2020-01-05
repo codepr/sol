@@ -31,7 +31,7 @@
 #include <stdio.h>
 #include "pack.h"
 
-// Packing/ubpacking error codes
+// Packing/unpacking error codes
 #define MQTT_OK    0
 #define MQTT_ERR   1
 
