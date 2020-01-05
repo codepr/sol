@@ -195,11 +195,11 @@ static const char *solerr(int rc) {
  * - header: Single byte pointer, copy the opcode and flags of the incoming
  *           packet, again for simplicity and convenience of the caller.
  */
-static ssize_t recv_packet(struct client *c, unsigned char *header) {
+static ssize_t recv_packet(struct client *c) {
 
-    ssize_t ret = 0;
-    unsigned char *bufptr = c->buf + 1;
+    ssize_t nread = 0;//, n = 0;
     unsigned opcode = 0, pos = 0;
+    unsigned long long pktlen = 0LL;
 
     if (c->status == WAITING_HEADER) {
 
@@ -207,24 +207,23 @@ static ssize_t recv_packet(struct client *c, unsigned char *header) {
          * Read the first two bytes, the first should contain the message type
          * code
          */
-        ret = recv_data(&c->conn, c->buf + c->read, 2 - c->read);
+        nread = recv_data(&c->conn, c->buf + c->read, 2 - c->read);
 
-        if (errno == EAGAIN || ret < 2) {
-            c->read += ret;
-            return -ERREAGAIN;
-        }
-
-        if (ret <= 0)
+        if (errno != EAGAIN && errno != EWOULDBLOCK && nread <= 0)
             return -ERRCLIENTDC;
 
-        c->read += ret;
+        c->read += nread;
+
+        if (errno == EAGAIN && c->read < 2)
+            return -ERREAGAIN;
+
         c->status = WAITING_LENGTH;
     }
 
     if (c->status == WAITING_LENGTH) {
+
         if (c->read == 2) {
-            *header = *c->buf;
-            opcode = *header >> 4;
+            opcode = *c->buf >> 4;
 
             /* Check for OPCODE, if an unknown OPCODE is received return an
              * error
@@ -232,89 +231,73 @@ static ssize_t recv_packet(struct client *c, unsigned char *header) {
             if (DISCONNECT < opcode || CONNECT > opcode)
                 return -ERRPACKETERR;
 
-            if (opcode > UNSUBSCRIBE)
+            if (opcode > UNSUBSCRIBE) {
+                c->pos = 2;
+                c->toread = c->read;
                 goto exit;
+            }
         }
 
         /*
          * Read 2 extra bytes, because the first 4 bytes could countain the
          * total size in bytes of the entire packet
          */
-        ret += recv_data(&c->conn, c->buf + c->read, 4 - c->read);
+        nread = recv_data(&c->conn, c->buf + c->read, 4 - c->read);
 
-        if (errno == EAGAIN || ret < 2) {
-            c->read += ret;
-            return -ERREAGAIN;
-        }
-
-        if (ret <= 0)
+        if (errno != EAGAIN && errno != EWOULDBLOCK && nread <= 0)
             return -ERRCLIENTDC;
 
-        c->read += ret;
+        c->read += nread;
+
+        if (errno == EAGAIN && c->read < 4)
+            return -ERREAGAIN;
+
         c->status = WAITING_DATA;
     }
 
     if (c->status == WAITING_DATA) {
-        /*
-         * Read remaning length bytes which starts at byte 2 and can be long to 4
-         * bytes based on the size stored, so byte 2-5 is dedicated to the packet
-         * length.
-         */
-        ssize_t n = 0;
-        unsigned long long tlen = mqtt_decode_length(&bufptr, &pos);
 
-        /*
-         * Set return code to -ERRMAXREQSIZE in case the total packet len exceeds
-         * the configuration limit `max_request_size`
-         */
-        if (tlen > conf->max_request_size) {
-            ret = -ERRMAXREQSIZE;
-            goto exit;
+        if (c->toread == 0) {
+            /*
+             * Read remaning length bytes which starts at byte 2 and can be long to
+             * 4 bytes based on the size stored, so byte 2-5 is dedicated to the
+             * packet length.
+             */
+            pktlen = mqtt_decode_length(c->buf+1, &pos);
+
+            /*
+             * Set return code to -ERRMAXREQSIZE in case the total packet len
+             * exceeds the configuration limit `max_request_size`
+             */
+            if (pktlen > conf->max_request_size)
+                return -ERRMAXREQSIZE;
+
+            c->pos = pos + 1;
+            c->toread = pktlen + pos + 1;
+
+            if (pktlen <= 4)
+                goto exit;
         }
 
-        if (tlen <= 4)
-            goto exit;
+        nread = recv_data(&c->conn, c->buf + c->read, c->toread - c->read);
 
-        c->toread = tlen + 4;
+        if (errno != EAGAIN && errno != EWOULDBLOCK && nread <= 0)
+            return -ERRCLIENTDC;
 
-        ssize_t offset = 4 - pos -1;
-
-        unsigned long long remaining_bytes = tlen - offset;
-
-        /* Read remaining bytes to complete the packet */
-        // TODO update using client buffer offsets
-        while (remaining_bytes > 0) {
-            n = recv_data(&c->conn, bufptr + offset, remaining_bytes);
-            if (n < 0)
-                goto err;
-            c->read += n;
-            remaining_bytes -= n;
-            ret += n;
-            offset += n;
-        }
-
-        ret -= (pos + 1);
+        c->read += nread;
+        if (errno == EAGAIN && c->read < c->toread)
+            return -ERREAGAIN;
     }
 
 exit:
 
-    c->pos = pos + 1;
-
-    return ret;
-
-err:
-
-    // TODO move this out of the function (LWT handling)
-    close_connection(&c->conn);
-
-    return ret;
+    return nread;
 }
 
 /* Handle incoming requests, after being accepted or after a reply */
 static int read_data(struct client *c, struct mqtt_packet *pkt) {
 
     ssize_t bytes = 0;
-    unsigned char header = 0;
 
     /*
      * We must read all incoming bytes till an entire packet is received. This
@@ -322,7 +305,7 @@ static int read_data(struct client *c, struct mqtt_packet *pkt) {
      * send the size of the remaining packet as the second byte. By knowing it
      * we know if the packet is ready to be deserialized and used.
      */
-    bytes = recv_packet(c, &header);
+    bytes = recv_packet(c);
 
     /*
      * Looks like we got a client disconnection or If a not correct packet
@@ -339,13 +322,13 @@ static int read_data(struct client *c, struct mqtt_packet *pkt) {
     if (c->read < c->toread)
         return -ERREAGAIN;
 
-    info.bytes_recv += bytes;
+    info.bytes_recv += c->read;
 
     /*
      * Unpack received bytes into a mqtt_packet structure and execute the
      * correct handler based on the type of the operation.
      */
-    mqtt_unpack(c->buf + c->pos, pkt, header, bytes);
+    mqtt_unpack(c->buf + c->pos, pkt, *c->buf, c->read - c->pos);
     c->toread = c->read = 0;
     c->status = SENDING_DATA;
 
@@ -687,7 +670,6 @@ static void on_message(struct ev_ctx *ctx, void *data) {
             info.nconnections--;
             break;
         case -ERREAGAIN:
-            io.client->status = WAITING_HEADER;
             ev_fire_event(ctx, c->fd, EV_READ, on_message, io.client);
             break;
     }

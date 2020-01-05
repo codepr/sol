@@ -202,7 +202,7 @@ int mqtt_encode_length(unsigned char *, size_t);
 /*
  * The reverse of the encoding function, returns the value of the size decoded
  */
-size_t mqtt_decode_length(unsigned char **, unsigned *);
+size_t mqtt_decode_length(unsigned char *, unsigned *);
 
 /*
  * Pack to binary an MQTT packet, internally it uses a dispatch table to call

@@ -131,7 +131,7 @@ int mqtt_encode_length(unsigned char *buf, size_t len) {
  *
  * TODO Handle case where multiplier > 128 * 128 * 128
  */
-size_t mqtt_decode_length(unsigned char **buf, unsigned *pos) {
+size_t mqtt_decode_length(unsigned char *buf, unsigned *pos) {
 
     char c;
 	unsigned long long multiplier = 1LL;
@@ -139,11 +139,11 @@ size_t mqtt_decode_length(unsigned char **buf, unsigned *pos) {
     *pos = 0;
 
 	do {
-        c = **buf;
+        c = *buf;
 		value += (c & 127) * multiplier;
 		multiplier *= 128;
-        (*buf)++;
-        (*pos)++;
+        ++buf;
+        ++(*pos);
     } while ((c & 128) != 0);
 
     return value;

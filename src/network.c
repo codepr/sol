@@ -245,7 +245,7 @@ ssize_t send_bytes(int fd, const unsigned char *buf, size_t len) {
         n = send(fd, buf + total, bytesleft, MSG_NOSIGNAL);
         if (n == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
-                goto eagain;
+                break;
             else
                 goto err;
         }
@@ -254,10 +254,6 @@ ssize_t send_bytes(int fd, const unsigned char *buf, size_t len) {
     }
 
     return total;
-
-eagain:
-
-    return total == 0 ? -ERREAGAIN : total;
 
 err:
 
@@ -278,7 +274,7 @@ ssize_t recv_bytes(int fd, unsigned char *buf, size_t bufsize) {
 
         if ((n = recv(fd, buf, bufsize - total, 0)) < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
-                goto eagain;
+                break;
             else
                 goto err;
         }
@@ -289,10 +285,6 @@ ssize_t recv_bytes(int fd, unsigned char *buf, size_t bufsize) {
         buf += n;
         total += n;
     }
-
-    return total;
-
-eagain:
 
     return total;
 
@@ -393,7 +385,7 @@ ssize_t ssl_send_bytes(SSL *ssl, const unsigned char *buf, size_t len) {
                 || (err == SSL_ERROR_SYSCALL && !errno))
                 return 0;  // Connection closed
             if (errno == EAGAIN || errno == EWOULDBLOCK)
-                goto eagain;
+                break;
             else
                 goto err;
         }
@@ -402,10 +394,6 @@ ssize_t ssl_send_bytes(SSL *ssl, const unsigned char *buf, size_t len) {
     }
 
     return total;
-
-eagain:
-
-    return total == 0 ? -ERREAGAIN : total;
 
 err:
 
@@ -430,7 +418,7 @@ ssize_t ssl_recv_bytes(SSL *ssl, unsigned char *buf, size_t bufsize) {
                 || (err == SSL_ERROR_SYSCALL && !errno))
                 return 0;  // Connection closed
             if (errno == EAGAIN || errno == EWOULDBLOCK)
-                goto eagain;
+                break;
             else
                 goto err;
         }
@@ -443,10 +431,6 @@ ssize_t ssl_recv_bytes(SSL *ssl, unsigned char *buf, size_t bufsize) {
     }
 
     return total;
-
-eagain:
-
-    return total == 0 ? -ERREAGAIN : total;
 
 err:
 
