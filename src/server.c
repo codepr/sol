@@ -113,6 +113,8 @@ struct eventloop {
     struct ev_ctx *w_ctx;
 };
 
+static int client_destructor(struct client *);
+
 // CALLBACKS for the eventloop
 static void on_accept(struct ev_ctx *, void *);
 
@@ -207,7 +209,7 @@ static ssize_t recv_packet(struct client *c) {
          * Read the first two bytes, the first should contain the message type
          * code
          */
-        nread = recv_data(&c->conn, c->buf + c->read, 2 - c->read);
+        nread = recv_data(&c->conn, c->rbuf + c->read, 2 - c->read);
 
         if (errno != EAGAIN && errno != EWOULDBLOCK && nread <= 0)
             return -ERRCLIENTDC;
@@ -223,7 +225,7 @@ static ssize_t recv_packet(struct client *c) {
     if (c->status == WAITING_LENGTH) {
 
         if (c->read == 2) {
-            opcode = *c->buf >> 4;
+            opcode = *c->rbuf >> 4;
 
             /* Check for OPCODE, if an unknown OPCODE is received return an
              * error
@@ -232,7 +234,7 @@ static ssize_t recv_packet(struct client *c) {
                 return -ERRPACKETERR;
 
             if (opcode > UNSUBSCRIBE) {
-                c->pos = 2;
+                c->rpos = 2;
                 c->toread = c->read;
                 goto exit;
             }
@@ -242,7 +244,7 @@ static ssize_t recv_packet(struct client *c) {
          * Read 2 extra bytes, because the first 4 bytes could countain the
          * total size in bytes of the entire packet
          */
-        nread = recv_data(&c->conn, c->buf + c->read, 4 - c->read);
+        nread = recv_data(&c->conn, c->rbuf + c->read, 4 - c->read);
 
         if (errno != EAGAIN && errno != EWOULDBLOCK && nread <= 0)
             return -ERRCLIENTDC;
@@ -263,7 +265,7 @@ static ssize_t recv_packet(struct client *c) {
              * 4 bytes based on the size stored, so byte 2-5 is dedicated to the
              * packet length.
              */
-            pktlen = mqtt_decode_length(c->buf+1, &pos);
+            pktlen = mqtt_decode_length(c->rbuf+1, &pos);
 
             /*
              * Set return code to -ERRMAXREQSIZE in case the total packet len
@@ -272,14 +274,14 @@ static ssize_t recv_packet(struct client *c) {
             if (pktlen > conf->max_request_size)
                 return -ERRMAXREQSIZE;
 
-            c->pos = pos + 1;
+            c->rpos = pos + 1;
             c->toread = pktlen + pos + 1;
 
             if (pktlen <= 4)
                 goto exit;
         }
 
-        nread = recv_data(&c->conn, c->buf + c->read, c->toread - c->read);
+        nread = recv_data(&c->conn, c->rbuf + c->read, c->toread - c->read);
 
         if (errno != EAGAIN && errno != EWOULDBLOCK && nread <= 0)
             return -ERRCLIENTDC;
@@ -328,7 +330,7 @@ static int read_data(struct client *c, struct mqtt_packet *pkt) {
      * Unpack received bytes into a mqtt_packet structure and execute the
      * correct handler based on the type of the operation.
      */
-    mqtt_unpack(c->buf + c->pos, pkt, *c->buf, c->read - c->pos);
+    mqtt_unpack(c->rbuf + c->rpos, pkt, *c->rbuf, c->read - c->rpos);
     c->toread = c->read = 0;
     c->status = SENDING_DATA;
 
@@ -339,6 +341,43 @@ static int read_data(struct client *c, struct mqtt_packet *pkt) {
 err:
 
     return bytes;
+}
+
+static inline int write_data(struct client *client) {
+    ssize_t wrote = send_data(&client->conn, client->wbuf, client->towrite);
+    if (wrote <= 0)
+        return -ERRCLIENTDC;
+    if (wrote < client->towrite && errno == EAGAIN)
+        return -ERREAGAIN;
+    return 0;
+}
+
+static void on_write(struct ev_ctx *ctx, void *arg) {
+    struct client *client = arg;
+    ssize_t wrote = 0;
+    wrote = write_data(client);
+    switch (wrote) {
+        case 0: // OK
+            /*
+             * Rearm descriptor making it ready to receive input,
+             * on_message will be the callback to be used.
+             */
+            client->status = WAITING_HEADER;
+            ev_fire_event(ctx, client->conn.fd, EV_READ, on_message, client);
+            break;
+        case -ERREAGAIN:
+            ev_fire_event(ctx, client->conn.fd, EV_WRITE, on_write, client);
+            break;
+        default:
+            log_info("Closing connection with %s: %s %lu",
+                     client->conn.ip, solerr(client->rc), wrote);
+            ev_del_fd(ctx, client->conn.fd);
+            client_destructor(client);
+            // Update stats
+            info.nclients--;
+            info.nconnections--;
+            break;
+    }
 }
 
 /*
@@ -498,7 +537,8 @@ static int client_destructor(struct client *client) {
     if (!client || client->online == false)
         return -1;
 
-    client->pos = client->toread = client->read = 0;
+    client->rpos = client->toread = client->read = 0;
+    client->wrote = client->towrite = 0;
     close_connection(&client->conn);
 
     if (client->session) {
@@ -521,7 +561,8 @@ static int client_destructor(struct client *client) {
 
     client->online = false;
     client->client_id[0] = '\0';
-    xfree(client->buf);
+    xfree(client->rbuf);
+    xfree(client->wbuf);
 
     return 0;
 }
@@ -678,8 +719,8 @@ static void on_message(struct ev_ctx *ctx, void *data) {
 static void process_message(struct ev_ctx *ctx, struct io_event *io) {
     ssize_t sent = 0LL;
     struct connection *c = &io->client->conn;
-    io->rc = handle_command(io->data.header.bits.type, io);
-    switch (io->rc) {
+    io->client->rc = handle_command(io->data.header.bits.type, io);
+    switch (io->client->rc) {
         case REPLY:
         case RC_NOT_AUTHORIZED:
         case RC_BAD_USERNAME_OR_PASSWORD:
@@ -692,7 +733,7 @@ static void process_message(struct ev_ctx *ctx, struct io_event *io) {
             if (sent <= 0 || io->rc == RC_NOT_AUTHORIZED
                 || io->rc == RC_BAD_USERNAME_OR_PASSWORD) {
                 log_info("Closing connection with %s: %s %lu",
-                         c->ip, solerr(io->rc), sent);
+                         c->ip, solerr(io->client->rc), sent);
                 ev_del_fd(ctx, c->fd);
                 client_destructor(io->client);
                 // Update stats

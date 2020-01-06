@@ -74,11 +74,15 @@ enum client_status {
 struct client {
     bool online;  // just a boolean will be fine for now
     bool clean_session;
-    int pos;
+    int rc;
+    int status;
+    int rpos;
     int read;
     int toread;
-    int status;
-    unsigned char *buf;
+    unsigned char *rbuf;
+    int wrote;
+    int towrite;
+    unsigned char *wbuf;
     char client_id[MQTT_CLIENT_ID_LEN];
     struct connection conn;
     struct session *session;
