@@ -146,23 +146,9 @@ static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
     return ret;
 }
 
-static int ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
-    int err = 0;
+static struct ev *ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
     struct epoll_api *e_api = ctx->api;
-    struct ev *e = e_api->events[idx].data.ptr;
-    int fd = e->fd;
-    if (mask & EV_EVENTFD) {
-        eventfd_read(fd, &(eventfd_t){0L});
-        err = close(fd);
-    } else if (mask & EV_TIMERFD) {
-        (void) read(fd, &(unsigned long int){0L}, sizeof(unsigned long int));
-        e->callback(ctx, e->data);
-    } else if (mask & EV_CLOSEFD) {
-        eventfd_read(fd, &(eventfd_t){0L});
-    } else {
-        e->callback(ctx, e->data);
-    }
-    return err;
+    return e_api->events[idx].data.ptr;
 }
 
 #elif defined(POLL)
@@ -273,26 +259,10 @@ static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
     return ret;
 }
 
-static int ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
-    if (mask == EV_NONE)
-        return 0;
-    int err = 0;
+static struct ev *ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
     struct poll_api *p_api = ctx->api;
     int fd = p_api->fds[idx].fd;
-    struct ev *e = &ctx->events_monitored[fd];
-    if (mask & EV_EVENTFD) {
-        eventfd_read(fd, &(eventfd_t){0L});
-        err = close(fd);
-    } else if (mask & EV_TIMERFD) {
-        err = read(fd, &(unsigned long int){0L}, sizeof(unsigned long int));
-        if (err > 0)
-            e->callback(ctx, e->data);
-    } else if (mask & EV_CLOSEFD) {
-        eventfd_read(fd, &(eventfd_t){0L});
-    } else {
-        e->callback(ctx, e->data);
-    }
-    return err;
+    return &ctx->events_monitored[fd];
 }
 
 #elif defined(SELECT)
@@ -369,24 +339,7 @@ static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
 }
 
 static int ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
-    if (mask == EV_NONE)
-        return 0;
-    int err = 0;
-    struct ev *e = &ctx->events_monitored[idx];
-    int fd = e->fd;
-    if (mask & EV_EVENTFD) {
-        eventfd_read(fd, &(eventfd_t){0L});
-        err = close(fd);
-    } else if (mask & EV_TIMERFD) {
-        err = read(fd, &(unsigned long int){0L}, sizeof(unsigned long int));
-        if (err > 0)
-            e->callback(ctx, e->data);
-    } else if (mask & EV_CLOSEFD) {
-        eventfd_read(fd, &(eventfd_t){0L});
-    } else {
-        e->callback(ctx, e->data);
-    }
-    return err;
+    return &ctx->events_monitored[idx];
 }
 
 #endif // SELECT
@@ -415,9 +368,15 @@ static void ev_add_monitored(struct ev_ctx *ctx, int fd, int mask,
         }
     }
     ctx->events_monitored[fd].fd = fd;
-    ctx->events_monitored[fd].mask = mask;
-    ctx->events_monitored[fd].data = ptr;
-    ctx->events_monitored[fd].callback = callback;
+    ctx->events_monitored[fd].mask |= mask;
+    if (mask & EV_READ) {
+        ctx->events_monitored[fd].rdata = ptr;
+        ctx->events_monitored[fd].rcallback = callback;
+    }
+    if (mask & EV_WRITE) {
+        ctx->events_monitored[fd].wdata = ptr;
+        ctx->events_monitored[fd].wcallback = callback;
+    }
 }
 
 void ev_init(struct ev_ctx *ctx, int events_nr) {
@@ -467,8 +426,10 @@ int ev_watch_fd(struct ev_ctx *ctx, int fd, int mask) {
 
 int ev_del_fd(struct ev_ctx *ctx, int fd) {
     ctx->events_monitored[fd].mask = EV_NONE;
-    ctx->events_monitored[fd].data = NULL;
-    ctx->events_monitored[fd].callback = NULL;
+    ctx->events_monitored[fd].rdata = NULL;
+    ctx->events_monitored[fd].rcallback = NULL;
+    ctx->events_monitored[fd].wdata = NULL;
+    ctx->events_monitored[fd].wcallback = NULL;
     return ev_api_del_fd(ctx, fd);
 }
 
@@ -498,7 +459,7 @@ int ev_register_cron(struct ev_ctx *ctx,
         return -1;
 
     // Add the timer to the event loop
-    ev_add_monitored(ctx, timerfd, EV_TIMERFD, callback, NULL);
+    ev_add_monitored(ctx, timerfd, EV_TIMERFD|EV_WRITE|EV_READ, callback, NULL);
     return ev_api_watch_fd(ctx, timerfd);
 }
 
@@ -513,5 +474,29 @@ int ev_fire_event(struct ev_ctx *ctx, int fd, int mask,
 }
 
 int ev_read_event(struct ev_ctx *ctx, int idx, int mask) {
-    return ev_api_read_event(ctx, idx, mask);
+    if (mask == EV_NONE)
+        return 0;
+    struct ev *e = ev_api_read_event(ctx, idx, mask);
+    int err = 0;
+    int fd = e->fd;
+    if (mask & EV_EVENTFD) {
+        eventfd_read(fd, &(eventfd_t){0L});
+        err = close(fd);
+    } else if (mask & EV_TIMERFD) {
+        err = read(fd, &(unsigned long int){0L}, sizeof(unsigned long int));
+        if (err > 0) {
+            if (mask & EV_READ)
+                e->rcallback(ctx, e->rdata);
+            if (mask & EV_WRITE)
+                e->wcallback(ctx, e->wdata);
+        }
+    } else if (mask & EV_CLOSEFD) {
+        eventfd_read(fd, &(eventfd_t){0L});
+    } else {
+        if (mask & EV_READ)
+            e->rcallback(ctx, e->rdata);
+        if (mask & EV_WRITE)
+            e->wcallback(ctx, e->wdata);
+    }
+    return err;
 }

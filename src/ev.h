@@ -50,8 +50,10 @@ struct ev {
     int fd;
     int mask;
     // Either an opaque pointer to client data or a callback for timed events
-    void *data;
-    void (*callback)(struct ev_ctx *, void *);
+    void *rdata;
+    void *wdata;
+    void (*rcallback)(struct ev_ctx *, void *);
+    void (*wcallback)(struct ev_ctx *, void *);
 };
 
 /*
