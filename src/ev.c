@@ -106,7 +106,7 @@ static int ev_api_get_event_type(struct ev_ctx *ctx, int idx) {
     int ev_mask = ((struct ev *) e_api->events[idx].data.ptr)->mask;
     // We want to remember the previous events only if they're not of type
     // CLOSE or TIMER
-    int mask = ev_mask & (EV_CLOSEFD|EV_TIMERFD) ? ev_mask : 0;
+    int mask = ev_mask & (EV_CLOSEFD|EV_TIMERFD) ? ev_mask : EV_NONE;
     if (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
         mask |= EV_DISCONNECT;
     else
@@ -381,6 +381,7 @@ static void ev_add_monitored(struct ev_ctx *ctx, int fd, int mask,
 
 void ev_init(struct ev_ctx *ctx, int events_nr) {
     ev_api_init(ctx, events_nr);
+    ctx->stop = 0;
     ctx->events_nr = events_nr;
     ctx->events_monitored = xcalloc(events_nr, sizeof(struct ev));
     for (int i = 0; i < events_nr; ++i)
@@ -407,10 +408,15 @@ int ev_poll(struct ev_ctx *ctx, time_t timeout) {
 
 int ev_run(struct ev_ctx *ctx) {
     int n = 0, events = 0;
-    while (1) {
+    while (!ctx->stop) {
         n = ev_poll(ctx, -1);
-        if (n < 0)
+        if (n < 0) {
+            /* Signals to all threads. Ignore it for now */
+            if (errno == EINTR)
+                continue;
+            /* Error occured, break the loop */
             break;
+        }
         for (int i = 0; i < n; ++i) {
             events = ev_get_event_type(ctx, i);
             ev_read_event(ctx, i, events);
@@ -459,7 +465,7 @@ int ev_register_cron(struct ev_ctx *ctx,
         return -1;
 
     // Add the timer to the event loop
-    ev_add_monitored(ctx, timerfd, EV_TIMERFD|EV_WRITE|EV_READ, callback, NULL);
+    ev_add_monitored(ctx, timerfd, EV_TIMERFD|EV_READ, callback, NULL);
     return ev_api_watch_fd(ctx, timerfd);
 }
 
@@ -477,6 +483,7 @@ int ev_read_event(struct ev_ctx *ctx, int idx, int mask) {
     if (mask == EV_NONE)
         return 0;
     struct ev *e = ev_api_read_event(ctx, idx, mask);
+    int fired = 0;
     int err = 0;
     int fd = e->fd;
     if (mask & EV_EVENTFD) {
@@ -492,11 +499,16 @@ int ev_read_event(struct ev_ctx *ctx, int idx, int mask) {
         }
     } else if (mask & EV_CLOSEFD) {
         eventfd_read(fd, &(eventfd_t){0L});
+        e->rcallback(ctx, e->rdata);
     } else {
-        if (mask & EV_READ)
+        if (mask & EV_READ) {
             e->rcallback(ctx, e->rdata);
-        if (mask & EV_WRITE)
-            e->wcallback(ctx, e->wdata);
+            fired = 1;
+        }
+        if (mask & EV_WRITE) {
+            if (!fired || e->wcallback != e->rcallback)
+                e->wcallback(ctx, e->wdata);
+        }
     }
     return err;
 }

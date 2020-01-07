@@ -49,6 +49,7 @@
 struct inflight_msg {
     struct client *client;
     int type;
+    int in_use;
     time_t sent_timestamp;
     unsigned long size;
     struct mqtt_packet *packet;
@@ -77,20 +78,21 @@ struct client {
     int rc;
     int status;
     int rpos;
-    int read;
-    int toread;
+    size_t read;
+    size_t toread;
     unsigned char *rbuf;
-    int wrote;
-    int towrite;
+    size_t wrote;
+    size_t towrite;
     unsigned char *wbuf;
     char client_id[MQTT_CLIENT_ID_LEN];
     struct connection conn;
     struct session *session;
     unsigned long last_action_time;
     struct mqtt_publish *lwt_msg;
-    struct inflight_msg *i_acks[MAX_INFLIGHT_MSGS];
-    struct inflight_msg *i_msgs[MAX_INFLIGHT_MSGS];
-    struct inflight_msg *in_i_acks[MAX_INFLIGHT_MSGS];
+    int next_free_mid;
+    struct inflight_msg *i_acks;
+    struct inflight_msg *i_msgs;
+    struct inflight_msg *in_i_acks;
 };
 
 /*
@@ -131,6 +133,9 @@ struct client *sol_client_new(struct connection *);
 struct inflight_msg *inflight_msg_new(struct client *,
                                       struct mqtt_packet *, int, size_t);
 
+void inflight_msg_init(struct inflight_msg *, struct client *,
+                       struct mqtt_packet *, int, size_t);
+
 struct topic *topic_new(const char *);
 
 void topic_init(struct topic *, const char *);
@@ -153,7 +158,7 @@ struct topic *sol_topic_get(struct sol *, const char *);
 /* Get or create a new topic if it doesn't exists */
 struct topic *sol_topic_get_or_create(struct sol *, const char *);
 
-unsigned next_free_mid(struct inflight_msg **);
+unsigned next_free_mid(struct client *);
 
 void sol_session_append_imsg(struct session *, struct inflight_msg *);
 

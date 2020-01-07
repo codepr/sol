@@ -120,11 +120,13 @@ static void on_accept(struct ev_ctx *, void *);
 
 static void on_message(struct ev_ctx *, void *);
 
+static void process_message(struct ev_ctx *, void *);
+
 /*
  * Processing message function, will be applied on fully formed mqtt packet
  * received on on_message callback
  */
-static void process_message(struct ev_ctx *, struct io_event *);
+static void process_message(struct ev_ctx *, void *);
 
 /*
  * Statistics topics, published every N seconds defined by configuration
@@ -199,7 +201,7 @@ static const char *solerr(int rc) {
  */
 static ssize_t recv_packet(struct client *c) {
 
-    ssize_t nread = 0;//, n = 0;
+    ssize_t nread = 0;
     unsigned opcode = 0, pos = 0;
     unsigned long long pktlen = 0LL;
 
@@ -265,7 +267,7 @@ static ssize_t recv_packet(struct client *c) {
              * 4 bytes based on the size stored, so byte 2-5 is dedicated to the
              * packet length.
              */
-            pktlen = mqtt_decode_length(c->rbuf+1, &pos);
+            pktlen = mqtt_decode_length(c->rbuf + 1, &pos);
 
             /*
              * Set return code to -ERRMAXREQSIZE in case the total packet len
@@ -293,13 +295,11 @@ static ssize_t recv_packet(struct client *c) {
 
 exit:
 
-    return nread;
+    return 0;
 }
 
 /* Handle incoming requests, after being accepted or after a reply */
-static int read_data(struct client *c, struct mqtt_packet *pkt) {
-
-    ssize_t bytes = 0;
+static int read_data(struct client *c) {
 
     /*
      * We must read all incoming bytes till an entire packet is received. This
@@ -307,7 +307,7 @@ static int read_data(struct client *c, struct mqtt_packet *pkt) {
      * send the size of the remaining packet as the second byte. By knowing it
      * we know if the packet is ready to be deserialized and used.
      */
-    bytes = recv_packet(c);
+    int err = recv_packet(c);
 
     /*
      * Looks like we got a client disconnection or If a not correct packet
@@ -318,7 +318,7 @@ static int read_data(struct client *c, struct mqtt_packet *pkt) {
      *       connection, explicitly returning an informative error code to the
      *       client connected.
      */
-    if (bytes < 0)
+    if (err < 0)
         goto err;
 
     if (c->read < c->toread)
@@ -326,51 +326,48 @@ static int read_data(struct client *c, struct mqtt_packet *pkt) {
 
     info.bytes_recv += c->read;
 
-    /*
-     * Unpack received bytes into a mqtt_packet structure and execute the
-     * correct handler based on the type of the operation.
-     */
-    mqtt_unpack(c->rbuf + c->rpos, pkt, *c->rbuf, c->read - c->rpos);
-    c->toread = c->read = 0;
-    c->status = SENDING_DATA;
-
     return 0;
 
     // Disconnect packet received
 
 err:
 
-    return bytes;
+    return err;
 }
 
-static inline int write_data(struct client *client) {
-    ssize_t wrote = send_data(&client->conn, client->wbuf, client->towrite);
-    if (wrote <= 0)
+static inline int write_data(struct client *c) {
+    ssize_t wrote = send_data(&c->conn, c->wbuf+c->wrote, c->towrite-c->wrote);
+    if (errno != EAGAIN && errno != EWOULDBLOCK && wrote < 0)
         return -ERRCLIENTDC;
-    if (wrote < client->towrite && errno == EAGAIN)
+    c->wrote += wrote > 0 ? wrote : 0;
+    if (c->wrote < c->towrite && errno == EAGAIN)
         return -ERREAGAIN;
+    // Update information stats
+    info.bytes_sent += c->towrite;
+    c->towrite = c->wrote = 0;
     return 0;
 }
 
-static void on_write(struct ev_ctx *ctx, void *arg) {
+void on_write(struct ev_ctx *ctx, void *arg) {
     struct client *client = arg;
-    ssize_t wrote = 0;
-    wrote = write_data(client);
-    switch (wrote) {
+    int err = write_data(client);
+    switch (err) {
         case 0: // OK
             /*
              * Rearm descriptor making it ready to receive input,
              * on_message will be the callback to be used.
              */
             client->status = WAITING_HEADER;
+            client->toread = client->read = client->rpos = 0;
             ev_fire_event(ctx, client->conn.fd, EV_READ, on_message, client);
             break;
         case -ERREAGAIN:
             ev_fire_event(ctx, client->conn.fd, EV_WRITE, on_write, client);
             break;
         default:
-            log_info("Closing connection with %s: %s %lu",
-                     client->conn.ip, solerr(client->rc), wrote);
+            log_info("Closing connection with %s (%s): %s %i",
+                     client->client_id, client->conn.ip,
+                     solerr(client->rc), err);
             ev_del_fd(ctx, client->conn.fd);
             client_destructor(client);
             // Update stats
@@ -495,14 +492,15 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
         for (int i = 1; i < MAX_INFLIGHT_MSGS; ++i) {
             // TODO remove 20 hardcoded value
             // Messages
-            if (c->i_msgs[i] && (now - c->i_msgs[i]->sent_timestamp) > 20) {
+            if (c->i_msgs[i].in_use && (now - c->i_msgs[i].sent_timestamp) > 20) {
+                log_debug("Re-sending %s", c->i_msgs[i].client->client_id);
                 // Set DUP flag to 1
-                mqtt_set_dup(c->i_msgs[i]->packet);
+                mqtt_set_dup(c->i_msgs[i].packet);
                 // Serialize the packet and send it out again
-                unsigned char pub[c->i_msgs[i]->size];
-                mqtt_pack(c->i_msgs[i]->packet, pub);
-                if ((sent = send_data(&c->i_msgs[i]->client->conn,
-                                      pub, c->i_msgs[i]->size)) < 0)
+                unsigned char pub[c->i_msgs[i].size];
+                mqtt_pack(c->i_msgs[i].packet, pub);
+                if ((sent = send_data(&c->i_msgs[i].client->conn,
+                                      pub, c->i_msgs[i].size)) < 0)
                     log_error("Error re-sending %s", strerror(errno));
 
                 // Update information stats
@@ -510,14 +508,14 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
                 info.bytes_sent += sent;
             }
             // ACKs
-            if (c->i_acks[i] && (now - c->i_acks[i]->sent_timestamp) > 20) {
+            if (c->i_acks[i].in_use && (now - c->i_acks[i].sent_timestamp) > 20) {
                 // Set DUP flag to 1
-                mqtt_set_dup(c->i_acks[i]->packet);
+                mqtt_set_dup(c->i_acks[i].packet);
                 // Serialize the packet and send it out again
-                unsigned char pub[c->i_acks[i]->size];
-                mqtt_pack(c->i_acks[i]->packet, pub);
-                if ((sent = send_data(&c->i_acks[i]->client->conn,
-                                      pub, c->i_acks[i]->size)) < 0)
+                unsigned char pub[c->i_acks[i].size];
+                mqtt_pack(c->i_acks[i].packet, pub);
+                if ((sent = send_data(&c->i_acks[i].client->conn,
+                                      pub, c->i_acks[i].size)) < 0)
                     log_error("Error re-sending %s", strerror(errno));
 
                 // Update information stats
@@ -547,14 +545,9 @@ static int client_destructor(struct client *client) {
         xfree(client->session);
     }
 
-    for (int i = 0; i < MAX_INFLIGHT_MSGS; ++i) {
-        if (client->i_acks[i])
-            xfree(client->i_acks[i]);
-        if (client->i_msgs[i])
-            xfree(client->i_msgs[i]);
-        if (client->in_i_acks[i])
-            xfree(client->in_i_acks[i]);
-    }
+    xfree(client->i_acks);
+    xfree(client->i_msgs);
+    xfree(client->in_i_acks);
 
     if (client->lwt_msg)
         xfree(client->lwt_msg);
@@ -649,17 +642,17 @@ static void on_accept(struct ev_ctx *ctx, void *data) {
 }
 
 static void on_message(struct ev_ctx *ctx, void *data) {
-    struct io_event io;
-    io.ctx = ctx;
-    io.rc = 0;
-    io.client = data;
+    struct client *c = data;
+    if (c->status == SENDING_DATA) {
+        ev_fire_event(ctx, c->conn.fd, EV_READ, on_message, c);
+        return;
+    }
     /*
      * Received a bunch of data from a client, after the creation
      * of an IO event we need to read the bytes and encoding the
      * content according to the protocol
      */
-    struct connection *c = &io.client->conn;
-    int rc = read_data(io.client, &io.data);
+    int rc = read_data(c);
     switch (rc) {
         case 0:
             /*
@@ -668,8 +661,8 @@ static void on_message(struct ev_ctx *ctx, void *data) {
              * ready to be processed
              */
             /* Record last action as of now */
-            io.client->last_action_time = time(NULL);
-            process_message(ctx, &io);
+            c->last_action_time = time(NULL);
+            ev_fire_event(ctx, c->conn.fd, EV_WRITE, process_message, c);
             break;
         case -ERRCLIENTDC:
         case -ERRPACKETERR:
@@ -680,47 +673,52 @@ static void on_message(struct ev_ctx *ctx, void *data) {
              * free resources allocated such as io_event structure and
              * paired payload
              */
-            log_error("Closing connection with %s: %s",
-                      io.client->conn.ip, solerr(rc));
+            log_error("Closing connection with %s (%s): %s",
+                      c->client_id, c->conn.ip, solerr(rc));
             // Publish, if present, LWT message
-            if (io.client->lwt_msg) {
-                char *tname = (char *) io.client->lwt_msg->topic;
+            if (c->lwt_msg) {
+                char *tname = (char *) c->lwt_msg->topic;
                 struct topic *t = sol_topic_get(&sol, tname);
                 struct mqtt_packet lwt = {
                     .header = (union mqtt_header) { .byte = PUBLISH_B },
-                    .publish = *io.client->lwt_msg
+                    .publish = *c->lwt_msg
                 };
-                publish_message(&lwt, t, io.ctx);
+                publish_message(&lwt, t, ctx);
             }
             // Clean resources
-            ev_del_fd(ctx, c->fd);
+            ev_del_fd(ctx, c->conn.fd);
             // Remove from subscriptions for now
-            if (io.client->session) {
-                struct list *subs = io.client->session->subscriptions;
+            if (c->session) {
+                struct list *subs = c->session->subscriptions;
                 struct iterator *it = iter_new(subs, list_iter_next);
                 FOREACH (it) {
                     log_debug("Deleting %s from topic %s",
-                              io.client->client_id,
-                              ((struct topic *) it->ptr)->name);
-                    topic_del_subscriber(it->ptr, io.client, false);
+                              c->client_id, ((struct topic *) it->ptr)->name);
+                    topic_del_subscriber(it->ptr, c, false);
                 }
                 iter_destroy(it);
             }
-            client_destructor(io.client);
+            client_destructor(c);
             info.nclients--;
             info.nconnections--;
             break;
         case -ERREAGAIN:
-            ev_fire_event(ctx, c->fd, EV_READ, on_message, io.client);
+            ev_fire_event(ctx, c->conn.fd, EV_READ, on_message, c);
             break;
     }
 }
 
-static void process_message(struct ev_ctx *ctx, struct io_event *io) {
-    ssize_t sent = 0LL;
-    struct connection *c = &io->client->conn;
-    io->client->rc = handle_command(io->data.header.bits.type, io);
-    switch (io->client->rc) {
+static void process_message(struct ev_ctx *ctx, void *arg) {
+    struct client *c = arg;
+    struct io_event io = { .client = c, .ctx = ctx };
+    /*
+     * Unpack received bytes into a mqtt_packet structure and execute the
+     * correct handler based on the type of the operation.
+     */
+    mqtt_unpack(c->rbuf + c->rpos, &io.data, *c->rbuf, c->read - c->rpos);
+    c->toread = c->read = c->rpos = 0;
+    c->rc = handle_command(io.data.header.bits.type, &io);
+    switch (c->rc) {
         case REPLY:
         case RC_NOT_AUTHORIZED:
         case RC_BAD_USERNAME_OR_PASSWORD:
@@ -729,44 +727,28 @@ static void process_message(struct ev_ctx *ctx, struct io_event *io) {
              * worker thread routine. Just send out all bytes stored in the
              * reply buffer to the reply file descriptor.
              */
-            sent = send_data(c, io->reply, bstring_len(io->reply));
-            if (sent <= 0 || io->rc == RC_NOT_AUTHORIZED
-                || io->rc == RC_BAD_USERNAME_OR_PASSWORD) {
-                log_info("Closing connection with %s: %s %lu",
-                         c->ip, solerr(io->client->rc), sent);
-                ev_del_fd(ctx, c->fd);
-                client_destructor(io->client);
-                // Update stats
-                info.nclients--;
-                info.nconnections--;
-            } else {
-                /*
-                 * Rearm descriptor making it ready to receive input,
-                 * on_message will be the callback to be used.
-                 */
-                io->client->status = WAITING_HEADER;
-                ev_fire_event(ctx, c->fd, EV_READ, on_message, io->client);
-            }
-
-            // Update information stats
-            info.bytes_sent += sent < 0 ? 0 : sent;
-
+            ev_fire_event(ctx, c->conn.fd, EV_WRITE, on_write, c);
+            /* on_write(ctx, c); */
             /* Free resource, ACKs will be free'd closing the server */
-            bstring_destroy(io->reply);
-            mqtt_packet_destroy(&io->data, io->data.header.bits.type);
+            mqtt_packet_destroy(&io.data, io.data.header.bits.type);
             break;
         case CLIENTDC:
-            ev_del_fd(ctx, c->fd);
-            client_destructor(io->client);
+            ev_del_fd(ctx, c->conn.fd);
+            client_destructor(io.client);
             // Update stats
             info.nclients--;
             info.nconnections--;
             break;
         default:
-            io->client->status = WAITING_HEADER;
-            ev_fire_event(ctx, c->fd, EV_READ, on_message, io->client);
+            c->status = WAITING_HEADER;
+            ev_fire_event(ctx, c->conn.fd, EV_READ, on_message, c);
             break;
     }
+}
+
+static void stop_handler(struct ev_ctx *ctx, void *arg) {
+    (void) arg;
+    ctx->stop = 1;
 }
 
 /*
@@ -780,6 +762,8 @@ static void *eventloop_start(void *args) {
     int sfd = *((int *) args);
     struct ev_ctx ctx;
     ev_init(&ctx, EVENTLOOP_MAX_EVENTS);
+    // Register stop event
+    ev_register_event(&ctx, conf->run, EV_CLOSEFD|EV_READ, stop_handler, NULL);
     // Register listening FD with on_accept callback
     ev_register_event(&ctx, sfd, EV_READ, on_accept, &sfd);
     // Register periodic tasks

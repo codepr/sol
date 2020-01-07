@@ -78,8 +78,6 @@
  * passed back to the IO epoll loop to be written back to the requesting client
  */
 struct io_event {
-    int rc;
-    bstring reply;
     struct ev_ctx *ctx;
     struct client *client;
     struct mqtt_packet data;
@@ -123,5 +121,7 @@ extern pthread_spinlock_t w_spinlock;
 extern pthread_spinlock_t io_spinlock;
 
 int start_server(const char *, const char *);
+
+void on_write(struct ev_ctx *, void *);
 
 #endif

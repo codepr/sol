@@ -50,9 +50,13 @@ void client_init(struct client *client) {
     client->wrote = 0;
     client->towrite = 0;
     client->wbuf = xcalloc(conf->max_request_size, sizeof(unsigned char));
+    client->next_free_mid = 1;
     client->last_action_time = time(NULL);
     client->lwt_msg = NULL;
     client->session = sol_session_new();
+    client->i_acks = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
+    client->i_msgs = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
+    client->in_i_acks = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
 }
 
 struct topic *topic_new(const char *name) {
@@ -142,12 +146,20 @@ struct inflight_msg *inflight_msg_new(struct client *c,
                                       struct mqtt_packet *p,
                                       int type, size_t size) {
     struct inflight_msg *imsg = xmalloc(sizeof(*imsg));
+    inflight_msg_init(imsg, c, p, type, size);
+    return imsg;
+}
+
+void inflight_msg_init(struct inflight_msg *imsg,
+                       struct client *c,
+                       struct mqtt_packet *p,
+                       int type, size_t size) {
     imsg->client = c;
     imsg->sent_timestamp = time(NULL);
     imsg->packet = p;
     imsg->type = type;
     imsg->size = size;
-    return imsg;
+    imsg->in_use = 1;
 }
 
 struct session *sol_session_new(void) {
@@ -168,13 +180,8 @@ void sol_session_append_imsg(struct session *s, struct inflight_msg *m) {
     s->msg_queue[s->msg_queue_next++] = m;
 }
 
-unsigned next_free_mid(struct inflight_msg **i_msgs) {
-    unsigned short mid = 0;
-    for (unsigned int i = 1; i < MAX_INFLIGHT_MSGS; ++i) {
-        if (i_msgs[i] == NULL) {
-            mid = i;
-            break;
-        }
-    }
-    return mid;
+unsigned next_free_mid(struct client *client) {
+    if (client->next_free_mid == MAX_INFLIGHT_MSGS)
+        client->next_free_mid = 1;
+    return client->next_free_mid++;
 }
