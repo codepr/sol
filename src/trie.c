@@ -326,18 +326,15 @@ List *trie_prefix_find(const Trie *trie, const char *prefix) {
     List *keys = list_new(NULL);
 
     // Check all possible sub-paths and add the resulting key to the result
-    char *str = xmalloc(32);
+    char str[32];
     size_t plen = strlen(prefix);
-    memcpy(str, prefix, plen);
-    str[plen] = '\0';
+    strncpy(str, prefix, plen);
 
     /*
      * Recursive function call, starting from index - 1, starting saving nodes
      * from the last character explored
      */
     trie_node_prefix_find(node, str, plen - 1, keys);
-
-    xfree(str);
 
     return keys;
 }
