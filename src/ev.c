@@ -107,10 +107,9 @@ static int ev_api_get_event_type(struct ev_ctx *ctx, int idx) {
     // We want to remember the previous events only if they're not of type
     // CLOSE or TIMER
     int mask = ev_mask & (EV_CLOSEFD|EV_TIMERFD) ? ev_mask : EV_NONE;
-    if (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
-        mask |= EV_DISCONNECT;
-    else
-        mask |= (events & EPOLLIN) ? EV_READ : EV_WRITE;
+    if (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) mask |= EV_DISCONNECT;
+    if (events & EPOLLIN) mask |= EV_READ;
+    if (events & EPOLLOUT) mask |= EV_WRITE;
     return mask;
 }
 
@@ -131,14 +130,18 @@ static int ev_api_del_fd(struct ev_ctx *ctx, int fd) {
 
 static int ev_api_register_event(struct ev_ctx *ctx, int fd, int mask) {
     struct epoll_api *e_api = ctx->api;
-    int op = mask & EV_READ ? EPOLLIN : EPOLLOUT;
+    int op = 0;
+    if (mask & EV_READ) op |= EPOLLIN;
+    if (mask & EV_WRITE) op |= EPOLLOUT;
     return epoll_add(e_api->fd, fd, op, &ctx->events_monitored[fd]);
 }
 
 static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
     struct epoll_api *e_api = ctx->api;
     int ret = 0;
-    int op = mask & EV_READ ? EPOLLIN : EPOLLOUT;
+    int op = 0;
+    if (mask & EV_READ) op |= EPOLLIN;
+    if (mask & EV_WRITE) op |= EPOLLOUT;
     if (mask & EV_EVENTFD)
         ret = epoll_add(e_api->fd, fd, op, &ctx->events_monitored[fd]);
     else
