@@ -328,7 +328,7 @@ List *trie_prefix_find(const Trie *trie, const char *prefix) {
     // Check all possible sub-paths and add the resulting key to the result
     char str[32];
     size_t plen = strlen(prefix);
-    strncpy(str, prefix, plen);
+    strncpy(str, prefix, 32);
 
     /*
      * Recursive function call, starting from index - 1, starting saving nodes
