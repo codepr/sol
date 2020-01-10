@@ -86,10 +86,6 @@ void sol_log(int level, const char *fmt, ...) {
     fprintf(fp, "%lu %s\n", (unsigned long) time(NULL), msg);
     if (fh)
         fprintf(fh, "%lu %s\n", (unsigned long) time(NULL), msg);
-
-    fflush(fp);
-    if (fh)
-        fflush(fh);
 }
 
 /* Auxiliary function to check wether a string is an integer */
