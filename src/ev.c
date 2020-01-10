@@ -516,6 +516,15 @@ int ev_register_cron(struct ev_ctx *ctx,
     return ev_api_watch_fd(ctx, timerfd);
 }
 
+/*
+ * Set a callback and an argument to be passed to for the next loop cycle,
+ * associating it to a file descriptor, ultimately resulting in an event to be
+ * dispatched and processed.
+ *
+ * - mask: bitmask used to describe what type of event we're going to fire
+ * - callback:  is a function pointer to the routine we want to execute
+ * - data:  an opaque pointer to the arguments for the callback.
+ */
 int ev_fire_event(struct ev_ctx *ctx, int fd, int mask,
                   void (*callback)(struct ev_ctx *, void *), void *data) {
     int ret = 0;

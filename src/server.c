@@ -193,12 +193,11 @@ static const char *solerr(int rc) {
  * bytes and a pointer to the decoded fixed header that will be set in the
  * final parsed packet.
  *
- * - c: A struct connection pointer, contains the FD of the requesting client
- *      as well as his SSL context in case of TLS communication.
- * - buf: A byte buffer, it will be malloc'ed in the function and it will
- *        contain the serialized bytes of the incoming packet
- * - header: Single byte pointer, copy the opcode and flags of the incoming
- *           packet, again for simplicity and convenience of the caller.
+ * - c: A struct client pointer, contains the FD of the requesting client
+ *      as well as his SSL context in case of TLS communication. Also it store
+ *      the reading buffer to be used for incoming byte-streams, tracking
+ *      read, to be read and reading position taking into account the bytes
+ *      required to encode the packet length.
  */
 static ssize_t recv_packet(struct client *c) {
 
@@ -206,6 +205,7 @@ static ssize_t recv_packet(struct client *c) {
     unsigned opcode = 0, pos = 0;
     unsigned long long pktlen = 0LL;
 
+    // Base status, we have read 0 to 2 bytes
     if (c->status == WAITING_HEADER) {
 
         /*
@@ -225,17 +225,28 @@ static ssize_t recv_packet(struct client *c) {
         c->status = WAITING_LENGTH;
     }
 
+    /*
+     * We have already read the packet HEADER, thus we know what packet we're
+     * dealing with, we're between bytes 2-4, as after the 1st byte, the
+     * remaining 3 can be all used to store the packet length, or, in case of
+     * ACK type packet or PINGREQ/PINGRESP and DISCONNECT, the entire packet
+     */
     if (c->status == WAITING_LENGTH) {
 
         if (c->read == 2) {
             opcode = *c->rbuf >> 4;
 
-            /* Check for OPCODE, if an unknown OPCODE is received return an
+            /*
+             * Check for OPCODE, if an unknown OPCODE is received return an
              * error
              */
             if (DISCONNECT < opcode || CONNECT > opcode)
                 return -ERRPACKETERR;
 
+            /*
+             * We have a PINGRESP/PINGREQ or a DISCONNECT packet, we're done
+             * here
+             */
             if (opcode > UNSUBSCRIBE) {
                 c->rpos = 2;
                 c->toread = c->read;
@@ -260,6 +271,10 @@ static ssize_t recv_packet(struct client *c) {
         c->status = WAITING_DATA;
     }
 
+    /*
+     * Last status, we have access to the length of the packet and we know for
+     * sure that it's not a PINGREQ/PINGRESP/DISCONNECT packet.
+     */
     if (c->status == WAITING_DATA) {
 
         if (c->toread == 0) {
@@ -277,9 +292,17 @@ static ssize_t recv_packet(struct client *c) {
             if (pktlen > conf->max_request_size)
                 return -ERRMAXREQSIZE;
 
+            /*
+             * Update the toread field for the client with the entire length of
+             * the current packet, which is comprehensive of packet length,
+             * bytes used to encode it and 1 byte for the header
+             * We've already tracked the bytes we read so far, we just need to
+             * read toread-read bytes.
+             */
             c->rpos = pos + 1;
-            c->toread = pktlen + pos + 1;
+            c->toread = pktlen + pos + 1;  // pos = bytes used to store length
 
+            /* Looks like we got an ACK packet, we're done reading */
             if (pktlen <= 4)
                 goto exit;
         }
@@ -345,6 +368,7 @@ static inline int write_data(struct client *c) {
         return -ERREAGAIN;
     // Update information stats
     info.bytes_sent += c->towrite;
+    // Reset client written bytes track fields
     c->towrite = c->wrote = 0;
     return 0;
 }
@@ -356,7 +380,8 @@ static void write_callback(struct ev_ctx *ctx, void *arg) {
         case 0: // OK
             /*
              * Rearm descriptor making it ready to receive input,
-             * read_callback will be the callback to be used.
+             * read_callback will be the callback to be used; also reset the
+             * read buffer status for the client.
              */
             client->status = WAITING_HEADER;
             ev_fire_event(ctx, client->conn.fd, EV_READ, read_callback, client);

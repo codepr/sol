@@ -77,7 +77,7 @@ struct client {
     bool clean_session;
     int rc;
     int status;
-    size_t rpos;
+    int rpos;
     size_t read;
     size_t toread;
     unsigned char *rbuf;
