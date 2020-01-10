@@ -185,225 +185,8 @@ static const char *solerr(int rc) {
 }
 
 /*
- * Parse packet header, it is required at least the Fixed Header of each
- * packed, which is contained in the first 2 bytes in order to read packet
- * type and total length that we need to recv to complete the packet.
- *
- * This function accept a socket fd, a buffer to read incoming streams of
- * bytes and a pointer to the decoded fixed header that will be set in the
- * final parsed packet.
- *
- * - c: A struct client pointer, contains the FD of the requesting client
- *      as well as his SSL context in case of TLS communication. Also it store
- *      the reading buffer to be used for incoming byte-streams, tracking
- *      read, to be read and reading position taking into account the bytes
- *      required to encode the packet length.
- */
-static ssize_t recv_packet(struct client *c) {
-
-    ssize_t nread = 0;
-    unsigned opcode = 0, pos = 0;
-    unsigned long long pktlen = 0LL;
-
-    // Base status, we have read 0 to 2 bytes
-    if (c->status == WAITING_HEADER) {
-
-        /*
-         * Read the first two bytes, the first should contain the message type
-         * code
-         */
-        nread = recv_data(&c->conn, c->rbuf + c->read, 2 - c->read);
-
-        if (errno != EAGAIN && errno != EWOULDBLOCK && nread <= 0)
-            return -ERRCLIENTDC;
-
-        c->read += nread;
-
-        if (errno == EAGAIN && c->read < 2)
-            return -ERREAGAIN;
-
-        c->status = WAITING_LENGTH;
-    }
-
-    /*
-     * We have already read the packet HEADER, thus we know what packet we're
-     * dealing with, we're between bytes 2-4, as after the 1st byte, the
-     * remaining 3 can be all used to store the packet length, or, in case of
-     * ACK type packet or PINGREQ/PINGRESP and DISCONNECT, the entire packet
-     */
-    if (c->status == WAITING_LENGTH) {
-
-        if (c->read == 2) {
-            opcode = *c->rbuf >> 4;
-
-            /*
-             * Check for OPCODE, if an unknown OPCODE is received return an
-             * error
-             */
-            if (DISCONNECT < opcode || CONNECT > opcode)
-                return -ERRPACKETERR;
-
-            /*
-             * We have a PINGRESP/PINGREQ or a DISCONNECT packet, we're done
-             * here
-             */
-            if (opcode > UNSUBSCRIBE) {
-                c->rpos = 2;
-                c->toread = c->read;
-                goto exit;
-            }
-        }
-
-        /*
-         * Read 2 extra bytes, because the first 4 bytes could countain the
-         * total size in bytes of the entire packet
-         */
-        nread = recv_data(&c->conn, c->rbuf + c->read, 4 - c->read);
-
-        if (errno != EAGAIN && errno != EWOULDBLOCK && nread <= 0)
-            return -ERRCLIENTDC;
-
-        c->read += nread;
-
-        if (errno == EAGAIN && c->read < 4)
-            return -ERREAGAIN;
-
-        c->status = WAITING_DATA;
-    }
-
-    /*
-     * Last status, we have access to the length of the packet and we know for
-     * sure that it's not a PINGREQ/PINGRESP/DISCONNECT packet.
-     */
-    if (c->status == WAITING_DATA) {
-
-        if (c->toread == 0) {
-            /*
-             * Read remaning length bytes which starts at byte 2 and can be long to
-             * 4 bytes based on the size stored, so byte 2-5 is dedicated to the
-             * packet length.
-             */
-            pktlen = mqtt_decode_length(c->rbuf + 1, &pos);
-
-            /*
-             * Set return code to -ERRMAXREQSIZE in case the total packet len
-             * exceeds the configuration limit `max_request_size`
-             */
-            if (pktlen > conf->max_request_size)
-                return -ERRMAXREQSIZE;
-
-            /*
-             * Update the toread field for the client with the entire length of
-             * the current packet, which is comprehensive of packet length,
-             * bytes used to encode it and 1 byte for the header
-             * We've already tracked the bytes we read so far, we just need to
-             * read toread-read bytes.
-             */
-            c->rpos = pos + 1;
-            c->toread = pktlen + pos + 1;  // pos = bytes used to store length
-
-            /* Looks like we got an ACK packet, we're done reading */
-            if (pktlen <= 4)
-                goto exit;
-        }
-
-        nread = recv_data(&c->conn, c->rbuf + c->read, c->toread - c->read);
-
-        if (errno != EAGAIN && errno != EWOULDBLOCK && nread <= 0)
-            return -ERRCLIENTDC;
-
-        c->read += nread;
-        if (errno == EAGAIN && c->read < c->toread)
-            return -ERREAGAIN;
-    }
-
-exit:
-
-    return 0;
-}
-
-/* Handle incoming requests, after being accepted or after a reply */
-static int read_data(struct client *c) {
-
-    /*
-     * We must read all incoming bytes till an entire packet is received. This
-     * is achieved by following the MQTT protocol specifications, which
-     * send the size of the remaining packet as the second byte. By knowing it
-     * we know if the packet is ready to be deserialized and used.
-     */
-    int err = recv_packet(c);
-
-    /*
-     * Looks like we got a client disconnection or If a not correct packet
-     * received, we must free the buffer and reset the handler to the request
-     * again, setting EPOLL to EPOLLIN
-     *
-     * TODO: Set a error_handler for ERRMAXREQSIZE instead of dropping client
-     *       connection, explicitly returning an informative error code to the
-     *       client connected.
-     */
-    if (err < 0)
-        goto err;
-
-    if (c->read < c->toread)
-        return -ERREAGAIN;
-
-    info.bytes_recv += c->read;
-
-    return 0;
-
-    // Disconnect packet received
-
-err:
-
-    return err;
-}
-
-static inline int write_data(struct client *c) {
-    ssize_t wrote = send_data(&c->conn, c->wbuf+c->wrote, c->towrite-c->wrote);
-    if (errno != EAGAIN && errno != EWOULDBLOCK && wrote < 0)
-        return -ERRCLIENTDC;
-    c->wrote += wrote > 0 ? wrote : 0;
-    if (c->wrote < c->towrite && errno == EAGAIN)
-        return -ERREAGAIN;
-    // Update information stats
-    info.bytes_sent += c->towrite;
-    // Reset client written bytes track fields
-    c->towrite = c->wrote = 0;
-    return 0;
-}
-
-static void write_callback(struct ev_ctx *ctx, void *arg) {
-    struct client *client = arg;
-    int err = write_data(client);
-    switch (err) {
-        case 0: // OK
-            /*
-             * Rearm descriptor making it ready to receive input,
-             * read_callback will be the callback to be used; also reset the
-             * read buffer status for the client.
-             */
-            client->status = WAITING_HEADER;
-            ev_fire_event(ctx, client->conn.fd, EV_READ, read_callback, client);
-            break;
-        case -ERREAGAIN:
-            break;
-        default:
-            log_info("Closing connection with %s (%s): %s %i",
-                     client->client_id, client->conn.ip,
-                     solerr(client->rc), err);
-            ev_del_fd(ctx, client->conn.fd);
-            client_destructor(client);
-            // Update stats
-            info.nclients--;
-            info.nconnections--;
-            break;
-    }
-}
-
-/*
  * Publish statistics periodic task, it will be called once every N config
- * defined seconds, it publish some informations on predefined topics
+ * defined seconds, it publishes some informations on predefined topics
  */
 static void publish_stats(struct ev_ctx *ctx, void *data) {
     (void)data;
@@ -616,6 +399,234 @@ static int auth_destructor(struct hashtable_entry *entry) {
 }
 
 /*
+ * Parse packet header, it is required at least the Fixed Header of each
+ * packed, which is contained in the first 2 bytes in order to read packet
+ * type and total length that we need to recv to complete the packet.
+ *
+ * This function accept a socket fd, a buffer to read incoming streams of
+ * bytes and a pointer to the decoded fixed header that will be set in the
+ * final parsed packet.
+ *
+ * - c: A struct client pointer, contains the FD of the requesting client
+ *      as well as his SSL context in case of TLS communication. Also it store
+ *      the reading buffer to be used for incoming byte-streams, tracking
+ *      read, to be read and reading position taking into account the bytes
+ *      required to encode the packet length.
+ */
+static ssize_t recv_packet(struct client *c) {
+
+    ssize_t nread = 0;
+    unsigned opcode = 0, pos = 0;
+    unsigned long long pktlen = 0LL;
+
+    // Base status, we have read 0 to 2 bytes
+    if (c->status == WAITING_HEADER) {
+
+        /*
+         * Read the first two bytes, the first should contain the message type
+         * code
+         */
+        nread = recv_data(&c->conn, c->rbuf + c->read, 2 - c->read);
+
+        if (errno != EAGAIN && errno != EWOULDBLOCK && nread <= 0)
+            return -ERRCLIENTDC;
+
+        c->read += nread;
+
+        if (errno == EAGAIN && c->read < 2)
+            return -ERREAGAIN;
+
+        c->status = WAITING_LENGTH;
+    }
+
+    /*
+     * We have already read the packet HEADER, thus we know what packet we're
+     * dealing with, we're between bytes 2-4, as after the 1st byte, the
+     * remaining 3 can be all used to store the packet length, or, in case of
+     * ACK type packet or PINGREQ/PINGRESP and DISCONNECT, the entire packet
+     */
+    if (c->status == WAITING_LENGTH) {
+
+        if (c->read == 2) {
+            opcode = *c->rbuf >> 4;
+
+            /*
+             * Check for OPCODE, if an unknown OPCODE is received return an
+             * error
+             */
+            if (DISCONNECT < opcode || CONNECT > opcode)
+                return -ERRPACKETERR;
+
+            /*
+             * We have a PINGRESP/PINGREQ or a DISCONNECT packet, we're done
+             * here
+             */
+            if (opcode > UNSUBSCRIBE) {
+                c->rpos = 2;
+                c->toread = c->read;
+                goto exit;
+            }
+        }
+
+        /*
+         * Read 2 extra bytes, because the first 4 bytes could countain the
+         * total size in bytes of the entire packet
+         */
+        nread = recv_data(&c->conn, c->rbuf + c->read, 4 - c->read);
+
+        if (errno != EAGAIN && errno != EWOULDBLOCK && nread <= 0)
+            return -ERRCLIENTDC;
+
+        c->read += nread;
+
+        if (errno == EAGAIN && c->read < 4)
+            return -ERREAGAIN;
+
+        c->status = WAITING_DATA;
+    }
+
+    /*
+     * Last status, we have access to the length of the packet and we know for
+     * sure that it's not a PINGREQ/PINGRESP/DISCONNECT packet.
+     */
+    if (c->status == WAITING_DATA) {
+
+        if (c->toread == 0) {
+            /*
+             * Read remaning length bytes which starts at byte 2 and can be long to
+             * 4 bytes based on the size stored, so byte 2-5 is dedicated to the
+             * packet length.
+             */
+            pktlen = mqtt_decode_length(c->rbuf + 1, &pos);
+
+            /*
+             * Set return code to -ERRMAXREQSIZE in case the total packet len
+             * exceeds the configuration limit `max_request_size`
+             */
+            if (pktlen > conf->max_request_size)
+                return -ERRMAXREQSIZE;
+
+            /*
+             * Update the toread field for the client with the entire length of
+             * the current packet, which is comprehensive of packet length,
+             * bytes used to encode it and 1 byte for the header
+             * We've already tracked the bytes we read so far, we just need to
+             * read toread-read bytes.
+             */
+            c->rpos = pos + 1;
+            c->toread = pktlen + pos + 1;  // pos = bytes used to store length
+
+            /* Looks like we got an ACK packet, we're done reading */
+            if (pktlen <= 4)
+                goto exit;
+        }
+
+        nread = recv_data(&c->conn, c->rbuf + c->read, c->toread - c->read);
+
+        if (errno != EAGAIN && errno != EWOULDBLOCK && nread <= 0)
+            return -ERRCLIENTDC;
+
+        c->read += nread;
+        if (errno == EAGAIN && c->read < c->toread)
+            return -ERREAGAIN;
+    }
+
+exit:
+
+    return 0;
+}
+
+/* Handle incoming requests, after being accepted or after a reply */
+static inline int read_data(struct client *c) {
+
+    /*
+     * We must read all incoming bytes till an entire packet is received. This
+     * is achieved by following the MQTT protocol specifications, which
+     * send the size of the remaining packet as the second byte. By knowing it
+     * we know if the packet is ready to be deserialized and used.
+     */
+    int err = recv_packet(c);
+
+    /*
+     * Looks like we got a client disconnection or If a not correct packet
+     * received, we must free the buffer and reset the handler to the request
+     * again, setting EPOLL to EPOLLIN
+     *
+     * TODO: Set a error_handler for ERRMAXREQSIZE instead of dropping client
+     *       connection, explicitly returning an informative error code to the
+     *       client connected.
+     */
+    if (err < 0)
+        goto err;
+
+    if (c->read < c->toread)
+        return -ERREAGAIN;
+
+    info.bytes_recv += c->read;
+
+    return 0;
+
+    // Disconnect packet received
+
+err:
+
+    return err;
+}
+
+/*
+ * Write stream of bytes to a client represented by a connection object, till
+ * all bytes to be written is exhausted, tracked by towrite field or if an
+ * EAGAIN (socket descriptor must be in non-blocking mode) error is raised,
+ * meaning we cannot write anymore for the current cycle.
+ */
+static inline int write_data(struct client *c) {
+    ssize_t wrote = send_data(&c->conn, c->wbuf+c->wrote, c->towrite-c->wrote);
+    if (errno != EAGAIN && errno != EWOULDBLOCK && wrote < 0)
+        return -ERRCLIENTDC;
+    c->wrote += wrote > 0 ? wrote : 0;
+    if (c->wrote < c->towrite && errno == EAGAIN)
+        return -ERREAGAIN;
+    // Update information stats
+    info.bytes_sent += c->towrite;
+    // Reset client written bytes track fields
+    c->towrite = c->wrote = 0;
+    return 0;
+}
+
+/*
+ * Callback dedicated to client replies, try to send as much data as possible
+ * epmtying the client buffer and rearming the socket descriptor for reading
+ * after
+ */
+static void write_callback(struct ev_ctx *ctx, void *arg) {
+    struct client *client = arg;
+    int err = write_data(client);
+    switch (err) {
+        case 0: // OK
+            /*
+             * Rearm descriptor making it ready to receive input,
+             * read_callback will be the callback to be used; also reset the
+             * read buffer status for the client.
+             */
+            client->status = WAITING_HEADER;
+            ev_fire_event(ctx, client->conn.fd, EV_READ, read_callback, client);
+            break;
+        case -ERREAGAIN:
+            break;
+        default:
+            log_info("Closing connection with %s (%s): %s %i",
+                     client->client_id, client->conn.ip,
+                     solerr(client->rc), err);
+            ev_del_fd(ctx, client->conn.fd);
+            client_destructor(client);
+            // Update stats
+            info.nclients--;
+            info.nconnections--;
+            break;
+    }
+}
+
+/*
  * Handle incoming connections, create a a fresh new struct client structure
  * and link it to the fd, ready to be set in EPOLLIN event, then pass the
  * connection to the IO EPOLL loop, waited by the IO thread pool.
@@ -790,6 +801,7 @@ static void eventloop_start(void *args) {
     ev_destroy(&ctx);
 }
 
+/* Fire a write callback to reply after a client request */
 void enqueue_event_write(struct ev_ctx *ctx, struct client *c) {
     ev_fire_event(ctx, c->conn.fd, EV_WRITE, write_callback, c);
 }

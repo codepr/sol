@@ -41,6 +41,23 @@ static void sigint_handler(int signum) {
     eventfd_write(conf->run, 1);
 }
 
+static const char *flag_description[] = {
+    "Print this help",
+    "Set a configuration file to load and use",
+    "Set the listening host address",
+    "Set the listening port",
+    "Enable all logs, setting log level to DEBUG"
+};
+
+void print_help(char *me) {
+    printf("\nSol v%s MQTT broker 3.1.1\n\n", VERSION);
+    printf("Usage: %s [-a addr] [-p port] [-c conf] [-v]\n\n", me);
+    const char flags[5] = "hcapv";
+    for (int i = 0; i < 5; ++i)
+        printf(" -%c: %s\n", flags[i], flag_description[i]);
+    printf("\n");
+}
+
 int main (int argc, char **argv) {
 
     signal(SIGINT, sigint_handler);
@@ -55,7 +72,7 @@ int main (int argc, char **argv) {
     // Set default configuration
     config_set_default();
 
-    while ((opt = getopt(argc, argv, "a:c:p:m:vn:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:c:p:m:vhn:")) != -1) {
         switch (opt) {
             case 'a':
                 addr = optarg;
@@ -71,6 +88,9 @@ int main (int argc, char **argv) {
             case 'v':
                 debug = 1;
                 break;
+            case 'h':
+                print_help(argv[0]);
+                exit(EXIT_SUCCESS);
             default:
                 fprintf(stderr,
                         "Usage: %s [-a addr] [-p port] [-c conf] [-v]\n",
