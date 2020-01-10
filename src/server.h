@@ -62,15 +62,6 @@
 #define CLIENTDC            2
 
 /*
- * Number of I/O workers to start, in other words the size of the IO thread
- * pool
- */
-#define IOPOOLSIZE 1
-
-/* Number of Worker threads, or the size of the worker pool */
-#define WORKERPOOLSIZE 2
-
-/*
  * IO event strucuture, it's the main information that will be communicated
  * between threads, every request packet will be wrapped into an IO event and
  * passed to the work EPOLL, in order to be handled by the worker thread pool.
@@ -88,7 +79,7 @@ struct sol_info {
     /* Number of clients currently connected */
     unsigned int nclients;
     /* Total number of clients connected since the start */
-    unsigned int nconnections;
+    unsigned long long nconnections;
     /* Total number of sent messages */
     unsigned long long messages_sent;
     /* Total number of received messages */
@@ -98,7 +89,7 @@ struct sol_info {
     /* Seconds passed since the start */
     unsigned long long uptime;
     /* Total number of requests served */
-    unsigned int nrequests;
+    unsigned long long nrequests;
     /* Total number of bytes received */
     unsigned long long bytes_sent;
     /* Total number of bytes sent out */
@@ -110,15 +101,6 @@ struct sol_info {
  * periodically to internal topics
  */
 extern struct sol_info info;
-
-/*
- * Guards the access to the main database structure, the trie underlying the
- * topic DB and all the hashtable/lists involved
- */
-extern pthread_spinlock_t w_spinlock;
-
-/* Guards the EPOLL event changing between different threads */
-extern pthread_spinlock_t io_spinlock;
 
 int start_server(const char *, const char *);
 
