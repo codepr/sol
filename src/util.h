@@ -33,14 +33,11 @@
 #include <stdbool.h>
 #include <strings.h>
 
-
 #define MAX_LOG_SIZE 119
 
 #define SOL_PREFIX   "sol"
 
-
 enum log_level { DEBUG, INFORMATION, WARNING, ERROR };
-
 
 bool is_integer(const char *);
 int parse_int(const char *);
@@ -67,15 +64,12 @@ size_t memory_used(void);
 
 long get_fh_soft_limit(void);
 
-
 #define log(...) sol_log( __VA_ARGS__ )
 #define log_debug(...) log(DEBUG, __VA_ARGS__)
 #define log_warning(...) log(WARNING, __VA_ARGS__)
 #define log_error(...) log(ERROR, __VA_ARGS__)
 #define log_info(...) log(INFORMATION, __VA_ARGS__)
 
-
 #define STREQ(s1, s2, len) strncasecmp(s1, s2, len) == 0 ? true : false
-
 
 #endif

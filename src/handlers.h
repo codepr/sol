@@ -28,8 +28,10 @@
 #ifndef HANDLERS_H
 #define HANDLERS_H
 
-#include "core.h"
-#include "server.h"
+struct topic;
+struct mqtt_packet;
+struct ev_ctx;
+struct io_event;
 
 void publish_message(struct mqtt_packet *, const struct topic *, struct ev_ctx *);
 

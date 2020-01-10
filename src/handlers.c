@@ -28,13 +28,13 @@
 #include <errno.h>
 #include <string.h>
 #include <sys/epoll.h>
-#include "handlers.h"
 #include "core.h"
 #include "mqtt.h"
 #include "util.h"
 #include "config.h"
+#include "server.h"
+#include "handlers.h"
 #include "hashtable.h"
-#include "ev.h"
 
 /* Prototype for a command handler */
 typedef int handler(struct io_event *);
@@ -182,7 +182,7 @@ static void set_payload_connack(struct client *c, unsigned char rc) {
     };
     mqtt_pack(&response, c->wbuf + c->towrite);
     c->towrite += MQTT_ACK_LEN;
-    if (rc != RC_CONNECTION_ACCEPTED) {
+    if (rc != MQTT_CONNECTION_ACCEPTED) {
         if (c->session) {
             list_destroy(c->session->subscriptions, 0);
             xfree(c->session);
@@ -212,6 +212,10 @@ static int connect_handler(struct io_event *e) {
         }
     }
 
+    /*
+     * No client ID and clean_session == false? you're not authorized, we don't
+     * know who you are
+     */
     if (!c->payload.client_id[0] && c->bits.clean_session == false)
         goto not_authorized;
 
@@ -323,43 +327,30 @@ static int connect_handler(struct io_event *e) {
         e->client->session->subscriptions = list_new(NULL);
     }
 
-    set_payload_connack(cc, RC_CONNECTION_ACCEPTED);
+    set_payload_connack(cc, MQTT_CONNECTION_ACCEPTED);
 
     log_debug("Sending CONNACK to %s r=%u",
-              c->payload.client_id, RC_CONNECTION_ACCEPTED);
+              c->payload.client_id, MQTT_CONNECTION_ACCEPTED);
 
     return REPLY;
 
 clientdc:
 
-    return CLIENTDC;
+    return -ERRCLIENTDC;
 
 bad_auth:
     log_debug("Sending CONNACK to %s rc=%u",
-              c->payload.client_id, RC_BAD_USERNAME_OR_PASSWORD);  // TODO check for session
-    set_payload_connack(cc, RC_BAD_USERNAME_OR_PASSWORD);
+              c->payload.client_id, MQTT_BAD_USERNAME_OR_PASSWORD);  // TODO check for session
+    set_payload_connack(cc, MQTT_BAD_USERNAME_OR_PASSWORD);
 
-    return RC_BAD_USERNAME_OR_PASSWORD;
+    return MQTT_BAD_USERNAME_OR_PASSWORD;
 
 not_authorized:
     log_debug("Sending CONNACK to %s rc=%u",
-              c->payload.client_id, RC_NOT_AUTHORIZED); // TODO check for session
-    set_payload_connack(cc, RC_NOT_AUTHORIZED);
+              c->payload.client_id, MQTT_NOT_AUTHORIZED); // TODO check for session
+    set_payload_connack(cc, MQTT_NOT_AUTHORIZED);
 
-    return RC_NOT_AUTHORIZED;
-}
-
-static void rec_sub(struct trie_node *node, void *arg) {
-    if (!node || !node->data)
-        return;
-    struct topic *t = node->data;
-    struct subscriber *s = arg;
-    s->refs++;
-    log_debug("Adding subscriber %s to topic %s",
-              s->client->client_id, t->name);
-    hashtable_put(t->subscribers, s->client->client_id, s);
-    if (s->client->session)
-        list_push(s->client->session->subscriptions, t);
+    return MQTT_NOT_AUTHORIZED;
 }
 
 static int disconnect_handler(struct io_event *e) {
@@ -378,7 +369,20 @@ static int disconnect_handler(struct io_event *e) {
         iter_destroy(it);
     }
     // TODO remove from all topic where it subscribed
-    return CLIENTDC;
+    return -ERRCLIENTDC;
+}
+
+static void recursive_sub(struct trie_node *node, void *arg) {
+    if (!node || !node->data)
+        return;
+    struct topic *t = node->data;
+    struct subscriber *s = arg;
+    s->refs++;
+    log_debug("Adding subscriber %s to topic %s",
+              s->client->client_id, t->name);
+    hashtable_put(t->subscribers, s->client->client_id, s);
+    if (s->client->session)
+        list_push(s->client->session->subscriptions, t);
 }
 
 static int subscribe_handler(struct io_event *e) {
@@ -423,7 +427,7 @@ static int subscribe_handler(struct io_event *e) {
             sub->client = e->client;
             sub->qos = s->tuples[i].qos;
             sub->refs = 0;
-            trie_prefix_map(sol.topics.root, topic, rec_sub, sub);
+            trie_prefix_map(sol.topics.root, topic, recursive_sub, sub);
         }
 
         // Clean session true for now
@@ -566,10 +570,8 @@ static int puback_handler(struct io_event *e) {
     struct client *c = e->client;
     log_debug("Received PUBACK from %s (m%u)",
               c->client_id, e->data.ack.pkt_id);
-    if (c->i_msgs[e->data.ack.pkt_id].in_use)
-        c->i_msgs[e->data.ack.pkt_id].in_use = 0;
-    if (c->i_acks[e->data.ack.pkt_id].in_use)
-        c->i_acks[e->data.ack.pkt_id].in_use = 0;
+    c->i_msgs[e->data.ack.pkt_id].in_use = 0;
+    c->i_acks[e->data.ack.pkt_id].in_use = 0;
     return NOREPLY;
 }
 
@@ -577,49 +579,42 @@ static int pubrec_handler(struct io_event *e) {
     struct client *c = e->client;
     log_debug("Received PUBREC from %s (m%u)",
               c->client_id, e->data.ack.pkt_id);
-    mqtt_pack_mono(c->wbuf+c->towrite, PUBREL, e->data.ack.pkt_id);
+    mqtt_pack_mono(c->wbuf + c->towrite, PUBREL, e->data.ack.pkt_id);
     c->towrite += MQTT_ACK_LEN;
     e->data.header.bits.type = PUBREL;
     // Update inflight acks table
     if (c->i_acks[e->data.ack.pkt_id].in_use) {
         c->i_acks[e->data.ack.pkt_id].type = PUBREL;
         c->i_acks[e->data.ack.pkt_id].packet = &e->data;
-        c->i_acks[e->data.ack.pkt_id].size = MQTT_ACK_LEN;
     }
-    log_debug("Sending PUBREL to %s (m%u)",
-              c->client_id, e->data.ack.pkt_id);
+    log_debug("Sending PUBREL to %s (m%u)", c->client_id, e->data.ack.pkt_id);
     return REPLY;
 }
 
 static int pubrel_handler(struct io_event *e) {
-    log_debug("Received PUBREL from %s (m%u)",
-              e->client->client_id, e->data.ack.pkt_id);
     struct client *c = e->client;
-    mqtt_pack_mono(c->wbuf+c->towrite, PUBCOMP, e->data.ack.pkt_id);
+    log_debug("Received PUBREL from %s (m%u)",
+              c->client_id, e->data.ack.pkt_id);
+    mqtt_pack_mono(c->wbuf + c->towrite, PUBCOMP, e->data.ack.pkt_id);
     c->towrite += MQTT_ACK_LEN;
-    if (c->in_i_acks[e->data.ack.pkt_id].in_use)
-        c->in_i_acks[e->data.ack.pkt_id].in_use = 0;
-    log_debug("Sending PUBCOMP to %s (m%u)",
-              e->client->client_id, e->data.ack.pkt_id);
+    c->in_i_acks[e->data.ack.pkt_id].in_use = 0;
+    log_debug("Sending PUBCOMP to %s (m%u)", c->client_id, e->data.ack.pkt_id);
     return REPLY;
 }
 
 static int pubcomp_handler(struct io_event *e) {
-    log_debug("Received PUBCOMP from %s (m%u)",
-              e->client->client_id, e->data.ack.pkt_id);
     struct client *c = e->client;
-    if (c->i_acks[e->data.ack.pkt_id].in_use)
-        c->i_acks[e->data.ack.pkt_id].in_use = 0;
-    if (c->i_msgs[e->data.ack.pkt_id].in_use)
-        c->i_msgs[e->data.ack.pkt_id].in_use = 0;
-    // TODO Remove from inflight PUBACK clients map
+    log_debug("Received PUBCOMP from %s (m%u)",
+              c->client_id, e->data.ack.pkt_id);
+    c->i_acks[e->data.ack.pkt_id].in_use = 0;
+    c->i_msgs[e->data.ack.pkt_id].in_use = 0;
     return NOREPLY;
 }
 
 static int pingreq_handler(struct io_event *e) {
     log_debug("Received PINGREQ from %s", e->client->client_id);
     e->data.header.byte = PINGRESP_B;
-    mqtt_pack(&e->data, e->client->wbuf+e->client->towrite);
+    mqtt_pack(&e->data, e->client->wbuf + e->client->towrite);
     e->client->towrite += MQTT_HEADER_LEN;
     log_debug("Sending PINGRESP to %s", e->client->client_id);
     return REPLY;

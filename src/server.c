@@ -169,15 +169,15 @@ static const char *solerr(int rc) {
             return "Packet sent exceeds max size accepted";
         case -ERREAGAIN:
             return "Socket FD EAGAIN";
-        case RC_UNACCEPTABLE_PROTOCOL_VERSION:
+        case MQTT_UNACCEPTABLE_PROTOCOL_VERSION:
             return "[MQTT] Unknown protocol version";
-        case RC_IDENTIFIER_REJECTED:
+        case MQTT_IDENTIFIER_REJECTED:
             return "[MQTT] Wrong identifier";
-        case RC_SERVER_UNAVAILABLE:
+        case MQTT_SERVER_UNAVAILABLE:
             return "[MQTT] Server unavailable";
-        case RC_BAD_USERNAME_OR_PASSWORD:
+        case MQTT_BAD_USERNAME_OR_PASSWORD:
             return "[MQTT] Bad username or password";
-        case RC_NOT_AUTHORIZED:
+        case MQTT_NOT_AUTHORIZED:
             return "[MQTT] Not authorized";
         default:
             return "Unknown error";
@@ -713,8 +713,8 @@ static void process_message(struct ev_ctx *ctx, struct client *c) {
     c->rc = handle_command(io.data.header.bits.type, &io);
     switch (c->rc) {
         case REPLY:
-        case RC_NOT_AUTHORIZED:
-        case RC_BAD_USERNAME_OR_PASSWORD:
+        case MQTT_NOT_AUTHORIZED:
+        case MQTT_BAD_USERNAME_OR_PASSWORD:
             /*
              * Write out to client, after a request has been processed in
              * worker thread routine. Just send out all bytes stored in the
@@ -724,7 +724,7 @@ static void process_message(struct ev_ctx *ctx, struct client *c) {
             /* Free resource, ACKs will be free'd closing the server */
             mqtt_packet_destroy(&io.data, io.data.header.bits.type);
             break;
-        case CLIENTDC:
+        case -ERRCLIENTDC:
             ev_del_fd(ctx, c->conn.fd);
             client_destructor(io.client);
             // Update stats

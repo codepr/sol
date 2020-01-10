@@ -59,7 +59,6 @@
  */
 #define REPLY               0
 #define NOREPLY             1
-#define CLIENTDC            2
 
 /*
  * IO event strucuture, it's the main information that will be communicated
