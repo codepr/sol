@@ -30,6 +30,13 @@
 
 #include <sys/time.h>
 
+#define EV_OK  0
+#define EV_ERR 1
+
+/*
+ * Event types, meant to be OR-ed on a bitmask to define the type of an event
+ * which can have multiple traits
+ */
 enum ev_type {
     EV_NONE       = 0x00,
     EV_READ       = 0x01,
@@ -49,11 +56,10 @@ struct ev_ctx;
 struct ev {
     int fd;
     int mask;
-    // Either an opaque pointer to client data or a callback for timed events
-    void *rdata;
-    void *wdata;
-    void (*rcallback)(struct ev_ctx *, void *);
-    void (*wcallback)(struct ev_ctx *, void *);
+    void *rdata; // opaque pointer for read callback args
+    void *wdata; // opaque pointer for write callback args
+    void (*rcallback)(struct ev_ctx *, void *); // read callback
+    void (*wcallback)(struct ev_ctx *, void *); // write callback
 };
 
 /*
@@ -69,8 +75,10 @@ struct ev {
  */
 struct ev_ctx {
     int events_nr;
-    int maxfd;
+    int maxfd; // the maximum FD monitored by the event context,
+               // events_monitored must be at least maxfd long
     int stop;
+    unsigned long long fired_events;
     struct ev *events_monitored;
     void *api; // opaque pointer to platform defined backends
 };
@@ -79,6 +87,11 @@ void ev_init(struct ev_ctx *, int);
 
 void ev_destroy(struct ev_ctx *);
 
+/*
+ * Poll an event context for events, accepts a timeout or block forever,
+ * returning only when a list of FDs are ready to either READ, WRITE or TIMER
+ * to be executed.
+ */
 int ev_poll(struct ev_ctx *, time_t);
 
 /*
@@ -129,8 +142,5 @@ int ev_register_cron(struct ev_ctx *,
  */
 int ev_fire_event(struct ev_ctx *, int, int,
                   void (*callback)(struct ev_ctx *, void *), void *);
-
-// TODO remove from exposed, make it static
-int ev_read_event(struct ev_ctx *, int, int);
 
 #endif

@@ -324,7 +324,6 @@ size_t memory_used(void) {
     return memory;
 }
 
-
 long get_fh_soft_limit(void) {
     struct rlimit limit;
     if (getrlimit(RLIMIT_NOFILE, &limit)) {

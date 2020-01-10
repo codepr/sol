@@ -138,15 +138,12 @@ static int ev_api_register_event(struct ev_ctx *ctx, int fd, int mask) {
 
 static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
     struct epoll_api *e_api = ctx->api;
-    int ret = 0;
     int op = 0;
     if (mask & EV_READ) op |= EPOLLIN;
     if (mask & EV_WRITE) op |= EPOLLOUT;
     if (mask & EV_EVENTFD)
-        ret = epoll_add(e_api->fd, fd, op, &ctx->events_monitored[fd]);
-    else
-        ret = epoll_mod(e_api->fd, fd, op, &ctx->events_monitored[fd]);
-    return ret;
+        return epoll_add(e_api->fd, fd, op, &ctx->events_monitored[fd]);
+    return epoll_mod(e_api->fd, fd, op, &ctx->events_monitored[fd]);
 }
 
 static struct ev *ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
@@ -195,7 +192,7 @@ static int ev_api_poll(struct ev_ctx *ctx, time_t timeout) {
     struct poll_api *p_api = ctx->api;
     int err = poll(p_api->fds, p_api->nfds, timeout);
     if (err < 0)
-        return err;
+        return EV_ERR;
     return p_api->nfds;
 }
 
@@ -215,7 +212,7 @@ static int ev_api_watch_fd(struct ev_ctx *ctx, int fd) {
         p_api->fds = xrealloc(p_api->fds,
                               p_api->events_monitored * sizeof(struct pollfd));
     }
-    return 0;
+    return EV_OK;
 }
 
 static int ev_api_del_fd(struct ev_ctx *ctx, int fd) {
@@ -231,7 +228,7 @@ static int ev_api_del_fd(struct ev_ctx *ctx, int fd) {
             break;
         }
     }
-    return 0;
+    return EV_OK;
 }
 
 /*
@@ -247,25 +244,22 @@ static int ev_api_register_event(struct ev_ctx *ctx, int fd, int mask) {
         p_api->fds = xrealloc(p_api->fds,
                               p_api->events_monitored * sizeof(struct pollfd));
     }
-    return 0;
+    return EV_OK;
 }
 
 static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
     struct poll_api *p_api = ctx->api;
-    int ret = 0;
     for (int i = 0; i < p_api->nfds; ++i) {
         if (p_api->fds[i].fd == fd) {
             p_api->fds[i].events = mask & EV_READ ? POLLIN : POLLOUT;
             break;
         }
     }
-    return ret;
+    return EV_OK;
 }
 
 static struct ev *ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
-    struct poll_api *p_api = ctx->api;
-    int fd = p_api->fds[idx].fd;
-    return &ctx->events_monitored[fd];
+    return ctx->events_monitored + ((struct poll_api *) ctx->api)->fds[idx].fd;
 }
 
 #elif defined(SELECT)
@@ -305,40 +299,40 @@ static int ev_api_get_event_type(struct ev_ctx *ctx, int idx) {
 }
 
 static int ev_api_poll(struct ev_ctx *ctx, time_t timeout) {
-    struct timeval *tv = timeout > 0 ? &(struct timeval){ 0, timeout * 1000 } : NULL;
+    struct timeval *tv =
+        timeout > 0 ? &(struct timeval){ 0, timeout * 1000 } : NULL;
     struct select_api *s_api = ctx->api;
     // Re-initialize fdset arrays cause select call side-effect the originals
     memcpy(&s_api->_rfds, &s_api->rfds, sizeof(fd_set));
     memcpy(&s_api->_wfds, &s_api->wfds, sizeof(fd_set));
     int err = select(ctx->maxfd + 1, &s_api->_rfds, &s_api->_wfds, NULL, tv);
     if (err < 0)
-        return err;
+        return EV_ERR;
     return ctx->maxfd + 1;
 }
 
 static int ev_api_watch_fd(struct ev_ctx *ctx, int fd) {
     struct select_api *s_api = ctx->api;
     FD_SET(fd, &s_api->rfds);
-    return 0;
+    return EV_OK;
 }
 
 static int ev_api_del_fd(struct ev_ctx *ctx, int fd) {
     struct select_api *s_api = ctx->api;
     FD_CLR(fd, &s_api->rfds);
-    return 0;
+    return EV_OK;
 }
 
 static int ev_api_register_event(struct ev_ctx *ctx, int fd, int mask) {
     struct select_api *s_api = ctx->api;
     FD_SET(fd, mask & EV_READ ? &s_api->rfds : &s_api->wfds);
-    return 0;
+    return EV_OK;
 }
 
 static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
     struct select_api *s_api = ctx->api;
-    int ret = 0;
     FD_SET(fd, mask & EV_READ ? &s_api->rfds : &s_api->wfds);
-    return ret;
+    return EV_OK;
 }
 
 static int ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
@@ -346,6 +340,42 @@ static int ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
 }
 
 #endif // SELECT
+
+/*
+ * Process the event at the position idx in the events_monitored array. Read or
+ * write events can be executed on the same iteration, differentiating just
+ * on EV_CLOSEFD or EV_EVENTFD.
+ * Returns the number of fired callbacks.
+ */
+static int ev_process_event(struct ev_ctx *ctx, int idx, int mask) {
+    if (mask == EV_NONE) return EV_OK;
+    struct ev *e = ev_api_read_event(ctx, idx, mask);
+    int err = 0, fired = 0, fd = e->fd;
+    if (mask & EV_CLOSEFD) {
+        eventfd_read(fd, &(eventfd_t){0L});
+        e->rcallback(ctx, e->rdata);
+        ++fired;
+    } else {
+        if (mask & EV_EVENTFD) {
+            err = eventfd_read(fd, &(eventfd_t){0L});
+            close(fd);
+        } else if (mask & EV_TIMERFD) {
+            err = read(fd, &(unsigned long int){0L}, sizeof(unsigned long int));
+        }
+        if (err < 0) return EV_OK;
+        if (mask & EV_READ) {
+            e->rcallback(ctx, e->rdata);
+            ++fired;
+        }
+        if (mask & EV_WRITE) {
+            if (!fired || e->wcallback != e->rcallback) {
+                e->wcallback(ctx, e->wdata);
+                ++fired;
+            }
+        }
+    }
+    return fired;
+}
 
 /*
  * Auxiliary function, update FD, mask and data in monitored events array.
@@ -385,6 +415,7 @@ static void ev_add_monitored(struct ev_ctx *ctx, int fd, int mask,
 void ev_init(struct ev_ctx *ctx, int events_nr) {
     ev_api_init(ctx, events_nr);
     ctx->stop = 0;
+    ctx->fired_events = 0;
     ctx->events_nr = events_nr;
     ctx->events_monitored = xcalloc(events_nr, sizeof(struct ev));
     for (int i = 0; i < events_nr; ++i)
@@ -411,7 +442,15 @@ int ev_poll(struct ev_ctx *ctx, time_t timeout) {
 
 int ev_run(struct ev_ctx *ctx) {
     int n = 0, events = 0;
+    /*
+     * Start an infinite loop, can be stopped only by scheduling an ev_stop
+     * callback or if an error on the underlying backend occur
+     */
     while (!ctx->stop) {
+        /*
+         * blocks polling for events, -1 means forever. Returns only in case of
+         * valid events ready to be processed or errors
+         */
         n = ev_poll(ctx, -1);
         if (n < 0) {
             /* Signals to all threads. Ignore it for now */
@@ -422,7 +461,7 @@ int ev_run(struct ev_ctx *ctx) {
         }
         for (int i = 0; i < n; ++i) {
             events = ev_get_event_type(ctx, i);
-            ev_read_event(ctx, i, events);
+            ctx->fired_events += ev_process_event(ctx, i, events);
         }
     }
     return n;
@@ -451,9 +490,10 @@ int ev_register_event(struct ev_ctx *ctx, int fd, int mask,
     ev_add_monitored(ctx, fd, mask, callback, data);
     int ret = 0;
     ret = ev_api_register_event(ctx, fd, mask);
+    if (ret < 0) return EV_ERR;
     if (mask & EV_EVENTFD)
         (void) eventfd_write(fd, 1);
-    return ret;
+    return EV_OK;
 }
 
 int ev_register_cron(struct ev_ctx *ctx,
@@ -469,7 +509,7 @@ int ev_register_cron(struct ev_ctx *ctx,
     int timerfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
 
     if (timerfd_settime(timerfd, 0, &timer, NULL) < 0)
-        return -1;
+        return -EV_ERR;
 
     // Add the timer to the event loop
     ev_add_monitored(ctx, timerfd, EV_TIMERFD|EV_READ, callback, NULL);
@@ -481,41 +521,10 @@ int ev_fire_event(struct ev_ctx *ctx, int fd, int mask,
     int ret = 0;
     ev_add_monitored(ctx, fd, mask, callback, data);
     ret = ev_api_fire_event(ctx, fd, mask);
-    if (mask & EV_EVENTFD)
-        ret = eventfd_write(fd, 1);
-    return ret;
-}
-
-int ev_read_event(struct ev_ctx *ctx, int idx, int mask) {
-    if (mask == EV_NONE)
-        return 0;
-    struct ev *e = ev_api_read_event(ctx, idx, mask);
-    int fired = 0;
-    int err = 0;
-    int fd = e->fd;
+    if (ret < 0) return EV_ERR;
     if (mask & EV_EVENTFD) {
-        eventfd_read(fd, &(eventfd_t){0L});
-        err = close(fd);
-    } else if (mask & EV_TIMERFD) {
-        err = read(fd, &(unsigned long int){0L}, sizeof(unsigned long int));
-        if (err > 0) {
-            if (mask & EV_READ)
-                e->rcallback(ctx, e->rdata);
-            if (mask & EV_WRITE)
-                e->wcallback(ctx, e->wdata);
-        }
-    } else if (mask & EV_CLOSEFD) {
-        eventfd_read(fd, &(eventfd_t){0L});
-        e->rcallback(ctx, e->rdata);
-    } else {
-        if (mask & EV_READ) {
-            e->rcallback(ctx, e->rdata);
-            fired = 1;
-        }
-        if (mask & EV_WRITE) {
-            if (!fired || e->wcallback != e->rcallback)
-                e->wcallback(ctx, e->wdata);
-        }
+        ret = eventfd_write(fd, 1);
+        if (ret < 0) return EV_ERR;
     }
-    return err;
+    return EV_OK;
 }
