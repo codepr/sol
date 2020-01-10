@@ -88,6 +88,12 @@ int ev_poll(struct ev_ctx *, time_t);
 int ev_run(struct ev_ctx *);
 
 /*
+ * Trigger a stop on a running event, it's meant to be run as an event in a
+ * running ev_ctx
+ */
+void ev_stop(struct ev_ctx *);
+
+/*
  * Add a single FD to the underlying backend of the event loop. Equal to
  * ev_fire_event just without an event to be carried. Useful to add simple
  * descritors like a listening socket o message queue FD.

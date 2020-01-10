@@ -63,34 +63,34 @@ struct sol sol;
  * (if any) should have his own ev_ctx and thus being responsible of a subset
  * of clients.
  * At the init of the server, the ev_ctx will be instructed to run some
- * periodic tasks and to run a callback on_accept on new connections. From now
+ * periodic tasks and to run a callback on accept on new connections. From now
  * on start a simple juggling of callbacks to be scheduled on the event loop,
  * typically after being accepted a connection his handle (fd) will be added to
  * the backend of the loop (this case we're using EPOLL as a backend but also
- * KQUEUE or SELECT/POLL should be easy to plug-in) and on_message will be run
- * every time there's new data incoming. If a complete packet is received and
- * correctly parsed it will be processed by calling the right handler from the
- * handler module, based on the command it carries and a response will be fired
- * back.
+ * KQUEUE or SELECT/POLL should be easy to plug-in) and read_callback will be
+ * run every time there's new data incoming. If a complete packet is received
+ * and correctly parsed it will be processed by calling the right handler from
+ * the handler module, based on the command it carries and a response will be
+ * fired back.
  *
  *            MAIN THREAD
  *             [EV_CTX]
  *
- *    ON_ACCEPT         ON_MESSAGE
- *  -------------    --------------
- *        |                 |
- *      ACCEPT              |
- *        | --------------> |
- *        |          READ AND DECODE
- *        |                 |
- *        |                 |
- *        |              PROCESS
- *        |                 |
- *        |                 |
- *        |               WRITE
- *        |                 |
- *      ACCEPT              |
- *        | --------------> |
+ *    ACCEPT_CALLBACK         READ_CALLBACK
+ *  -------------------    ------------------
+ *        |                        |
+ *      ACCEPT                     |
+ *        | ---------------------->|
+ *        |                  READ AND DECODE
+ *        |                        |
+ *        |                        |
+ *        |                     PROCESS
+ *        |                        |
+ *        |                        |
+ *        |                      WRITE
+ *        |                        |
+ *      ACCEPT                     |
+ *        | ---------------------->|
  *
  * Right now we're using a single thread, but the whole method could be easily
  * distributed across a threadpool, by paying attention to the shared critical
@@ -116,17 +116,26 @@ struct eventloop {
 static int client_destructor(struct client *);
 
 // CALLBACKS for the eventloop
-static void on_accept(struct ev_ctx *, void *);
+static void accept_callback(struct ev_ctx *, void *);
 
-static void on_message(struct ev_ctx *, void *);
+static void read_callback(struct ev_ctx *, void *);
 
-static void process_message(struct ev_ctx *, void *);
+static void write_callback(struct ev_ctx *, void *);
 
 /*
  * Processing message function, will be applied on fully formed mqtt packet
- * received on on_message callback
+ * received on read_callback callback
  */
-static void process_message(struct ev_ctx *, void *);
+static void process_message(struct ev_ctx *, struct client *);
+
+/* Periodic routine to publish general stats about the broker on $SOL topics */
+static void publish_stats(struct ev_ctx *, void *);
+
+/*
+ * Periodic routine to check for incomplete transactions on QoS > 0 to be
+ * concluded
+ */
+static void inflight_msg_check(struct ev_ctx *, void *);
 
 /*
  * Statistics topics, published every N seconds defined by configuration
@@ -147,15 +156,6 @@ static const char *sys_topics[SYS_TOPICS] = {
     "$SOL/broker/messages/received/",
     "$SOL/broker/memory/used"
 };
-
-/* Periodic routine to publish general stats about the broker on $SOL topics */
-static void publish_stats(struct ev_ctx *, void *);
-
-/*
- * Periodic routine to check for incomplete transactions on QoS > 0 to be
- * concluded
- */
-static void inflight_msg_check(struct ev_ctx *, void *);
 
 /* Simple error_code to string function, to be refined */
 static const char *solerr(int rc) {
@@ -348,20 +348,19 @@ static inline int write_data(struct client *c) {
     return 0;
 }
 
-void on_write(struct ev_ctx *ctx, void *arg) {
+static void write_callback(struct ev_ctx *ctx, void *arg) {
     struct client *client = arg;
     int err = write_data(client);
     switch (err) {
         case 0: // OK
             /*
              * Rearm descriptor making it ready to receive input,
-             * on_message will be the callback to be used.
+             * read_callback will be the callback to be used.
              */
             client->status = WAITING_HEADER;
-            ev_fire_event(ctx, client->conn.fd, EV_READ, on_message, client);
+            ev_fire_event(ctx, client->conn.fd, EV_READ, read_callback, client);
             break;
         case -ERREAGAIN:
-            /* ev_fire_event(ctx, client->conn.fd, EV_WRITE, on_write, client); */
             break;
         default:
             log_info("Closing connection with %s (%s): %s %i",
@@ -595,7 +594,7 @@ static int auth_destructor(struct hashtable_entry *entry) {
  * and link it to the fd, ready to be set in EPOLLIN event, then pass the
  * connection to the IO EPOLL loop, waited by the IO thread pool.
  */
-static void on_accept(struct ev_ctx *ctx, void *data) {
+static void accept_callback(struct ev_ctx *ctx, void *data) {
     int serverfd = *((int *) data);
     while (1) {
 
@@ -627,10 +626,7 @@ static void on_accept(struct ev_ctx *ctx, void *data) {
         sol.clients[fd].conn = conn;
 
         /* Add it to the epoll loop */
-        ev_register_event(ctx, fd, EV_READ, on_message, &sol.clients[fd]);
-
-        /* Rearm server fd to accept new connections */
-        /* ev_fire_event(ctx, serverfd, EV_READ, on_accept, data); */
+        ev_register_event(ctx, fd, EV_READ, read_callback, &sol.clients[fd]);
 
         /* Record the new client connected */
         info.nclients++;
@@ -640,7 +636,7 @@ static void on_accept(struct ev_ctx *ctx, void *data) {
     }
 }
 
-static void on_message(struct ev_ctx *ctx, void *data) {
+static void read_callback(struct ev_ctx *ctx, void *data) {
     struct client *c = data;
     if (c->status == SENDING_DATA)
         return;
@@ -705,8 +701,7 @@ static void on_message(struct ev_ctx *ctx, void *data) {
     }
 }
 
-static void process_message(struct ev_ctx *ctx, void *arg) {
-    struct client *c = arg;
+static void process_message(struct ev_ctx *ctx, struct client *c) {
     struct io_event io = { .client = c, .ctx = ctx };
     /*
      * Unpack received bytes into a mqtt_packet structure and execute the
@@ -724,7 +719,7 @@ static void process_message(struct ev_ctx *ctx, void *arg) {
              * worker thread routine. Just send out all bytes stored in the
              * reply buffer to the reply file descriptor.
              */
-            on_write(ctx, c);
+            enqueue_event_write(ctx, c);
             /* Free resource, ACKs will be free'd closing the server */
             mqtt_packet_destroy(&io.data, io.data.header.bits.type);
             break;
@@ -743,7 +738,7 @@ static void process_message(struct ev_ctx *ctx, void *arg) {
 
 static void stop_handler(struct ev_ctx *ctx, void *arg) {
     (void) arg;
-    ctx->stop = 1;
+    ev_stop(ctx);
 }
 
 /*
@@ -759,8 +754,8 @@ static void *eventloop_start(void *args) {
     ev_init(&ctx, EVENTLOOP_MAX_EVENTS);
     // Register stop event
     ev_register_event(&ctx, conf->run, EV_CLOSEFD|EV_READ, stop_handler, NULL);
-    // Register listening FD with on_accept callback
-    ev_register_event(&ctx, sfd, EV_READ, on_accept, &sfd);
+    // Register listening FD with accept callback
+    ev_register_event(&ctx, sfd, EV_READ, accept_callback, &sfd);
     // Register periodic tasks
     ev_register_cron(&ctx, publish_stats, conf->stats_pub_interval, 0);
     ev_register_cron(&ctx, inflight_msg_check, 0, 9e8);
@@ -768,6 +763,10 @@ static void *eventloop_start(void *args) {
     ev_run(&ctx);
     ev_destroy(&ctx);
     return NULL;
+}
+
+void enqueue_event_write(struct ev_ctx *ctx, struct client *c) {
+    ev_fire_event(ctx, c->conn.fd, EV_WRITE, write_callback, c);
 }
 
 int start_server(const char *addr, const char *port) {

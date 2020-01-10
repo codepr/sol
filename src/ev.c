@@ -428,6 +428,10 @@ int ev_run(struct ev_ctx *ctx) {
     return n;
 }
 
+void ev_stop(struct ev_ctx *ctx) {
+   ctx->stop = 1;
+}
+
 int ev_watch_fd(struct ev_ctx *ctx, int fd, int mask) {
     ev_add_monitored(ctx, fd, mask, NULL, NULL);
     return ev_api_watch_fd(ctx, fd);

@@ -149,7 +149,7 @@ void publish_message(struct mqtt_packet *p,
         mqtt_pack(&pkt, sc->wbuf + sc->towrite);
         sc->towrite += publen;
 
-        ev_fire_event(ctx, sc->conn.fd, EV_WRITE, on_write, sc);
+        enqueue_event_write(ctx, sc);
 
         info.messages_sent++;
 

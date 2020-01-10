@@ -122,6 +122,6 @@ extern pthread_spinlock_t io_spinlock;
 
 int start_server(const char *, const char *);
 
-void on_write(struct ev_ctx *, void *);
+void enqueue_event_write(struct ev_ctx *, struct client *);
 
 #endif
