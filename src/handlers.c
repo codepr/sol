@@ -146,8 +146,8 @@ void publish_message(struct mqtt_packet *p,
             pkt.publish.pkt_id = 0;
         }
 
-        mqtt_pack(&pkt, sc->wbuf);
-        sc->towrite = publen;
+        mqtt_pack(&pkt, sc->wbuf + sc->towrite);
+        sc->towrite += publen;
 
         ev_fire_event(ctx, sc->conn.fd, EV_WRITE, on_write, sc);
 
@@ -180,8 +180,8 @@ static void set_payload_connack(struct client *c, unsigned char rc) {
             .rc = rc
         }
     };
-    mqtt_pack(&response, c->wbuf);
-    c->towrite = MQTT_ACK_LEN;
+    mqtt_pack(&response, c->wbuf + c->towrite);
+    c->towrite += MQTT_ACK_LEN;
     if (rc != RC_CONNECTION_ACCEPTED) {
         if (c->session) {
             list_destroy(c->session->subscriptions, 0);
@@ -450,8 +450,8 @@ static int subscribe_handler(struct io_event *e) {
     mqtt_suback(&pkt, s->pkt_id, rcs, s->tuples_len);
 
     size_t len = mqtt_size(&pkt, NULL);
-    mqtt_pack(&pkt, c->wbuf);
-    c->towrite = len;
+    mqtt_pack(&pkt, c->wbuf + c->towrite);
+    c->towrite += len;
 
     log_debug("Sending SUBACK to %s", c->client_id);
 
@@ -474,8 +474,8 @@ static int unsubscribe_handler(struct io_event *e) {
             topic_del_subscriber(t, c, false);
     }
 
-    mqtt_pack_mono(c->wbuf, UNSUBACK, e->data.unsubscribe.pkt_id);
-    c->towrite = MQTT_ACK_LEN;
+    mqtt_pack_mono(c->wbuf + c->towrite, UNSUBACK, e->data.unsubscribe.pkt_id);
+    c->towrite += MQTT_ACK_LEN;
 
     log_debug("Sending UNSUBACK to %s", c->client_id);
 
@@ -548,8 +548,8 @@ static int publish_handler(struct io_event *e) {
               ptype == PUBACK ? "PUBACK" : "PUBREC", c->client_id, orig_mid);
 
     mqtt_ack(&e->data, ptype == PUBACK ? PUBACK_B : PUBREC_B);
-    mqtt_pack_mono(c->wbuf, ptype, orig_mid);
-    c->towrite = MQTT_ACK_LEN;
+    mqtt_pack_mono(c->wbuf + c->towrite, ptype, orig_mid);
+    c->towrite += MQTT_ACK_LEN;
 
     return REPLY;
 
@@ -577,8 +577,8 @@ static int pubrec_handler(struct io_event *e) {
     struct client *c = e->client;
     log_debug("Received PUBREC from %s (m%u)",
               c->client_id, e->data.ack.pkt_id);
-    mqtt_pack_mono(c->wbuf, PUBREL, e->data.ack.pkt_id);
-    c->towrite = MQTT_ACK_LEN;
+    mqtt_pack_mono(c->wbuf+c->towrite, PUBREL, e->data.ack.pkt_id);
+    c->towrite += MQTT_ACK_LEN;
     e->data.header.bits.type = PUBREL;
     // Update inflight acks table
     if (c->i_acks[e->data.ack.pkt_id].in_use) {
@@ -595,8 +595,8 @@ static int pubrel_handler(struct io_event *e) {
     log_debug("Received PUBREL from %s (m%u)",
               e->client->client_id, e->data.ack.pkt_id);
     struct client *c = e->client;
-    mqtt_pack_mono(c->wbuf, PUBCOMP, e->data.ack.pkt_id);
-    c->towrite = MQTT_ACK_LEN;
+    mqtt_pack_mono(c->wbuf+c->towrite, PUBCOMP, e->data.ack.pkt_id);
+    c->towrite += MQTT_ACK_LEN;
     if (c->in_i_acks[e->data.ack.pkt_id].in_use)
         c->in_i_acks[e->data.ack.pkt_id].in_use = 0;
     log_debug("Sending PUBCOMP to %s (m%u)",
@@ -619,8 +619,8 @@ static int pubcomp_handler(struct io_event *e) {
 static int pingreq_handler(struct io_event *e) {
     log_debug("Received PINGREQ from %s", e->client->client_id);
     e->data.header.byte = PINGRESP_B;
-    mqtt_pack(&e->data, e->client->wbuf);
-    e->client->towrite = MQTT_HEADER_LEN;
+    mqtt_pack(&e->data, e->client->wbuf+e->client->towrite);
+    e->client->towrite += MQTT_HEADER_LEN;
     log_debug("Sending PINGRESP to %s", e->client->client_id);
     return REPLY;
 }

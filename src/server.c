@@ -358,11 +358,10 @@ void on_write(struct ev_ctx *ctx, void *arg) {
              * on_message will be the callback to be used.
              */
             client->status = WAITING_HEADER;
-            client->toread = client->read = client->rpos = 0;
             ev_fire_event(ctx, client->conn.fd, EV_READ, on_message, client);
             break;
         case -ERREAGAIN:
-            ev_fire_event(ctx, client->conn.fd, EV_WRITE, on_write, client);
+            /* ev_fire_event(ctx, client->conn.fd, EV_WRITE, on_write, client); */
             break;
         default:
             log_info("Closing connection with %s (%s): %s %i",
@@ -631,7 +630,7 @@ static void on_accept(struct ev_ctx *ctx, void *data) {
         ev_register_event(ctx, fd, EV_READ, on_message, &sol.clients[fd]);
 
         /* Rearm server fd to accept new connections */
-        ev_fire_event(ctx, serverfd, EV_READ, on_accept, data);
+        /* ev_fire_event(ctx, serverfd, EV_READ, on_accept, data); */
 
         /* Record the new client connected */
         info.nclients++;
@@ -643,16 +642,15 @@ static void on_accept(struct ev_ctx *ctx, void *data) {
 
 static void on_message(struct ev_ctx *ctx, void *data) {
     struct client *c = data;
-    if (c->status == SENDING_DATA) {
-        ev_fire_event(ctx, c->conn.fd, EV_READ, on_message, c);
+    if (c->status == SENDING_DATA)
         return;
-    }
     /*
      * Received a bunch of data from a client, after the creation
      * of an IO event we need to read the bytes and encoding the
      * content according to the protocol
      */
     int rc = read_data(c);
+    c->status = SENDING_DATA;
     switch (rc) {
         case 0:
             /*
@@ -662,7 +660,7 @@ static void on_message(struct ev_ctx *ctx, void *data) {
              */
             /* Record last action as of now */
             c->last_action_time = time(NULL);
-            ev_fire_event(ctx, c->conn.fd, EV_WRITE, process_message, c);
+            process_message(ctx, c);
             break;
         case -ERRCLIENTDC:
         case -ERRPACKETERR:
@@ -703,7 +701,6 @@ static void on_message(struct ev_ctx *ctx, void *data) {
             info.nconnections--;
             break;
         case -ERREAGAIN:
-            ev_fire_event(ctx, c->conn.fd, EV_READ, on_message, c);
             break;
     }
 }
@@ -727,8 +724,7 @@ static void process_message(struct ev_ctx *ctx, void *arg) {
              * worker thread routine. Just send out all bytes stored in the
              * reply buffer to the reply file descriptor.
              */
-            ev_fire_event(ctx, c->conn.fd, EV_WRITE, on_write, c);
-            /* on_write(ctx, c); */
+            on_write(ctx, c);
             /* Free resource, ACKs will be free'd closing the server */
             mqtt_packet_destroy(&io.data, io.data.header.bits.type);
             break;
@@ -741,7 +737,6 @@ static void process_message(struct ev_ctx *ctx, void *arg) {
             break;
         default:
             c->status = WAITING_HEADER;
-            ev_fire_event(ctx, c->conn.fd, EV_READ, on_message, c);
             break;
     }
 }

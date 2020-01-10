@@ -54,7 +54,7 @@ static int epoll_add(int efd, int fd, int evs, void *data) {
     if (data)
         ev.data.ptr = data;
 
-    ev.events = evs | EPOLLHUP | EPOLLERR | EPOLLET | EPOLLONESHOT;
+    ev.events = evs | EPOLLHUP | EPOLLERR;
 
     return epoll_ctl(efd, EPOLL_CTL_ADD, fd, &ev);
 }
@@ -73,7 +73,7 @@ static int epoll_mod(int efd, int fd, int evs, void *data) {
     if (data)
         ev.data.ptr = data;
 
-    ev.events = evs | EPOLLHUP | EPOLLERR | EPOLLET | EPOLLONESHOT;
+    ev.events = evs | EPOLLHUP | EPOLLERR;
 
     return epoll_ctl(efd, EPOLL_CTL_MOD, fd, &ev);
 }
