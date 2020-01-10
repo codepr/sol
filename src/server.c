@@ -73,24 +73,25 @@ struct sol sol;
  * the handler module, based on the command it carries and a response will be
  * fired back.
  *
- *            MAIN THREAD
- *             [EV_CTX]
+ *                             MAIN THREAD
+ *                              [EV_CTX]
  *
- *    ACCEPT_CALLBACK         READ_CALLBACK
- *  -------------------    ------------------
- *        |                        |
- *      ACCEPT                     |
- *        | ---------------------->|
- *        |                  READ AND DECODE
- *        |                        |
- *        |                        |
- *        |                     PROCESS
- *        |                        |
- *        |                        |
- *        |                      WRITE
- *        |                        |
- *      ACCEPT                     |
- *        | ---------------------->|
+ *    ACCEPT_CALLBACK         READ_CALLBACK         WRITE_CALLBACK
+ *  -------------------    ------------------    --------------------
+ *        |                        |                       |
+ *      ACCEPT                     |                       |
+ *        | ---------------------> |                       |
+ *        |                  READ AND DECODE               |
+ *        |                        |                       |
+ *        |                        |                       |
+ *        |                     PROCESS                    |
+ *        |                        |                       |
+ *        |                        |                       |
+ *        |                        | --------------------> |
+ *        |                        |                     WRITE
+ *      ACCEPT                     |                       |
+ *        | ---------------------> | <-------------------- |
+ *        |                        |                       |
  *
  * Right now we're using a single thread, but the whole method could be easily
  * distributed across a threadpool, by paying attention to the shared critical
@@ -616,7 +617,7 @@ static void accept_callback(struct ev_ctx *ctx, void *data) {
         // Resize client pool if needed
         if (fd > sol.maxfd) {
             sol.maxfd = fd;
-            sol.clients = xrealloc(sol.clients, sol.maxfd);
+            sol.clients = xrealloc(sol.clients, fd * sizeof(struct client));
         }
         /*
          * Create a client structure to handle his context
