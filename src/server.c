@@ -749,7 +749,7 @@ static void stop_handler(struct ev_ctx *ctx, void *arg) {
  * processed by a worker thread, EPOLLOUT for bytes incoming from a worker
  * thread, ready to be delivered out.
  */
-static void *eventloop_start(void *args) {
+static void eventloop_start(void *args) {
     int sfd = *((int *) args);
     struct ev_ctx ctx;
     ev_init(&ctx, EVENTLOOP_MAX_EVENTS);
@@ -763,7 +763,6 @@ static void *eventloop_start(void *args) {
     // Start the loop, blocking call
     ev_run(&ctx);
     ev_destroy(&ctx);
-    return NULL;
 }
 
 void enqueue_event_write(struct ev_ctx *ctx, struct client *c) {
