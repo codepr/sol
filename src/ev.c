@@ -103,7 +103,7 @@ static void ev_api_destroy(struct ev_ctx *ctx) {
 static int ev_api_get_event_type(struct ev_ctx *ctx, int idx) {
     struct epoll_api *e_api = ctx->api;
     int events = e_api->events[idx].events;
-    int ev_mask = ((struct ev *) e_api->events[idx].data.ptr)->mask;
+    int ev_mask = ctx->events_monitored[e_api->events[idx].data.fd].mask;
     // We want to remember the previous events only if they're not of type
     // CLOSE or TIMER
     int mask = ev_mask & (EV_CLOSEFD|EV_TIMERFD) ? ev_mask : EV_NONE;
@@ -120,7 +120,7 @@ static int ev_api_poll(struct ev_ctx *ctx, time_t timeout) {
 
 static int ev_api_watch_fd(struct ev_ctx *ctx, int fd) {
     struct epoll_api *e_api = ctx->api;
-    return epoll_add(e_api->fd, fd, EPOLLIN, &ctx->events_monitored[fd]);
+    return epoll_add(e_api->fd, fd, EPOLLIN, NULL);
 }
 
 static int ev_api_del_fd(struct ev_ctx *ctx, int fd) {
@@ -133,7 +133,7 @@ static int ev_api_register_event(struct ev_ctx *ctx, int fd, int mask) {
     int op = 0;
     if (mask & EV_READ) op |= EPOLLIN;
     if (mask & EV_WRITE) op |= EPOLLOUT;
-    return epoll_add(e_api->fd, fd, op, &ctx->events_monitored[fd]);
+    return epoll_add(e_api->fd, fd, op, NULL);
 }
 
 static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
@@ -142,13 +142,13 @@ static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
     if (mask & EV_READ) op |= EPOLLIN;
     if (mask & EV_WRITE) op |= EPOLLOUT;
     if (mask & EV_EVENTFD)
-        return epoll_add(e_api->fd, fd, op, &ctx->events_monitored[fd]);
-    return epoll_mod(e_api->fd, fd, op, &ctx->events_monitored[fd]);
+        return epoll_add(e_api->fd, fd, op, NULL);
+    return epoll_mod(e_api->fd, fd, op, NULL);
 }
 
 static struct ev *ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
-    struct epoll_api *e_api = ctx->api;
-    return e_api->events[idx].data.ptr;
+    int fd = ((struct epoll_api *) ctx->api)->events[idx].data.fd;
+    return ctx->events_monitored + fd;
 }
 
 #elif defined(POLL)
@@ -412,6 +412,10 @@ static void ev_add_monitored(struct ev_ctx *ctx, int fd, int mask,
     }
 }
 
+static int ev_get_event_type(struct ev_ctx *ctx, int idx) {
+    return ev_api_get_event_type(ctx, idx);
+}
+
 void ev_init(struct ev_ctx *ctx, int events_nr) {
     ev_api_init(ctx, events_nr);
     ctx->stop = 0;
@@ -430,10 +434,6 @@ void ev_destroy(struct ev_ctx *ctx) {
     }
     xfree(ctx->events_monitored);
     ev_api_destroy(ctx);
-}
-
-int ev_get_event_type(struct ev_ctx *ctx, int idx) {
-    return ev_api_get_event_type(ctx, idx);
 }
 
 int ev_poll(struct ev_ctx *ctx, time_t timeout) {

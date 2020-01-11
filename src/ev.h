@@ -120,9 +120,6 @@ int ev_watch_fd(struct ev_ctx *, int, int);
  */
 int ev_del_fd(struct ev_ctx *, int);
 
-// TODO remove from exposed, make it static
-int ev_get_event_type(struct ev_ctx *, int );
-
 /*
  * Register a new event, semantically it's equal to ev_register_event but
  * it's meant to be used when an FD is not already watched by the event loop.
