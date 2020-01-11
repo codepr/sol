@@ -73,7 +73,7 @@ static handler *handlers[15] = {
 void publish_message(struct mqtt_packet *p,
                      const struct topic *t, struct ev_ctx *ctx) {
 
-    size_t publen = 0;
+    size_t len = 0;
     unsigned short mid = 0;
     unsigned qos = p->header.bits.qos;
     struct mqtt_packet pkt = {
@@ -87,6 +87,7 @@ void publish_message(struct mqtt_packet *p,
     struct iterator *it = iter_new(t->subscribers, hashtable_iter_next);
     unsigned char type;
 
+    len = mqtt_size(p, NULL);
     // first run check
     FOREACH (it) {
         struct subscriber *sub = it->ptr;
@@ -106,8 +107,7 @@ void publish_message(struct mqtt_packet *p,
          */
         if (sc->online == false && sc->clean_session == false) {
             pkt.header.bits.qos = p->header.bits.qos;
-            struct inflight_msg *im =
-                inflight_msg_new(sc, &pkt, PUBLISH, publen);
+            struct inflight_msg *im = inflight_msg_new(sc, &pkt, PUBLISH, len);
             sol_session_append_imsg(sc->session, im);
             continue;
         }
@@ -117,22 +117,21 @@ void publish_message(struct mqtt_packet *p,
          * TODO move the IO part into the dedicated workers. Coded
          * here as first simpler working version
          */
-        publen = mqtt_size(p, NULL);
         if (p->header.bits.qos > AT_MOST_ONCE) {
             mid = next_free_mid(sc);
             pkt.publish.pkt_id = mid;
             pkt.header.bits.qos = p->header.bits.qos;
 
             if (!sc->i_msgs[pkt.publish.pkt_id].in_use)
-                inflight_msg_init(&sc->i_msgs[pkt.publish.pkt_id],
-                                  sc, &pkt, PUBLISH, publen);
+                inflight_msg_init(&sc->i_msgs[mid], sc, &pkt, PUBLISH, len);
             if (!sc->i_acks[mid].in_use) {
                 type = sub->qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
+                // TODO broken pointer, to be allocated or designed differently
                 struct mqtt_packet ack = {
                     .header = (union mqtt_header) { .byte = type },
                 };
                 mqtt_ack(&ack, mid);
-                inflight_msg_init(&sc->i_acks[mid], sc, &ack, type, publen);
+                inflight_msg_init(&sc->i_acks[mid], sc, &ack, type, len);
             }
             sc->has_inflight = true;
         } else {
@@ -148,7 +147,7 @@ void publish_message(struct mqtt_packet *p,
         }
 
         mqtt_pack(&pkt, sc->wbuf + sc->towrite);
-        sc->towrite += publen;
+        sc->towrite += len;
 
         enqueue_event_write(ctx, sc);
 
