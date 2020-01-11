@@ -795,8 +795,8 @@ static void eventloop_start(void *args) {
     // Register listening FD with accept callback
     ev_register_event(&ctx, sfd, EV_READ, accept_callback, &sfd);
     // Register periodic tasks
-    ev_register_cron(&ctx, publish_stats, conf->stats_pub_interval, 0);
-    ev_register_cron(&ctx, inflight_msg_check, 0, 9e8);
+    ev_register_cron(&ctx, publish_stats, NULL, conf->stats_pub_interval, 0);
+    ev_register_cron(&ctx, inflight_msg_check, NULL, 0, 9e8);
     // Start the loop, blocking call
     ev_run(&ctx);
     ev_destroy(&ctx);

@@ -422,8 +422,6 @@ void ev_init(struct ev_ctx *ctx, int events_nr) {
     ctx->fired_events = 0;
     ctx->events_nr = events_nr;
     ctx->events_monitored = xcalloc(events_nr, sizeof(struct ev));
-    for (int i = 0; i < events_nr; ++i)
-        ctx->events_monitored[i].mask = EV_NONE;
 }
 
 void ev_destroy(struct ev_ctx *ctx) {
@@ -477,14 +475,22 @@ int ev_watch_fd(struct ev_ctx *ctx, int fd, int mask) {
 }
 
 int ev_del_fd(struct ev_ctx *ctx, int fd) {
-    ctx->events_monitored[fd].mask = EV_NONE;
-    ctx->events_monitored[fd].rdata = NULL;
-    ctx->events_monitored[fd].rcallback = NULL;
-    ctx->events_monitored[fd].wdata = NULL;
-    ctx->events_monitored[fd].wcallback = NULL;
+    memset(ctx->events_monitored + fd, 0x00, sizeof(struct ev));
     return ev_api_del_fd(ctx, fd);
 }
 
+/*
+ * Set a callback and an argument to be passed to for the next loop cycle,
+ * associating it to a file descriptor, ultimately resulting in an event to be
+ * dispatched and processed.
+ *
+ * The difference with ev_fire_event is that this function should be called
+ * when the file descriptor is not registered in the loop yet.
+ *
+ * - mask: bitmask used to describe what type of event we're going to fire
+ * - callback:  is a function pointer to the routine we want to execute
+ * - data:  an opaque pointer to the arguments for the callback.
+ */
 int ev_register_event(struct ev_ctx *ctx, int fd, int mask,
                       void (*callback)(struct ev_ctx *, void *), void *data) {
     ev_add_monitored(ctx, fd, mask, callback, data);
@@ -496,8 +502,14 @@ int ev_register_event(struct ev_ctx *ctx, int fd, int mask,
     return EV_OK;
 }
 
+/*
+ * Register a periodically repeate callback and args to be passed to a running
+ * loop, specifying, seconds and/or nanoseconds defining how often the callback
+ * should be executed.
+ */
 int ev_register_cron(struct ev_ctx *ctx,
                      void (*callback)(struct ev_ctx *, void *),
+                     void *data,
                      long long s, long long ns) {
     struct itimerspec timer;
     memset(&timer, 0x00, sizeof(timer));
@@ -512,7 +524,7 @@ int ev_register_cron(struct ev_ctx *ctx,
         return -EV_ERR;
 
     // Add the timer to the event loop
-    ev_add_monitored(ctx, timerfd, EV_TIMERFD|EV_READ, callback, NULL);
+    ev_add_monitored(ctx, timerfd, EV_TIMERFD|EV_READ, callback, data);
     return ev_api_watch_fd(ctx, timerfd);
 }
 
@@ -520,6 +532,9 @@ int ev_register_cron(struct ev_ctx *ctx,
  * Set a callback and an argument to be passed to for the next loop cycle,
  * associating it to a file descriptor, ultimately resulting in an event to be
  * dispatched and processed.
+ *
+ * Behave like ev_register_event but it's meant to be called when the file
+ * descriptor is already registered in the loop.
  *
  * - mask: bitmask used to describe what type of event we're going to fire
  * - callback:  is a function pointer to the routine we want to execute
