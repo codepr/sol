@@ -51,4 +51,7 @@ void iter_destroy(struct iterator *);
 #define FOREACH(it)  \
     for (; it && it->ptr; it = iter_next(it))
 
+#define MAP(it, fn, arg) \
+    for (; it && it->ptr; it = iter_next(it)) { fn(it->ptr, arg); }
+
 #endif
