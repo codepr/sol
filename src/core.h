@@ -74,6 +74,7 @@ enum client_status {
  */
 struct client {
     bool online;  // just a boolean will be fine for now
+    bool has_lwt;
     bool clean_session;
     int rc;
     int status;
@@ -88,7 +89,7 @@ struct client {
     struct connection conn;
     struct session *session;
     unsigned long last_action_time;
-    struct mqtt_publish *lwt_msg;
+    struct mqtt_packet lwt_msg;
     int next_free_mid;
     struct inflight_msg *i_acks;
     struct inflight_msg *i_msgs;
@@ -144,7 +145,7 @@ void topic_add_subscriber(struct topic *, struct client *, unsigned, bool);
 
 void topic_del_subscriber(struct topic *, struct client *, bool);
 
-bool sol_topic_exists(struct sol *, const char *);
+bool sol_topic_exists(const struct sol *, const char *);
 
 void sol_topic_put(struct sol *, struct topic *);
 
@@ -153,7 +154,7 @@ void sol_topic_del(struct sol *, const char *);
 struct session *sol_session_new(void);
 
 /* Find a topic by name and return it */
-struct topic *sol_topic_get(struct sol *, const char *);
+struct topic *sol_topic_get(const struct sol *, const char *);
 
 /* Get or create a new topic if it doesn't exists */
 struct topic *sol_topic_get_or_create(struct sol *, const char *);

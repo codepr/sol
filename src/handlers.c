@@ -278,46 +278,44 @@ static int connect_handler(struct io_event *e) {
      * Add the new connected client to the global map, if it is already
      * connected, kick him out accordingly to the MQTT v3.1.1 specs.
      */
-    size_t cid_len = strlen((const char *) c->payload.client_id);
-    memcpy(e->client->client_id, c->payload.client_id, cid_len + 1);
-
+    strncpy(e->client->client_id, (char *) c->payload.client_id, MQTT_CLIENT_ID_LEN);
     // Add LWT topic and message if present
     if (c->bits.will) {
+        e->client->has_lwt = true;
+        const char *will_topic = (const char *) c->payload.will_topic;
+        const char *will_message = (const char *) c->payload.will_message;
         // TODO check for will_topic != NULL
-        struct topic *t =
-            sol_topic_get_or_create(&sol, (char *) c->payload.will_topic);
+        struct topic *t = sol_topic_get_or_create(&sol, will_topic);
         if (!sol_topic_exists(&sol, t->name))
             sol_topic_put(&sol, t);
         // I'm sure that the string will be NUL terminated by unpack function
-        size_t msg_len = strlen((const char *) c->payload.will_message);
-        size_t tpc_len = strlen((const char *) c->payload.will_topic);
+        size_t msg_len = strlen(will_message);
+        size_t tpc_len = strlen(will_topic);
 
-        struct mqtt_publish *lwt = xmalloc(sizeof(*lwt));
-        lwt->pkt_id = 0;  // placeholder
-        lwt->topiclen = tpc_len;
-        lwt->topic = c->payload.will_topic;
-        lwt->payloadlen = msg_len;
-        lwt->payload = c->payload.will_message;
-        e->client->lwt_msg = lwt;
+        e->client->lwt_msg = (struct mqtt_packet) {
+            .header = (union mqtt_header) { .byte = PUBLISH_B },
+            .publish = (struct mqtt_publish) {
+                .pkt_id = 0,  // placeholder
+                .topiclen = tpc_len,
+                .topic = (unsigned char *) xstrdup(will_topic),
+                .payloadlen = msg_len,
+                .payload = (unsigned char *) xstrdup(will_message)
+            }
+        };
+
+        e->client->lwt_msg.header.bits.qos = c->bits.will_qos;
         // We must store the retained message in the topic
         if (c->bits.will_retain == 1) {
-            struct mqtt_packet up = {
-                .header = (union mqtt_header) { .byte = PUBLISH_B },
-                .publish = *lwt
-            };
-            // Update the QOS of the retained message according to the desired
-            // one by the connected client
-            up.header.bits.qos = c->bits.will_qos;
-            size_t publen = mqtt_size(&up, NULL);
-            unsigned char pub[publen];
-            mqtt_pack(&up, pub);
-            bstring payload = bstring_copy(pub, publen);
+            size_t publen = mqtt_size(&e->client->lwt_msg, NULL);
+            bstring payload = bstring_empty(publen);
+            mqtt_pack(&e->client->lwt_msg, payload);
             // We got a ready-to-be sent bytestring in the retained message
             // field
             t->retained_msg = payload;
         }
-        log_info("Will message specified (%lu bytes)", lwt->payloadlen);
-        log_info("\t%s", lwt->payload);
+        log_info("Will message specified (%lu bytes)",
+                 e->client->lwt_msg.publish.payloadlen);
+        log_info("\t%s", e->client->lwt_msg.publish.payload);
     }
 
     // TODO check for session already present

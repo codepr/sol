@@ -52,7 +52,7 @@ void client_init(struct client *client) {
     client->wbuf = xcalloc(conf->max_request_size, sizeof(unsigned char));
     client->next_free_mid = 1;
     client->last_action_time = time(NULL);
-    client->lwt_msg = NULL;
+    client->has_lwt = false;
     client->session = sol_session_new();
     client->i_acks = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
     client->i_msgs = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
@@ -108,7 +108,7 @@ void topic_add_subscriber(struct topic *t,
 void topic_del_subscriber(struct topic *t,
                           struct client *client,
                           bool cleansession) {
-    cleansession = (bool) cleansession; // temporary placeholder for compiler
+    (void) cleansession;
     hashtable_del(t->subscribers, client->client_id);
 
     // TODO remove in case of cleansession == false
@@ -122,12 +122,12 @@ void sol_topic_del(struct sol *sol, const char *name) {
     trie_delete(&sol->topics, name);
 }
 
-bool sol_topic_exists(struct sol *sol, const char *name) {
+bool sol_topic_exists(const struct sol *sol, const char *name) {
     struct topic *t = sol_topic_get(sol, name);
     return t != NULL;
 }
 
-struct topic *sol_topic_get(struct sol *sol, const char *name) {
+struct topic *sol_topic_get(const struct sol *sol, const char *name) {
     struct topic *ret_topic;
     trie_find(&sol->topics, name, (void *) &ret_topic);
     return ret_topic;

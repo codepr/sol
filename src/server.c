@@ -144,18 +144,23 @@ static void inflight_msg_check(struct ev_ctx *, void *);
  */
 #define SYS_TOPICS 11
 
-static const char *sys_topics[SYS_TOPICS] = {
-    "$SOL/broker/clients/",
-    "$SOL/broker/messages/",
-    "$SOL/broker/uptime/",
-    "$SOL/broker/uptime/sol",
-    "$SOL/broker/clients/connected/",
-    "$SOL/broker/clients/disconnected/",
-    "$SOL/broker/bytes/sent/",
-    "$SOL/broker/bytes/received/",
-    "$SOL/broker/messages/sent/",
-    "$SOL/broker/messages/received/",
-    "$SOL/broker/memory/used"
+struct sys_topic {
+    const char *name;
+    int len;
+};
+
+static const struct sys_topic sys_topics[SYS_TOPICS] = {
+    { "$SOL/broker/clients/", 20 },
+    { "$SOL/broker/messages/", 21 },
+    { "$SOL/broker/uptime/", 19 },
+    { "$SOL/broker/uptime/sol", 22 },
+    { "$SOL/broker/clients/connected/", 30 },
+    { "$SOL/broker/clients/disconnected/", 34 },
+    { "$SOL/broker/bytes/sent/", 23 },
+    { "$SOL/broker/bytes/received/", 27 },
+    { "$SOL/broker/messages/sent/", 26 },
+    { "$SOL/broker/messages/received/", 30 },
+    { "$SOL/broker/memory/used", 23 }
 };
 
 /* Simple error_code to string function, to be refined */
@@ -191,92 +196,91 @@ static const char *solerr(int rc) {
 static void publish_stats(struct ev_ctx *ctx, void *data) {
     (void)data;
 
-    char cclients[number_len(info.nclients) + 1];
-    sprintf(cclients, "%d", info.nclients);
+    char cclients[21];
+    snprintf(cclients, 21, "%d", info.nclients);
 
-    char bsent[number_len(info.bytes_sent) + 1];
-    sprintf(bsent, "%lld", info.bytes_sent);
+    char bsent[21];
+    snprintf(bsent, 21, "%lld", info.bytes_sent);
 
-    char msent[number_len(info.messages_sent) + 1];
-    sprintf(msent, "%lld", info.messages_sent);
+    char msent[21];
+    snprintf(msent, 21, "%lld", info.messages_sent);
 
-    char mrecv[number_len(info.messages_recv) + 1];
-    sprintf(mrecv, "%lld", info.messages_recv);
+    char mrecv[21];
+    snprintf(mrecv, 21, "%lld", info.messages_recv);
 
     long long uptime = time(NULL) - info.start_time;
-    char utime[number_len(uptime) + 1];
-    sprintf(utime, "%lld", uptime);
+    char utime[21];
+    snprintf(utime, 21, "%lld", uptime);
 
     double sol_uptime = (double)(time(NULL) - info.start_time) / SOL_SECONDS;
     char sutime[16];
-    sprintf(sutime, "%.4f", sol_uptime);
+    snprintf(sutime, 16, "%.4f", sol_uptime);
 
     long long memory = memory_used();
-    char mem[number_len(memory)];
-    sprintf(mem, "%lld", memory);
+    char mem[21];
+    snprintf(mem, 21, "%lld", memory);
 
     // $SOL/uptime
     struct mqtt_packet p = {
         .header = (union mqtt_header) { .byte = PUBLISH_B },
         .publish = (struct mqtt_publish) {
             .pkt_id = 0,
-            .topiclen = strlen(sys_topics[2]),
-            .topic = (unsigned char *) sys_topics[2],
+            .topiclen = sys_topics[2].len,
+            .topic = (unsigned char *) sys_topics[2].name,
             .payloadlen = strlen(utime),
             .payload = (unsigned char *) &utime
         }
     };
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.publish.topic), ctx);
+    publish_message(&p, sol_topic_get(&sol, (char *) p.publish.topic), ctx);
 
     // $SOL/broker/uptime/sol
-    p.publish.topiclen = strlen(sys_topics[3]);
-    p.publish.topic = (unsigned char *) sys_topics[3];
+    p.publish.topiclen = sys_topics[3].len;
+    p.publish.topic = (unsigned char *) sys_topics[3].name;
     p.publish.payloadlen = strlen(sutime);
     p.publish.payload = (unsigned char *) &sutime;
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.publish.topic), ctx);
+    publish_message(&p, sol_topic_get(&sol, (char *) p.publish.topic), ctx);
 
     // $SOL/broker/clients/connected
-    p.publish.topiclen = strlen(sys_topics[4]);
-    p.publish.topic = (unsigned char *) sys_topics[4];
+    p.publish.topiclen = sys_topics[4].len;
+    p.publish.topic = (unsigned char *) sys_topics[4].name;
     p.publish.payloadlen = strlen(cclients);
     p.publish.payload = (unsigned char *) &cclients;
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.publish.topic), ctx);
+    publish_message(&p, sol_topic_get(&sol, (char *) p.publish.topic), ctx);
 
     // $SOL/broker/bytes/sent
-    p.publish.topiclen = strlen(sys_topics[6]);
-    p.publish.topic = (unsigned char *) sys_topics[6];
+    p.publish.topiclen = sys_topics[6].len;
+    p.publish.topic = (unsigned char *) sys_topics[6].name;
     p.publish.payloadlen = strlen(bsent);
     p.publish.payload = (unsigned char *) &bsent;
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.publish.topic), ctx);
+    publish_message(&p, sol_topic_get(&sol, (char *) p.publish.topic), ctx);
 
     // $SOL/broker/messages/sent
-    p.publish.topiclen = strlen(sys_topics[8]);
-    p.publish.topic = (unsigned char *) sys_topics[8];
+    p.publish.topiclen = sys_topics[8].len;
+    p.publish.topic = (unsigned char *) sys_topics[8].name;
     p.publish.payloadlen = strlen(msent);
     p.publish.payload = (unsigned char *) &msent;
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.publish.topic), ctx);
+    publish_message(&p, sol_topic_get(&sol, (char *) p.publish.topic), ctx);
 
     // $SOL/broker/messages/received
-    p.publish.topiclen = strlen(sys_topics[9]);
-    p.publish.topic = (unsigned char *) sys_topics[9];
+    p.publish.topiclen = sys_topics[9].len;
+    p.publish.topic = (unsigned char *) sys_topics[9].name;
     p.publish.payloadlen = strlen(mrecv);
     p.publish.payload = (unsigned char *) &mrecv;
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.publish.topic), ctx);
+    publish_message(&p, sol_topic_get(&sol, (char *) p.publish.topic), ctx);
 
     // $SOL/broker/memory/used
-    p.publish.topiclen = strlen(sys_topics[10]);
-    p.publish.topic = (unsigned char *) sys_topics[10];
+    p.publish.topiclen = sys_topics[10].len;
+    p.publish.topic = (unsigned char *) sys_topics[10].name;
     p.publish.payloadlen = strlen(mem);
     p.publish.payload = (unsigned char *) &mem;
 
-    publish_message(&p, sol_topic_get(&sol, (const char *) p.publish.topic), ctx);
-
+    publish_message(&p, sol_topic_get(&sol, (char *) p.publish.topic), ctx);
 }
 
 /*
@@ -356,10 +360,11 @@ static int client_destructor(struct client *client) {
     xfree(client->i_msgs);
     xfree(client->in_i_acks);
 
-    if (client->lwt_msg)
-        xfree(client->lwt_msg);
+    if (client->has_lwt)
+        mqtt_packet_destroy(&client->lwt_msg, PUBLISH);
 
     client->online = false;
+    client->has_lwt = false;
     client->client_id[0] = '\0';
     xfree(client->rbuf);
     xfree(client->wbuf);
@@ -707,14 +712,10 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
             log_error("Closing connection with %s (%s): %s",
                       c->client_id, c->conn.ip, solerr(rc));
             // Publish, if present, LWT message
-            if (c->lwt_msg) {
-                char *tname = (char *) c->lwt_msg->topic;
+            if (c->has_lwt == true) {
+                char *tname = (char *) c->lwt_msg.publish.topic;
                 struct topic *t = sol_topic_get(&sol, tname);
-                struct mqtt_packet lwt = {
-                    .header = (union mqtt_header) { .byte = PUBLISH_B },
-                    .publish = *c->lwt_msg
-                };
-                publish_message(&lwt, t, ctx);
+                publish_message(&c->lwt_msg, t, ctx);
             }
             // Clean resources
             ev_del_fd(ctx, c->conn.fd);
@@ -820,7 +821,7 @@ int start_server(const char *addr, const char *port) {
 
     /* Generate stats topics */
     for (int i = 0; i < SYS_TOPICS; i++)
-        sol_topic_put(&sol, topic_new(xstrdup(sys_topics[i])));
+        sol_topic_put(&sol, topic_new(xstrdup(sys_topics[i].name)));
 
     /* Start listening for new connections */
     int sfd = make_listen(addr, port, conf->socket_family);
