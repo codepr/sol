@@ -840,6 +840,7 @@ int start_server(const char *addr, const char *port) {
     // start eventloop, could be spread on multiple threads
     eventloop_start(&sfd);
 
+    close(sfd);
     hashtable_destroy(sol.sessions);
     hashtable_destroy(sol.authentications);
     // free client resources

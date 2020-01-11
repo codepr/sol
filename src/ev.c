@@ -44,7 +44,10 @@ struct epoll_api {
     struct epoll_event *events;
 };
 
-/* Epoll management functions */
+/*
+ * Epoll management function, register a file descriptor to an EPOLL
+ * descriptor, to be monitored for read/write events
+ */
 static int epoll_add(int efd, int fd, int evs, void *data) {
 
     struct epoll_event ev;
@@ -60,9 +63,8 @@ static int epoll_add(int efd, int fd, int evs, void *data) {
 }
 
 /*
- * Modify an epoll-monitored descriptor, automatically set EPOLLONESHOT in
- * addition to the other flags, which can be EPOLLIN for read and EPOLLOUT for
- * write
+ * Modify an epoll-monitored descriptor, can be set to EPOLLIN for read and
+ * EPOLLOUT for write
  */
 static int epoll_mod(int efd, int fd, int evs, void *data) {
 
