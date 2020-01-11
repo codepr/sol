@@ -298,7 +298,7 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
     ssize_t sent;
     for (int i = 0; i < sol.maxfd; ++i) {
         struct client *c = &sol.clients[i];
-        if (c->online == false)
+        if (c->online == false || c->has_inflight == false)
             continue;
         for (int i = 1; i < MAX_INFLIGHT_MSGS; ++i) {
             // TODO remove 20 hardcoded value

@@ -76,6 +76,7 @@ struct client {
     bool online;  // just a boolean will be fine for now
     bool has_lwt;
     bool clean_session;
+    bool has_inflight;
     int rc;
     int status;
     int rpos;

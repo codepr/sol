@@ -40,6 +40,7 @@ struct client *sol_client_new(struct connection *c) {
 void client_init(struct client *client) {
     client->online = true;
     client->clean_session = true;
+    client->has_inflight = false;
     client->client_id[0] = '\0';
     client->status = WAITING_HEADER;
     client->rc = 0;

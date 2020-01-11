@@ -134,6 +134,7 @@ void publish_message(struct mqtt_packet *p,
                 mqtt_ack(&ack, mid);
                 inflight_msg_init(&sc->i_acks[mid], sc, &ack, type, publen);
             }
+            sc->has_inflight = true;
         } else {
             /*
              * QoS 0
@@ -539,6 +540,7 @@ static int publish_handler(struct io_event *e) {
         struct mqtt_packet ack;
         mqtt_ack(&ack, orig_mid);
         inflight_msg_init(&c->in_i_acks[orig_mid], c, &ack, ptype, publen);
+        c->has_inflight = true;
     }
 
     log_debug("Sending %s to %s (m%u)",
@@ -565,6 +567,7 @@ static int puback_handler(struct io_event *e) {
               c->client_id, e->data.ack.pkt_id);
     c->i_msgs[e->data.ack.pkt_id].in_use = 0;
     c->i_acks[e->data.ack.pkt_id].in_use = 0;
+    c->has_inflight = false;
     return NOREPLY;
 }
 
@@ -579,6 +582,7 @@ static int pubrec_handler(struct io_event *e) {
     if (c->i_acks[e->data.ack.pkt_id].in_use) {
         c->i_acks[e->data.ack.pkt_id].type = PUBREL;
         c->i_acks[e->data.ack.pkt_id].packet = &e->data;
+        c->i_acks[e->data.ack.pkt_id].sent_timestamp = time(NULL);
     }
     log_debug("Sending PUBREL to %s (m%u)", c->client_id, e->data.ack.pkt_id);
     return REPLY;
@@ -591,6 +595,7 @@ static int pubrel_handler(struct io_event *e) {
     mqtt_pack_mono(c->wbuf + c->towrite, PUBCOMP, e->data.ack.pkt_id);
     c->towrite += MQTT_ACK_LEN;
     c->in_i_acks[e->data.ack.pkt_id].in_use = 0;
+    c->has_inflight = false;
     log_debug("Sending PUBCOMP to %s (m%u)", c->client_id, e->data.ack.pkt_id);
     return REPLY;
 }
@@ -601,6 +606,7 @@ static int pubcomp_handler(struct io_event *e) {
               c->client_id, e->data.ack.pkt_id);
     c->i_acks[e->data.ack.pkt_id].in_use = 0;
     c->i_msgs[e->data.ack.pkt_id].in_use = 0;
+    c->has_inflight = false;
     return NOREPLY;
 }
 
