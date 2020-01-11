@@ -21,17 +21,16 @@ there's probably some corner cases, not deeply investigated yet.
 - Wildcards (#) on subscriptions
 - Authentication through username and password
 - SSL/TLS connections (almost ready)
+- Logging
 - Multiplexing IO with abstraction over backend, currently supports
   select/poll/epoll choosing the better implementation.
 
 ### To be implemented
 
-- QoS 2 tracking of pending clients and re-send, already started
-- Spread publish operations to multiple clients to a threadpool
 - Session present check and handling, already started
 - Last will & Testament, already started
 - Wildcards (+) on subscriptions
-- Persistence
+- Persistence on disk for inflight messages on disconnected clients
 - Check on max memory used
 
 ### Maybe

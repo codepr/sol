@@ -87,7 +87,6 @@ void publish_message(struct mqtt_packet *p,
     struct iterator *it = iter_new(t->subscribers, hashtable_iter_next);
     unsigned char type;
 
-    len = mqtt_size(p, NULL);
     // first run check
     FOREACH (it) {
         struct subscriber *sub = it->ptr;
@@ -105,6 +104,7 @@ void publish_message(struct mqtt_packet *p,
          * of the client, they will be sent out only in case of a
          * clean_session == false connection
          */
+        len = mqtt_size(p, NULL); // override len, no ID set in QoS 0
         if (sc->online == false && sc->clean_session == false) {
             pkt.header.bits.qos = p->header.bits.qos;
             struct inflight_msg *im = inflight_msg_new(sc, &pkt, PUBLISH, len);

@@ -617,6 +617,7 @@ static void write_callback(struct ev_ctx *ctx, void *arg) {
             ev_fire_event(ctx, client->conn.fd, EV_READ, read_callback, client);
             break;
         case -ERREAGAIN:
+            enqueue_event_write(ctx, client);
             break;
         default:
             log_info("Closing connection with %s (%s): %s %i",
@@ -688,7 +689,6 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
      * content according to the protocol
      */
     int rc = read_data(c);
-    c->status = SENDING_DATA;
     switch (rc) {
         case 0:
             /*
@@ -698,6 +698,7 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
              */
             /* Record last action as of now */
             c->last_action_time = time(NULL);
+            c->status = SENDING_DATA;
             process_message(ctx, c);
             break;
         case -ERRCLIENTDC:
@@ -735,6 +736,7 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
             info.nconnections--;
             break;
         case -ERREAGAIN:
+            ev_fire_event(ctx, c->conn.fd, EV_READ, read_callback, c);
             break;
     }
 }
