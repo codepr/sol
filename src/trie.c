@@ -326,7 +326,7 @@ List *trie_prefix_find(const Trie *trie, const char *prefix) {
     List *keys = list_new(NULL);
 
     // Check all possible sub-paths and add the resulting key to the result
-    char str[32];
+    char *str = xmalloc(32);
     size_t plen = strlen(prefix);
     strncpy(str, prefix, 32);
 
@@ -335,6 +335,8 @@ List *trie_prefix_find(const Trie *trie, const char *prefix) {
      * from the last character explored
      */
     trie_node_prefix_find(node, str, plen - 1, keys);
+
+    xfree(str);
 
     return keys;
 }
