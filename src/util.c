@@ -212,16 +212,13 @@ void *xcalloc(size_t len, size_t size) {
 
     assert(len > 0 && size > 0);
 
-    void *ptr = calloc(len, size + sizeof(size_t));
-
+    void *ptr = xmalloc(len * size);
     if (!ptr)
         return NULL;
 
-    *((size_t *) ptr) = size;
+    memset(ptr, 0x00, len * size);
 
-    memory += len * (size + sizeof(size_t));
-
-    return (char *) ptr + sizeof(size_t);
+    return ptr;
 }
 
 /*

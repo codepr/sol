@@ -434,14 +434,9 @@ static int subscribe_handler(struct io_event *e) {
         // Retained message? Publish it
         // TODO move to IO threadpool
         if (t->retained_msg) {
-            ssize_t sent = send_data(&e->client->conn, t->retained_msg,
-                                     bstring_len(t->retained_msg));
-            if (sent < 0)
-                log_error("Error publishing to %s: %s",
-                          e->client->client_id, strerror(errno));
-
-            info.messages_sent++;
-            info.bytes_sent += sent;
+            size_t len = bstring_len(t->retained_msg);
+            memcpy(c->wbuf + c->towrite, t->retained_msg, len);
+            c->towrite += len;
         }
         rcs[i] = s->tuples[i].qos;
     }
