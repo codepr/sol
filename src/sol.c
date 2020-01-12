@@ -46,14 +46,15 @@ static const char *flag_description[] = {
     "Set a configuration file to load and use",
     "Set the listening host address",
     "Set the listening port",
-    "Enable all logs, setting log level to DEBUG"
+    "Enable all logs, setting log level to DEBUG",
+    "Run in daemon mode"
 };
 
 void print_help(char *me) {
     printf("\nSol v%s MQTT broker 3.1.1\n\n", VERSION);
-    printf("Usage: %s [-a addr] [-p port] [-c conf] [-v]\n\n", me);
-    const char flags[5] = "hcapv";
-    for (int i = 0; i < 5; ++i)
+    printf("Usage: %s [-a addr] [-p port] [-c conf] [-v|-d|-h]\n\n", me);
+    const char flags[6] = "hcapvd";
+    for (int i = 0; i < 6; ++i)
         printf(" -%c: %s\n", flags[i], flag_description[i]);
     printf("\n");
 }
@@ -66,13 +67,13 @@ int main (int argc, char **argv) {
     char *addr = DEFAULT_HOSTNAME;
     char *port = DEFAULT_PORT;
     char *confpath = DEFAULT_CONF_PATH;
-    int debug = 0;
+    int debug = 0, daemon = 0;
     int opt;
 
     // Set default configuration
     config_set_default();
 
-    while ((opt = getopt(argc, argv, "a:c:p:m:vhn:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:c:p:m:vhdn:")) != -1) {
         switch (opt) {
             case 'a':
                 addr = optarg;
@@ -87,6 +88,9 @@ int main (int argc, char **argv) {
                 break;
             case 'v':
                 debug = 1;
+                break;
+            case 'd':
+                daemon = 1;
                 break;
             case 'h':
                 print_help(argv[0]);
@@ -106,6 +110,9 @@ int main (int argc, char **argv) {
     config_load(confpath);
 
     sol_log_init(conf->logpath);
+
+    if (daemon == 1)
+        daemonize();
 
     // Print configuration
     config_print();

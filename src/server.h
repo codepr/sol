@@ -105,4 +105,6 @@ int start_server(const char *, const char *);
 
 void enqueue_event_write(struct ev_ctx *, struct client *);
 
+void daemonize(void);
+
 #endif

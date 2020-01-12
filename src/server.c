@@ -26,6 +26,7 @@
  */
 
 #include <time.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
 #include <string.h>
@@ -859,4 +860,21 @@ int start_server(const char *addr, const char *port) {
     log_info("Sol v%s exiting", VERSION);
 
     return 0;
+}
+
+void daemonize(void) {
+
+    int fd;
+
+    if (fork() != 0)
+        exit(0);
+
+    setsid();
+
+    if ((fd = open("/dev/null", O_RDWR, 0)) != -1) {
+        dup2(fd, STDIN_FILENO);
+        dup2(fd, STDOUT_FILENO);
+        dup2(fd, STDERR_FILENO);
+        if (fd > STDERR_FILENO) close(fd);
+    }
 }
