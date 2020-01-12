@@ -113,14 +113,22 @@ void publish_message(struct mqtt_packet *p,
         }
 
         /*
-         * Proceed with the publish towards online subscriber.
-         * TODO move the IO part into the dedicated workers. Coded
-         * here as first simpler working version
+         * if QoS 0
+         *
+         * Set the correct size of the output packet and set the
+         * correct QoS value (0) and packet identifier to (0) as
+         * specified by MQTT specs
+         */
+        pkt.header.bits.qos = p->header.bits.qos;
+        pkt.publish.pkt_id = 0;
+
+        /*
+         * if QoS > 0 we set packet identifier and track the inflight message,
+         * proceed with the publish towards online subscriber.
          */
         if (p->header.bits.qos > AT_MOST_ONCE) {
             mid = next_free_mid(sc);
             pkt.publish.pkt_id = mid;
-            pkt.header.bits.qos = p->header.bits.qos;
 
             if (!sc->i_msgs[pkt.publish.pkt_id].in_use)
                 inflight_msg_init(&sc->i_msgs[mid], sc, &pkt, PUBLISH, len);
@@ -134,21 +142,12 @@ void publish_message(struct mqtt_packet *p,
                 inflight_msg_init(&sc->i_acks[mid], sc, &ack, type, len);
             }
             sc->has_inflight = true;
-        } else {
-            /*
-             * QoS 0
-             *
-             * Set the correct size of the output packet and set the
-             * correct QoS value (0) and packet identifier to 0 as
-             * specified by MQTT specs
-             */
-            pkt.header.bits.qos = 0;
-            pkt.publish.pkt_id = 0;
         }
 
         mqtt_pack(&pkt, sc->wbuf + sc->towrite);
         sc->towrite += len;
 
+        // Schedule a write for the current subscriber on the next event cycle
         enqueue_event_write(ctx, sc);
 
         info.messages_sent++;

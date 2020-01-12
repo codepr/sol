@@ -317,6 +317,30 @@ SSL_CTX *create_ssl_context() {
     }
 
     SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
+    SSL_CTX_set_options(ctx, SSL_OP_SINGLE_DH_USE);
+
+    if (!(conf->tls_protocols & SOL_TLSv1))
+        SSL_CTX_set_options(ctx, SSL_OP_NO_TLSv1);
+    if (!(conf->tls_protocols & SOL_TLSv1_1))
+        SSL_CTX_set_options(ctx, SSL_OP_NO_TLSv1_1);
+#ifdef SSL_OP_NO_TLSv1_2
+    if (!(conf->tls_protocols & SOL_TLSv1_2))
+        SSL_CTX_set_options(ctx, SSL_OP_NO_TLSv1_2);
+#endif
+#ifdef SSL_OP_NO_TLSv1_3
+    if (!(conf->tls_protocols & SOL_TLSv1_3))
+        SSL_CTX_set_options(ctx, SSL_OP_NO_TLSv1_3);
+#endif
+
+#ifdef SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS
+    SSL_CTX_set_options(ctx, SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS);
+#endif
+#ifdef SSL_OP_NO_COMPRESSION
+    SSL_CTX_set_options(ctx, SSL_OP_NO_COMPRESSION);
+#endif
+#ifdef SSL_OP_NO_CLIENT_RENEGOTIATION
+    SSL_CTX_set_options(ssl->ctx, SSL_OP_NO_CLIENT_RENEGOTIATION);
+#endif
 
     return ctx;
 }

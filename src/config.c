@@ -51,6 +51,11 @@ static const struct llevel lmap[5] = {
     {"INFORMATION", INFORMATION}
 };
 
+static inline void strip_spaces(char **str) {
+    if (!*str) return;
+    while (isspace(**str) && **str) ++(*str);
+}
+
 static size_t read_memory_with_mul(const char *memory_string) {
 
     /* Extract digit part */
@@ -172,6 +177,19 @@ char *time_to_string(size_t time) {
     return tstring;
 }
 
+static int parse_config_tls_protocols(char *token) {
+    int protocols = 0;
+    if (STREQ(token, "tlsv1_1", 7) == true)
+        protocols |= SOL_TLSv1_1;
+    else if (STREQ(token, "tlsv1_2", 7) == true)
+        protocols |= SOL_TLSv1_2;
+    else if (STREQ(token, "tlsv1_3", 7) == true)
+        protocols |= SOL_TLSv1_3;
+    else if (STREQ(token, "tlsv1", 5) == true)
+        protocols |= SOL_TLSv1;
+    return protocols;
+}
+
 /* Set configuration values based on what is read from the persistent
    configuration on disk */
 static void add_config_value(const char *key, const char *value) {
@@ -206,7 +224,7 @@ static void add_config_value(const char *key, const char *value) {
     } else if (STREQ("keepalive", key, klen) == true) {
         config.keepalive = read_time_with_mul(value);
     } else if (STREQ("cafile", key, klen) == true) {
-        config.use_ssl = true;
+        config.tls = true;
         strcpy(config.cafile, value);
     } else if (STREQ("certfile", key, klen) == true) {
         strcpy(config.certfile, value);
@@ -214,18 +232,23 @@ static void add_config_value(const char *key, const char *value) {
         strcpy(config.keyfile, value);
     } else if (STREQ("allow_anonymous", key, klen) == true) {
         // TODO add strict checks
-        if (STREQ(value, "false", 5) == true)
-            config.allow_anonymous = false;
-        else
-            config.allow_anonymous = true;
+        if (STREQ(value, "false", 5) == true) config.allow_anonymous = false;
+        else config.allow_anonymous = true;
     } else if (STREQ("password_file", key, klen) == true) {
         strcpy(config.password_file, value);
+    } else if (STREQ("tls_protocols", key, klen) == true) {
+        if (vlen == 0) return;
+        config.tls_protocols = 0;
+        char *token = strtok((char *) value, ",");
+        if (!token) {
+            config.tls_protocols = parse_config_tls_protocols((char *) value);
+        } else {
+            while (token) {
+                config.tls_protocols |= parse_config_tls_protocols((char *) token);
+                token = strtok(NULL, ",");
+            }
+        }
     }
-}
-
-static inline void strip_spaces(char **str) {
-    if (!*str) return;
-    while (isspace(**str) && **str) ++(*str);
 }
 
 static inline void unpack_bytes(char **str, char *dest) {
@@ -312,8 +335,32 @@ void config_set_default(void) {
     config.tcp_backlog = SOMAXCONN;
     config.stats_pub_interval = read_time_with_mul(DEFAULT_STATS_INTERVAL);
     config.keepalive = read_time_with_mul(DEFAULT_KEEPALIVE);
-    config.use_ssl = false;
+    config.tls = false;
+    config.tls_protocols = DEFAULT_TLS_PROTOCOLS;
     config.allow_anonymous = true;
+}
+
+void config_print_tls_versions(void) {
+    char protocols[64] = {0};
+    int pos = 0;
+    if (config.tls_protocols & SOL_TLSv1) {
+        strncpy(protocols, "TLSv1, ", 64);
+        pos += 7;
+    }
+    if (config.tls_protocols & SOL_TLSv1_1) {
+        strncpy(protocols + pos, "TLSv1_1, ", 64 - pos);
+        pos += 9;
+    }
+    if (config.tls_protocols & SOL_TLSv1_2) {
+        strncpy(protocols + pos, "TLSv1_2, ", 64 - pos);
+        pos += 9;
+    }
+    if (config.tls_protocols & SOL_TLSv1_3) {
+        strncpy(protocols + pos, "TLSv1_3, ", 64 - pos);
+        pos += 9;
+    }
+    protocols[pos - 2] = '\0';
+    log_info("\tTLS: %s", protocols);
 }
 
 void config_print(void) {
@@ -334,7 +381,7 @@ void config_print(void) {
             log_info("\tPort: %s", config.port);
             log_info("\tTcp backlog: %d", config.tcp_backlog);
             log_info("\tKeepalive: %d", config.keepalive);
-            log_info("\tTLS: %d", config.use_ssl);
+            if (config.tls == true) config_print_tls_versions();
             log_info("\tFile handles soft limit: %li", get_fh_soft_limit());
         }
         const char *human_rsize = memory_to_string(config.max_request_size);

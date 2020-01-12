@@ -53,10 +53,16 @@
 */
 #endif // __linux__
 
+// TLS versions
+
+#define SOL_TLSv1       0x01
+#define SOL_TLSv1_1     0x02
+#define SOL_TLSv1_2     0x04
+#define SOL_TLSv1_3     0x08
 
 // Default parameters
 
-#define VERSION                     "0.14.3"
+#define VERSION                     "0.14.4"
 #define DEFAULT_SOCKET_FAMILY       INET
 #define DEFAULT_LOG_LEVEL           DEBUG
 #define DEFAULT_LOG_PATH            "/tmp/sol.log"
@@ -67,6 +73,11 @@
 #define DEFAULT_MAX_REQUEST_SIZE    "2MB"
 #define DEFAULT_STATS_INTERVAL      "10s"
 #define DEFAULT_KEEPALIVE           "60s"
+#ifdef TLS1_3_VERSION
+#define DEFAULT_TLS_PROTOCOLS       (SOL_TLSv1_2 | SOL_TLSv1_3)
+#else
+#define DEFAULT_TLS_PROTOCOLS       SOL_TLSv1_2
+#endif
 
 struct config {
     /* Sol version <MAJOR.MINOR.PATCH> */
@@ -101,8 +112,10 @@ struct config {
      * **CURRENTLY USED AS ACK TIMER AS WELL**
      */
     size_t keepalive;
-    /* SSL flag */
-    bool use_ssl;
+    /* TLS flag */
+    bool tls;
+    /* TLS protocol version */
+    int tls_protocols;
     /* Certificate authority file path */
     char cafile[0xFFF];
     /* SSL - Cert file location on filesystem */

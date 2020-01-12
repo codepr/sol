@@ -647,7 +647,7 @@ static void accept_callback(struct ev_ctx *ctx, void *data) {
          * pointer passed as argument
          */
         struct connection conn;
-        connection_init(&conn, conf->use_ssl ? sol.ssl_ctx : NULL);
+        connection_init(&conn, conf->tls ? sol.ssl_ctx : NULL);
         int fd = accept_connection(&conn, serverfd);
         if (fd == 0)
             continue;
@@ -829,7 +829,7 @@ int start_server(const char *addr, const char *port) {
     int sfd = make_listen(addr, port, conf->socket_family);
 
     /* Setup SSL in case of flag true */
-    if (conf->use_ssl == true) {
+    if (conf->tls == true) {
         openssl_init();
         sol.ssl_ctx = create_ssl_context();
         load_certificates(sol.ssl_ctx, conf->cafile,
@@ -851,7 +851,7 @@ int start_server(const char *addr, const char *port) {
     xfree(sol.clients);
 
     /* Destroy SSL context, if any present */
-    if (conf->use_ssl == true) {
+    if (conf->tls == true) {
         SSL_CTX_free(sol.ssl_ctx);
         openssl_cleanup();
     }

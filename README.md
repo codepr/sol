@@ -99,16 +99,18 @@ tcp_backlog 128
 # Interval of time between one stats publish on $SOL topics and the subsequent
 stats_publish_interval 10s
 
-# SSL certs paths, cafile act as a flag as well to set TLS/SSL ON
-cafile /etc/sol/certs/ca.crt
-
-certfile /etc/sol/certs/cert.crt
-
-keyfile /etc/sol/certs/cert.key
+# TLS certs paths, cafile act as a flag as well to set TLS/SSL ON
+# cafile /etc/sol/certs/ca.crt
+# certfile /etc/sol/certs/cert.crt
+# keyfile /etc/sol/certs/cert.key
 
 # Authentication
-allow_anonymous false
-password_file /etc/sol/passwd
+# allow_anonymous false
+# password_file /etc/sol/passwd
+
+# TLS protocols, supported versions should be listed comma separated
+# example:
+# tls_protocols tlsv1_2,tlsv1_3
 ```
 
 If `allow_anonymous` if false, a password file have to be specyfied. The
