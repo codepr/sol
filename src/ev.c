@@ -180,8 +180,7 @@ static void ev_api_destroy(struct ev_ctx *ctx) {
 
 static int ev_api_get_event_type(struct ev_ctx *ctx, int idx) {
     struct poll_api *p_api = ctx->api;
-    int fd = p_api->fds[idx].fd;
-    int ev_mask = ctx->events_monitored[fd].mask;
+    int ev_mask = ctx->events_monitored[p_api->fds[idx].fd].mask;
     // We want to remember the previous events only if they're not of type
     // CLOSE or TIMER
     int mask = ev_mask & (EV_CLOSEFD|EV_TIMERFD) ? ev_mask : 0;
@@ -225,7 +224,7 @@ static int ev_api_del_fd(struct ev_ctx *ctx, int fd) {
             p_api->fds[i].fd = -1;
             p_api->fds[i].events = 0;
             // Resize fds array
-            for(int j = i; j < p_api->nfds; ++j)
+            for(int j = i; j < p_api->nfds-1; ++j)
                 p_api->fds[j].fd = p_api->fds[j + 1].fd;
             p_api->nfds--;
             break;

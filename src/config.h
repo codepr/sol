@@ -34,17 +34,17 @@
 
 // Eventloop backend check
 #ifdef __linux__
-// #include <linux/version.h>
-// #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 5, 44)
-// #define EPOLL 1
-// #define EVENTLOOP_BACKEND "epoll"
-// #elif LINUX_VERSION_CODE >= KERNEL_VERSION(2, 1, 23)
+#include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 5, 44)
+#define EPOLL 1
+#define EVENTLOOP_BACKEND "epoll"
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(2, 1, 23)
 #define POLL 1
 #define EVENTLOOP_BACKEND "poll"
-// #else
-// #define SELECT 1
-// #define EVENTLOOP_BACKEND "select"
-// #endif
+#else
+#define SELECT 1
+#define EVENTLOOP_BACKEND "select"
+#endif
 /*
 #elif (defined(__APPLE__) && defined(MAC_OS_X_VERSION_10_6)) \
     || defined(__FreeBSD__) || defined(__OpenBSD__) || defined (__NetBSD__)
@@ -62,7 +62,7 @@
 
 // Default parameters
 
-#define VERSION                     "0.14.4"
+#define VERSION                     "0.14.5"
 #define DEFAULT_SOCKET_FAMILY       INET
 #define DEFAULT_LOG_LEVEL           DEBUG
 #define DEFAULT_LOG_PATH            "/tmp/sol.log"
