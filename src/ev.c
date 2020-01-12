@@ -29,6 +29,7 @@
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
+#include <assert.h>
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
 #include "ev.h"
@@ -194,7 +195,7 @@ static int ev_api_poll(struct ev_ctx *ctx, time_t timeout) {
     struct poll_api *p_api = ctx->api;
     int err = poll(p_api->fds, p_api->nfds, timeout);
     if (err < 0)
-        return EV_ERR;
+        return -EV_ERR;
     return p_api->nfds;
 }
 
@@ -239,7 +240,8 @@ static int ev_api_del_fd(struct ev_ctx *ctx, int fd) {
 static int ev_api_register_event(struct ev_ctx *ctx, int fd, int mask) {
     struct poll_api *p_api = ctx->api;
     p_api->fds[p_api->nfds].fd = fd;
-    p_api->fds[p_api->nfds].events = mask & EV_READ ? POLLIN : POLLOUT;
+    if (mask & EV_READ) p_api->fds[p_api->nfds].events |= POLLIN;
+    if (mask & EV_WRITE) p_api->fds[p_api->nfds].events |= POLLOUT;
     p_api->nfds++;
     if (p_api->nfds >= p_api->events_monitored) {
         p_api->events_monitored *= 2;
@@ -277,7 +279,7 @@ static void ev_api_init(struct ev_ctx *ctx, int events_nr) {
      * fd_set is an array of 32 i32 and each FD is represented by a bit so
      * 32 x 32 = 1024 as hard limit
      */
-    assert(events_nr < 1024);
+    assert(events_nr <= 1024);
     struct select_api *s_api = xmalloc(sizeof(*s_api));
     FD_ZERO(&s_api->rfds);
     FD_ZERO(&s_api->wfds);
@@ -309,36 +311,49 @@ static int ev_api_poll(struct ev_ctx *ctx, time_t timeout) {
     memcpy(&s_api->_wfds, &s_api->wfds, sizeof(fd_set));
     int err = select(ctx->maxfd + 1, &s_api->_rfds, &s_api->_wfds, NULL, tv);
     if (err < 0)
-        return EV_ERR;
+        return -EV_ERR;
     return ctx->maxfd + 1;
 }
 
 static int ev_api_watch_fd(struct ev_ctx *ctx, int fd) {
     struct select_api *s_api = ctx->api;
     FD_SET(fd, &s_api->rfds);
+    if (fd > ctx->maxfd)
+        ctx->maxfd = fd;
     return EV_OK;
 }
 
 static int ev_api_del_fd(struct ev_ctx *ctx, int fd) {
     struct select_api *s_api = ctx->api;
-    FD_CLR(fd, &s_api->rfds);
+    if (FD_ISSET(fd, &s_api->rfds)) FD_CLR(fd, &s_api->rfds);
+    if (FD_ISSET(fd, &s_api->wfds)) FD_CLR(fd, &s_api->wfds);
+    /*
+     * To remove  FD from select we must determine the new maximum descriptor
+     * value based on the bits that are still turned on in the rfds set.
+     */
+    if (fd == ctx->maxfd)
+        ctx->maxfd -= 1;
     return EV_OK;
 }
 
 static int ev_api_register_event(struct ev_ctx *ctx, int fd, int mask) {
     struct select_api *s_api = ctx->api;
-    FD_SET(fd, mask & EV_READ ? &s_api->rfds : &s_api->wfds);
+    if (mask & EV_READ) FD_SET(fd, &s_api->rfds);
+    if (mask & EV_WRITE) FD_SET(fd, &s_api->wfds);
+    if (fd > ctx->maxfd)
+        ctx->maxfd = fd;
     return EV_OK;
 }
 
 static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
     struct select_api *s_api = ctx->api;
-    FD_SET(fd, mask & EV_READ ? &s_api->rfds : &s_api->wfds);
+    if (mask & EV_READ) FD_SET(fd, &s_api->rfds);
+    if (mask & EV_WRITE) FD_SET(fd, &s_api->wfds);
     return EV_OK;
 }
 
-static int ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
-    return &ctx->events_monitored[idx];
+static struct ev *ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
+    return ctx->events_monitored + idx;
 }
 
 #endif // SELECT
@@ -354,7 +369,8 @@ static int ev_process_event(struct ev_ctx *ctx, int idx, int mask) {
     struct ev *e = ev_api_read_event(ctx, idx, mask);
     int err = 0, fired = 0, fd = e->fd;
     if (mask & EV_CLOSEFD) {
-        eventfd_read(fd, &(eventfd_t){0L});
+        err = eventfd_read(fd, &(eventfd_t){0});
+        if (err < 0) return EV_OK;
         e->rcallback(ctx, e->rdata);
         ++fired;
     } else {
@@ -392,13 +408,13 @@ static void ev_add_monitored(struct ev_ctx *ctx, int fd, int mask,
      * That is because FD_SETSIZE is fixed to 1024, fd_set is an array of 32
      * i32 and each FD is represented by a bit so 32 x 32 = 1024 as hard limit
      */
-    if (fd > ctx->maxfd) {
-        int i = ctx->maxfd;
-        ctx->maxfd = fd;
+    if (fd > ctx->maxevents) {
+        int i = ctx->maxevents;
+        ctx->maxevents = fd;
         if (fd > ctx->events_nr) {
             ctx->events_monitored =
                 xrealloc(ctx->events_monitored, (fd + 1) * sizeof(struct ev));
-            for (; i < ctx->maxfd; ++i)
+            for (; i < ctx->maxevents; ++i)
                 ctx->events_monitored[i].mask = EV_NONE;
         }
     }
@@ -422,12 +438,13 @@ void ev_init(struct ev_ctx *ctx, int events_nr) {
     ev_api_init(ctx, events_nr);
     ctx->stop = 0;
     ctx->fired_events = 0;
+    ctx->maxevents = events_nr;
     ctx->events_nr = events_nr;
     ctx->events_monitored = xcalloc(events_nr, sizeof(struct ev));
 }
 
 void ev_destroy(struct ev_ctx *ctx) {
-    for (int i = 0; i < ctx->maxfd; ++i) {
+    for (int i = 0; i < ctx->maxevents; ++i) {
         if (!(ctx->events_monitored[i].mask & EV_CLOSEFD) &&
             ctx->events_monitored[i].mask != EV_NONE)
             ev_del_fd(ctx, ctx->events_monitored[i].fd);
@@ -498,7 +515,7 @@ int ev_register_event(struct ev_ctx *ctx, int fd, int mask,
     ev_add_monitored(ctx, fd, mask, callback, data);
     int ret = 0;
     ret = ev_api_register_event(ctx, fd, mask);
-    if (ret < 0) return EV_ERR;
+    if (ret < 0) return -EV_ERR;
     if (mask & EV_EVENTFD)
         (void) eventfd_write(fd, 1);
     return EV_OK;
@@ -547,10 +564,10 @@ int ev_fire_event(struct ev_ctx *ctx, int fd, int mask,
     int ret = 0;
     ev_add_monitored(ctx, fd, mask, callback, data);
     ret = ev_api_fire_event(ctx, fd, mask);
-    if (ret < 0) return EV_ERR;
+    if (ret < 0) return -EV_ERR;
     if (mask & EV_EVENTFD) {
         ret = eventfd_write(fd, 1);
-        if (ret < 0) return EV_ERR;
+        if (ret < 0) return -EV_ERR;
     }
     return EV_OK;
 }

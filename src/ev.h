@@ -78,6 +78,7 @@ struct ev_ctx {
     int maxfd; // the maximum FD monitored by the event context,
                // events_monitored must be at least maxfd long
     int stop;
+    int maxevents;
     unsigned long long fired_events;
     struct ev *events_monitored;
     void *api; // opaque pointer to platform defined backends
