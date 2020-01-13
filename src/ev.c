@@ -296,6 +296,8 @@ static int ev_api_get_event_type(struct ev_ctx *ctx, int idx) {
     // We want to remember the previous events only if they're not of type
     // CLOSE or TIMER
     int mask = ev_mask & (EV_CLOSEFD|EV_TIMERFD) ? ev_mask : 0;
+    if (!FD_ISSET(idx, &s_api->_rfds) && !FD_ISSET(idx, &s_api->_wfds))
+        return EV_NONE;
     if (FD_ISSET(idx, &s_api->_rfds)) mask |= EV_READ;
     if (FD_ISSET(idx, &s_api->_wfds)) mask |= EV_WRITE;
     return mask;
