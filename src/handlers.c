@@ -319,10 +319,9 @@ static int connect_handler(struct io_event *e) {
 
     // TODO check for session already present
 
-    if (c->bits.clean_session == false) {
-        e->client->clean_session = false;
+    e->client->clean_session = c->bits.clean_session;
+    if (c->bits.clean_session == false)
         e->client->session->subscriptions = list_new(NULL);
-    }
 
     set_payload_connack(cc, MQTT_CONNECTION_ACCEPTED);
 
