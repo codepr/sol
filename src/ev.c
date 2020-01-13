@@ -353,8 +353,11 @@ static int ev_api_del_fd(struct ev_ctx *ctx, int fd) {
      * To remove  FD from select we must determine the new maximum descriptor
      * value based on the bits that are still turned on in the rfds set.
      */
-    if (fd == ctx->maxfd)
-        ctx->maxfd -= 1;
+    if (fd == ctx->maxfd) {
+        while (!FD_ISSET(ctx->maxfd, &s_api->rfds)
+               && !FD_ISSET(ctx->maxfd, &s_api->wfds))
+            ctx->maxfd -= 1;
+    }
     return EV_OK;
 }
 
