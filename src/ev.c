@@ -149,7 +149,11 @@ static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
     return epoll_mod(e_api->fd, fd, op, NULL);
 }
 
-static struct ev *ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
+/*
+ * Get the event on the idx position inside the events map. The event can also
+ * be an unset one (EV_NONE)
+ */
+static struct ev *ev_api_fetch_event(const struct ev_ctx *ctx, int idx, int mask) {
     int fd = ((struct epoll_api *) ctx->api)->events[idx].data.fd;
     return ctx->events_monitored + fd;
 }
@@ -261,7 +265,11 @@ static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
     return EV_OK;
 }
 
-static struct ev *ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
+/*
+ * Get the event on the idx position inside the events map. The event can also
+ * be an unset one (EV_NONE)
+ */
+static struct ev *ev_api_fetch_event(const struct ev_ctx *ctx, int idx, int mask) {
     return ctx->events_monitored + ((struct poll_api *) ctx->api)->fds[idx].fd;
 }
 
@@ -270,6 +278,7 @@ static struct ev *ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
 struct select_api {
     fd_set rfds, wfds;
     // Copy of the original fdset arrays to re-initialize them after each cycle
+    // we'll call them "service" fdset
     fd_set _rfds, _wfds;
 };
 
@@ -296,6 +305,17 @@ static int ev_api_get_event_type(struct ev_ctx *ctx, int idx) {
     // We want to remember the previous events only if they're not of type
     // CLOSE or TIMER
     int mask = ev_mask & (EV_CLOSEFD|EV_TIMERFD) ? ev_mask : 0;
+    /*
+     * Select checks all FDs by looping to the highest registered FD it
+     * currently monitor. Even non set or non monitored FDs are inspected, we
+     * have to ensure that the FD is currently ready for IO, otherwise we'll
+     * end up looping all FDs and calling callbacks everytime, even when
+     * there's no need to.
+     *
+     * Also we have to check for ready FDs on "service" _fdsets, cause they're
+     * the ones employed on the select call to avoid side-effects on the
+     * originals.
+     */
     if (!FD_ISSET(idx, &s_api->_rfds) && !FD_ISSET(idx, &s_api->_wfds))
         return EV_NONE;
     if (FD_ISSET(idx, &s_api->_rfds)) mask |= EV_READ;
@@ -319,6 +339,7 @@ static int ev_api_poll(struct ev_ctx *ctx, time_t timeout) {
 static int ev_api_watch_fd(struct ev_ctx *ctx, int fd) {
     struct select_api *s_api = ctx->api;
     FD_SET(fd, &s_api->rfds);
+    // Check for a possible new max fd, we don't want to miss events on FDs
     if (fd > ctx->maxfd)
         ctx->maxfd = fd;
     return EV_OK;
@@ -341,6 +362,7 @@ static int ev_api_register_event(struct ev_ctx *ctx, int fd, int mask) {
     struct select_api *s_api = ctx->api;
     if (mask & EV_READ) FD_SET(fd, &s_api->rfds);
     if (mask & EV_WRITE) FD_SET(fd, &s_api->wfds);
+    // Check for a possible new max fd, we don't want to miss events on FDs
     if (fd > ctx->maxfd)
         ctx->maxfd = fd;
     return EV_OK;
@@ -353,7 +375,11 @@ static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
     return EV_OK;
 }
 
-static struct ev *ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
+/*
+ * Get the event on the idx position inside the events map. The event can also
+ * be an unset one (EV_NONE)
+ */
+static struct ev *ev_api_fetch_event(const struct ev_ctx *ctx, int idx, int mask) {
     return ctx->events_monitored + idx;
 }
 
@@ -367,7 +393,7 @@ static struct ev *ev_api_read_event(struct ev_ctx *ctx, int idx, int mask) {
  */
 static int ev_process_event(struct ev_ctx *ctx, int idx, int mask) {
     if (mask == EV_NONE) return EV_OK;
-    struct ev *e = ev_api_read_event(ctx, idx, mask);
+    struct ev *e = ev_api_fetch_event(ctx, idx, mask);
     int err = 0, fired = 0, fd = e->fd;
     if (mask & EV_CLOSEFD) {
         err = eventfd_read(fd, &(eventfd_t){0});

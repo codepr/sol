@@ -102,19 +102,6 @@ struct sol sol;
  * suffer high contentions by the threads and thus being really fast.
  */
 
-/*
- * Shared eventloop object, contains the IO and Worker contexts, as well as the
- * server descriptor.
- * Each thread will receive a copy of a pointer to this structure, to have
- * access to all file descriptor running the application
- */
-
-struct eventloop {
-    int serverfd;
-    struct ev_ctx *io_ctx;
-    struct ev_ctx *w_ctx;
-};
-
 static int client_destructor(struct client *);
 
 // CALLBACKS for the eventloop
