@@ -52,7 +52,7 @@ void client_init(struct client *client) {
     client->towrite = 0;
     client->wbuf = xcalloc(conf->max_request_size, sizeof(unsigned char));
     client->next_free_mid = 1;
-    client->last_action_time = time(NULL);
+    client->last_seen = time(NULL);
     client->has_lwt = false;
     client->session = sol_session_new();
     client->i_acks = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));

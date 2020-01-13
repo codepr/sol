@@ -89,7 +89,7 @@ struct client {
     char client_id[MQTT_CLIENT_ID_LEN];
     struct connection conn;
     struct session *session;
-    unsigned long last_action_time;
+    unsigned long last_seen;
     struct mqtt_packet lwt_msg;
     int next_free_mid;
     struct inflight_msg *i_acks;

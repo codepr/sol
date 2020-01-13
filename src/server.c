@@ -132,11 +132,16 @@ static void inflight_msg_check(struct ev_ctx *, void *);
  */
 #define SYS_TOPICS 11
 
+/*
+ * Utility struct for information topics. Just the name of the topic and his
+ * length, to avoid computing length of const strings
+ */
 struct sys_topic {
     const char *name;
     int len;
 };
 
+/* Information topics mapping, accessed by publish_stats periodic routine */
 static const struct sys_topic sys_topics[SYS_TOPICS] = {
     { "$SOL/broker/clients/", 20 },
     { "$SOL/broker/messages/", 21 },
@@ -272,7 +277,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
 }
 
 /*
- * Check for infligh messages in the ingoing and outgoing maps (actually
+ * Check for inflight messages in the ingoing and outgoing maps (actually
  * arrays), each position between 0-65535 contains either NULL or a pointer
  * to an inflight stucture with a timestamp of the sending action, the
  * target file descriptor (e.g. the client) and the payload to be sent
@@ -685,7 +690,7 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
              * ready to be processed
              */
             /* Record last action as of now */
-            c->last_action_time = time(NULL);
+            c->last_seen = time(NULL);
             c->status = SENDING_DATA;
             process_message(ctx, c);
             break;
