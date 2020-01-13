@@ -15,13 +15,15 @@ It's still a work in progress but it already handles the most of the basic
 features expected from an MQTT broker. It does not leak memory as of now,
 there's probably some corner cases, not deeply investigated yet.
 
-- QoS 0, 1, 2
-- Retained messages
+- Configuration file on disk
+- Support for QoS messages 0, 1 and 2
+- Retained messages per topic
 - Periodic stats publishing
-- Wildcards (#) on subscriptions
+- Support multiple topics subscriptions through wildcard (#)
 - Authentication through username and password
-- SSL/TLS connections (almost ready)
-- Logging
+- SSL/TLS connections, configuration accepts minimum protocols to be used
+- Logging on disk
+- Daemon mode
 - Multiplexing IO with abstraction over backend, currently supports
   select/poll/epoll choosing the better implementation.
 
