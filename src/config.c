@@ -328,7 +328,6 @@ void config_set_default(void) {
     strcpy(config.logpath, DEFAULT_LOG_PATH);
     strcpy(config.hostname, DEFAULT_HOSTNAME);
     strcpy(config.port, DEFAULT_PORT);
-    config.epoll_timeout = -1;
     config.run = eventfd(0, EFD_NONBLOCK);
     config.max_memory = read_memory_with_mul(DEFAULT_MAX_MEMORY);
     config.max_request_size = read_memory_with_mul(DEFAULT_MAX_REQUEST_SIZE);
