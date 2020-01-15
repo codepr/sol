@@ -45,6 +45,7 @@
 #include "server.h"
 #include "handlers.h"
 #include "hashtable.h"
+#include "memorypool.h"
 #include "ev.h"
 
 /* Seconds in a Sol, easter egg */
@@ -344,6 +345,7 @@ static int client_destructor(struct client *client) {
     close_connection(&client->conn);
 
     list_destroy(client->subscriptions, 0);
+    list_destroy(client->outgoing_msgs, 0);
 
     xfree(client->i_acks);
     xfree(client->i_msgs);
@@ -788,6 +790,7 @@ int start_server(const char *addr, const char *port) {
     sol.maxfd = BASE_CLIENTS_NUM - 1;
     sol.clients = xcalloc(BASE_CLIENTS_NUM, sizeof(struct client));
     sol.authentications = hashtable_new(auth_destructor);
+    sol.pool = memorypool_new(1024, sizeof(struct mqtt_packet));
 
     if (conf->allow_anonymous == false)
         config_read_passwd_file(conf->password_file, sol.authentications);
@@ -815,6 +818,7 @@ int start_server(const char *addr, const char *port) {
 
     close(sfd);
     hashtable_destroy(sol.authentications);
+    memorypool_destroy(sol.pool);
     // free client resources
     for (int i = 0; i < sol.maxfd; ++i)
         client_destructor(&sol.clients[i]);

@@ -35,6 +35,7 @@
 #include "server.h"
 #include "handlers.h"
 #include "hashtable.h"
+#include "memorypool.h"
 
 /* Prototype for a command handler */
 typedef int handler(struct io_event *);
@@ -115,8 +116,9 @@ void publish_message(struct mqtt_packet *p,
          * of the client, they will be sent out only in case of a
          * clean_session == false connection
          */
-        if (sc->online == false && sc->clean_session == false) {
-            sc->outgoing_msgs = list_push(sc->outgoing_msgs, &pkt);
+        if (sc->online == false) {
+            if (sc->clean_session == false)
+                sc->outgoing_msgs = list_push(sc->outgoing_msgs, &pkt);
             continue;
         } else {
             /*
@@ -216,8 +218,6 @@ static int connect_handler(struct io_event *e) {
      */
     if (!c->payload.client_id[0]) {
         generate_random_id((char *) c->payload.client_id);
-        cc->subscriptions = list_new(NULL);
-        cc->outgoing_msgs = list_new(NULL);
     } else {
         // First we check if a session is present
         if (c->bits.clean_session == false) {
@@ -236,9 +236,6 @@ static int connect_handler(struct io_event *e) {
                 }
                 enqueue_event_write(e->ctx, cc);
             }
-        } else {
-            cc->subscriptions = list_new(NULL);
-            cc->outgoing_msgs = list_new(NULL);
         }
     }
 
@@ -306,8 +303,10 @@ static int connect_handler(struct io_event *e) {
     // TODO check for session already present
 
     e->client->clean_session = c->bits.clean_session;
-    if (c->bits.clean_session == false)
-        /* e->client->session->subscriptions = list_new(NULL); */
+    if (c->bits.clean_session == true) {
+        cc->subscriptions = list_new(NULL);
+        cc->outgoing_msgs = list_new(NULL);
+    }
 
     set_payload_connack(cc, MQTT_CONNECTION_ACCEPTED);
 
@@ -340,7 +339,7 @@ static int disconnect_handler(struct io_event *e) {
     log_debug("Received DISCONNECT from %s", e->client->client_id);
 
     // Remove from subscriptions if clean_session == true
-    if (e->client->clean_session == true) {
+    if (e->client->clean_session == true && list_size(e->client->subscriptions)) {
         struct iterator *it =
             iter_new(e->client->subscriptions, list_iter_next);
         FOREACH (it) {

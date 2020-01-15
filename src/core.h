@@ -110,6 +110,7 @@ struct client {
 struct sol {
     int maxfd;
     struct client *clients;
+    struct memorypool *pool;
     Trie topics;
     HashTable *authentications;
     SSL_CTX *ssl_ctx;
