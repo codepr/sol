@@ -343,11 +343,7 @@ static int client_destructor(struct client *client) {
     client->wrote = client->towrite = 0;
     close_connection(&client->conn);
 
-    if (client->session) {
-        list_destroy(client->session->subscriptions, 0);
-        xfree(client->session->msg_queue);
-        xfree(client->session);
-    }
+    list_destroy(client->subscriptions, 0);
 
     xfree(client->i_acks);
     xfree(client->i_msgs);
@@ -362,23 +358,6 @@ static int client_destructor(struct client *client) {
     xfree(client->rbuf);
     xfree(client->wbuf);
 
-    return 0;
-}
-
-/*
- * Cleanup function to be passed in as destructor to the Hashtable for client
- * sessions storing
- */
-static int session_destructor(struct hashtable_entry *entry) {
-    if (!entry)
-        return -1;
-    xfree((void *) entry->key);
-    struct session *s = entry->val;
-    if (s->subscriptions)
-        list_destroy(s->subscriptions, 1);
-    if (s->msg_queue)
-        xfree(s->msg_queue);
-    xfree(s);
     return 0;
 }
 
@@ -714,8 +693,8 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
             // Clean resources
             ev_del_fd(ctx, c->conn.fd);
             // Remove from subscriptions for now
-            if (c->session) {
-                struct list *subs = c->session->subscriptions;
+            if (list_size(c->subscriptions) > 0) {
+                struct list *subs = c->subscriptions;
                 struct iterator *it = iter_new(subs, list_iter_next);
                 FOREACH (it) {
                     log_debug("Deleting %s from topic %s",
@@ -808,7 +787,6 @@ int start_server(const char *addr, const char *port) {
     trie_init(&sol.topics, NULL);
     sol.maxfd = BASE_CLIENTS_NUM - 1;
     sol.clients = xcalloc(BASE_CLIENTS_NUM, sizeof(struct client));
-    sol.sessions = hashtable_new(session_destructor);
     sol.authentications = hashtable_new(auth_destructor);
 
     if (conf->allow_anonymous == false)
@@ -836,7 +814,6 @@ int start_server(const char *addr, const char *port) {
     eventloop_start(&sfd);
 
     close(sfd);
-    hashtable_destroy(sol.sessions);
     hashtable_destroy(sol.authentications);
     // free client resources
     for (int i = 0; i < sol.maxfd; ++i)

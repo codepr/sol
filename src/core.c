@@ -54,7 +54,7 @@ void client_init(struct client *client) {
     client->next_free_mid = 1;
     client->last_seen = time(NULL);
     client->has_lwt = false;
-    client->session = sol_session_new();
+    // TODO check for session existence and move code in handlers#connect_handler
     client->i_acks = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
     client->i_msgs = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
     client->in_i_acks = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
@@ -100,10 +100,8 @@ void topic_add_subscriber(struct topic *t,
     hashtable_put(t->subscribers, sub->client->client_id, sub);
 
     // It must be added to the session if cleansession is false
-    if (!cleansession)
-        client->session->subscriptions =
-            list_push(client->session->subscriptions, t);
-
+    /* if (!cleansession) */
+    /*     client->subscriptions = list_push(client->subscriptions, t); */
 }
 
 void topic_del_subscriber(struct topic *t,
@@ -161,24 +159,6 @@ void inflight_msg_init(struct inflight_msg *imsg,
     imsg->type = type;
     imsg->size = size;
     imsg->in_use = 1;
-}
-
-struct session *sol_session_new(void) {
-    struct session *s = xmalloc(sizeof(*s));
-    // TODO add a subscription destroyer
-    s->subscriptions = list_new(NULL);
-    s->msg_queue = xmalloc(sizeof(struct inflight_msg) * 4);
-    s->msg_queue_next = 0;
-    s->msg_queue_size = 0;
-    return s;
-}
-
-void sol_session_append_imsg(struct session *s, struct inflight_msg *m) {
-    if (s->msg_queue_next > s->msg_queue_size / 2) {
-        s->msg_queue_size *= 2;
-        s->msg_queue = xrealloc(s->msg_queue, s->msg_queue_size);
-    }
-    s->msg_queue[s->msg_queue_next++] = m;
 }
 
 unsigned next_free_mid(struct client *client) {

@@ -98,19 +98,7 @@ void publish_message(struct mqtt_packet *p,
          * QoS
          */
         p->header.bits.qos = qos >= sub->qos ? sub->qos : qos;
-
-        /*
-         * If offline, we must enqueue messages in the inflight queue
-         * of the client, they will be sent out only in case of a
-         * clean_session == false connection
-         */
         len = mqtt_size(p, NULL); // override len, no ID set in QoS 0
-        if (sc->online == false && sc->clean_session == false) {
-            pkt.header.bits.qos = p->header.bits.qos;
-            struct inflight_msg *im = inflight_msg_new(sc, &pkt, PUBLISH, len);
-            sol_session_append_imsg(sc->session, im);
-            continue;
-        }
 
         /*
          * if QoS 0
@@ -123,25 +111,35 @@ void publish_message(struct mqtt_packet *p,
         pkt.publish.pkt_id = 0;
 
         /*
-         * if QoS > 0 we set packet identifier and track the inflight message,
-         * proceed with the publish towards online subscriber.
+         * If offline, we must enqueue messages in the inflight queue
+         * of the client, they will be sent out only in case of a
+         * clean_session == false connection
          */
-        if (p->header.bits.qos > AT_MOST_ONCE) {
-            mid = next_free_mid(sc);
-            pkt.publish.pkt_id = mid;
+        if (sc->online == false && sc->clean_session == false) {
+            sc->outgoing_msgs = list_push(sc->outgoing_msgs, &pkt);
+            continue;
+        } else {
+            /*
+             * if QoS > 0 we set packet identifier and track the inflight message,
+             * proceed with the publish towards online subscriber.
+             */
+            if (p->header.bits.qos > AT_MOST_ONCE) {
+                mid = next_free_mid(sc);
+                pkt.publish.pkt_id = mid;
 
-            if (!sc->i_msgs[pkt.publish.pkt_id].in_use)
-                inflight_msg_init(&sc->i_msgs[mid], sc, &pkt, PUBLISH, len);
-            if (!sc->i_acks[mid].in_use) {
-                type = sub->qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
-                // TODO broken pointer, to be allocated or designed differently
-                struct mqtt_packet ack = {
-                    .header = (union mqtt_header) { .byte = type },
-                };
-                mqtt_ack(&ack, mid);
-                inflight_msg_init(&sc->i_acks[mid], sc, &ack, type, len);
+                if (!sc->i_msgs[pkt.publish.pkt_id].in_use)
+                    inflight_msg_init(&sc->i_msgs[mid], sc, &pkt, PUBLISH, len);
+                if (!sc->i_acks[mid].in_use) {
+                    type = sub->qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
+                    // TODO broken pointer, to be allocated or designed differently
+                    struct mqtt_packet ack = {
+                        .header = (union mqtt_header) { .byte = type },
+                    };
+                    mqtt_ack(&ack, mid);
+                    inflight_msg_init(&sc->i_acks[mid], sc, &ack, type, len);
+                }
+                sc->has_inflight = true;
             }
-            sc->has_inflight = true;
         }
 
         mqtt_pack(&pkt, sc->wbuf + sc->towrite);
@@ -181,12 +179,6 @@ static void set_payload_connack(struct client *c, unsigned char rc) {
     };
     mqtt_pack(&response, c->wbuf + c->towrite);
     c->towrite += MQTT_ACK_LEN;
-    if (rc != MQTT_CONNECTION_ACCEPTED) {
-        if (c->session) {
-            list_destroy(c->session->subscriptions, 0);
-            xfree(c->session);
-        }
-    }
 }
 
 static int connect_handler(struct io_event *e) {
@@ -224,35 +216,29 @@ static int connect_handler(struct io_event *e) {
      */
     if (!c->payload.client_id[0]) {
         generate_random_id((char *) c->payload.client_id);
+        cc->subscriptions = list_new(NULL);
+        cc->outgoing_msgs = list_new(NULL);
     } else {
-        struct session *s = hashtable_get(sol.sessions, c->payload.client_id);
-        if (s == NULL) {
-            struct session *new_s = sol_session_new();
-            hashtable_put(sol.sessions,
-                          xstrdup((char *) c->payload.client_id), new_s);
-        } else {
-            if (c->bits.clean_session == false) {
-                // A session is present and we want to re-establish that
-                struct topic *t;
-                char *tname = NULL;
-                // Send the messages in queue
-                for (size_t i = 0; i < cc->session->msg_queue_next; ++i) {
-                    tname = (char *) cc->session->msg_queue[i]->packet->publish.topic;
-                    t = sol_topic_get_or_create(&sol, tname);
-                    publish_message(cc->session->msg_queue[i]->packet, t, e->ctx);
-                    xfree(cc->session->msg_queue[i]);
+        // First we check if a session is present
+        if (c->bits.clean_session == false) {
+            /*
+             * If there's already some subscriptions and pending messages,
+             * empty the queue
+             */
+            if (list_size(cc->outgoing_msgs) > 0) {
+                size_t len = 0;
+                struct iterator *it =
+                    iter_new(cc->outgoing_msgs, list_iter_next);
+                FOREACH (it) {
+                    len = mqtt_size(it->ptr, NULL);
+                    mqtt_pack(it->ptr, cc->wbuf + cc->towrite);
+                    cc->towrite += len;
                 }
-                cc->session->msg_queue_next = 0;
-            } else {
-                /*
-                 * Requested a clean session, delete the older one and create
-                 * a fresh one
-                 */
-                hashtable_del(sol.sessions, c->payload.client_id);
-                struct session *new_s = sol_session_new();
-                hashtable_put(sol.sessions,
-                              xstrdup((char *) c->payload.client_id), new_s);
+                enqueue_event_write(e->ctx, cc);
             }
+        } else {
+            cc->subscriptions = list_new(NULL);
+            cc->outgoing_msgs = list_new(NULL);
         }
     }
 
@@ -321,7 +307,7 @@ static int connect_handler(struct io_event *e) {
 
     e->client->clean_session = c->bits.clean_session;
     if (c->bits.clean_session == false)
-        e->client->session->subscriptions = list_new(NULL);
+        /* e->client->session->subscriptions = list_new(NULL); */
 
     set_payload_connack(cc, MQTT_CONNECTION_ACCEPTED);
 
@@ -353,10 +339,10 @@ static int disconnect_handler(struct io_event *e) {
 
     log_debug("Received DISCONNECT from %s", e->client->client_id);
 
-    // Remove from subscriptions for now
-    if (e->client->session) {
-        struct list *subs = e->client->session->subscriptions;
-        struct iterator *it = iter_new(subs, list_iter_next);
+    // Remove from subscriptions if clean_session == true
+    if (e->client->clean_session == true) {
+        struct iterator *it =
+            iter_new(e->client->subscriptions, list_iter_next);
         FOREACH (it) {
             log_debug("Removing %s from topic %s",
                       e->client->client_id, ((struct topic *) it->ptr)->name);
@@ -377,8 +363,9 @@ static void recursive_sub(struct trie_node *node, void *arg) {
     log_debug("Adding subscriber %s to topic %s",
               s->client->client_id, t->name);
     hashtable_put(t->subscribers, s->client->client_id, s);
-    if (s->client->session)
-        list_push(s->client->session->subscriptions, t);
+    // If clean_session == false we have to track the subscription
+    if (s->client->clean_session == false)
+        s->client->subscriptions = list_push(s->client->subscriptions, t);
 }
 
 static int subscribe_handler(struct io_event *e) {

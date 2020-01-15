@@ -92,6 +92,9 @@ struct client {
     unsigned long last_seen;
     struct mqtt_packet lwt_msg;
     int next_free_mid;
+    // Session fields
+    List *subscriptions;
+    List *outgoing_msgs;
     struct inflight_msg *i_acks;
     struct inflight_msg *i_msgs;
     struct inflight_msg *in_i_acks;
@@ -108,19 +111,11 @@ struct sol {
     int maxfd;
     struct client *clients;
     Trie topics;
-    HashTable *sessions;
     HashTable *authentications;
     SSL_CTX *ssl_ctx;
 };
 
 extern struct sol sol;
-
-struct session {
-    List *subscriptions;
-    size_t msg_queue_size;
-    size_t msg_queue_next;
-    struct inflight_msg **msg_queue;
-};
 
 struct subscriber {
     unsigned qos;
@@ -152,8 +147,6 @@ void sol_topic_put(struct sol *, struct topic *);
 
 void sol_topic_del(struct sol *, const char *);
 
-struct session *sol_session_new(void);
-
 /* Find a topic by name and return it */
 struct topic *sol_topic_get(const struct sol *, const char *);
 
@@ -161,7 +154,5 @@ struct topic *sol_topic_get(const struct sol *, const char *);
 struct topic *sol_topic_get_or_create(struct sol *, const char *);
 
 unsigned next_free_mid(struct client *);
-
-void sol_session_append_imsg(struct session *, struct inflight_msg *);
 
 #endif
