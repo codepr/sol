@@ -98,10 +98,6 @@ void topic_add_subscriber(struct topic *t,
     sub->qos = qos;
     sub->refs = 1;
     hashtable_put(t->subscribers, sub->client->client_id, sub);
-
-    // It must be added to the session if cleansession is false
-    /* if (!cleansession) */
-    /*     client->subscriptions = list_push(client->subscriptions, t); */
 }
 
 void topic_del_subscriber(struct topic *t,
@@ -143,20 +139,19 @@ struct topic *sol_topic_get_or_create(struct sol *sol, const char *name) {
 
 struct inflight_msg *inflight_msg_new(struct client *c,
                                       struct mqtt_packet *p,
-                                      int type, size_t size) {
+                                      size_t size) {
     struct inflight_msg *imsg = xmalloc(sizeof(*imsg));
-    inflight_msg_init(imsg, c, p, type, size);
+    inflight_msg_init(imsg, c, p, size);
     return imsg;
 }
 
 void inflight_msg_init(struct inflight_msg *imsg,
                        struct client *c,
                        struct mqtt_packet *p,
-                       int type, size_t size) {
+                       size_t size) {
     imsg->client = c;
     imsg->sent_timestamp = time(NULL);
     imsg->packet = p;
-    imsg->type = type;
     imsg->size = size;
     imsg->in_use = 1;
 }

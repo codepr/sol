@@ -71,16 +71,12 @@ static handler *handlers[15] = {
     disconnect_handler
 };
 
-void publish_message(struct mqtt_packet *p,
+void publish_message(struct mqtt_packet *pkt,
                      const struct topic *t, struct ev_ctx *ctx) {
 
     size_t len = 0;
     unsigned short mid = 0;
-    unsigned qos = p->header.bits.qos;
-    struct mqtt_packet pkt = {
-        .header = p->header,
-        .publish = p->publish
-    };
+    unsigned qos = pkt->header.bits.qos;
 
     if (hashtable_size(t->subscribers) == 0)
         return;
@@ -98,8 +94,8 @@ void publish_message(struct mqtt_packet *p,
          * rules: The min between the original QoS and the subscriber
          * QoS
          */
-        p->header.bits.qos = qos >= sub->qos ? sub->qos : qos;
-        len = mqtt_size(p, NULL); // override len, no ID set in QoS 0
+        pkt->header.bits.qos = qos >= sub->qos ? sub->qos : qos;
+        len = mqtt_size(pkt, NULL); // override len, no ID set in QoS 0
 
         /*
          * if QoS 0
@@ -108,8 +104,7 @@ void publish_message(struct mqtt_packet *p,
          * correct QoS value (0) and packet identifier to (0) as
          * specified by MQTT specs
          */
-        pkt.header.bits.qos = p->header.bits.qos;
-        pkt.publish.pkt_id = 0;
+        pkt->publish.pkt_id = 0;
 
         /*
          * If offline, we must enqueue messages in the inflight queue
@@ -118,19 +113,19 @@ void publish_message(struct mqtt_packet *p,
          */
         if (sc->online == false) {
             if (sc->clean_session == false)
-                sc->outgoing_msgs = list_push(sc->outgoing_msgs, &pkt);
+                sc->outgoing_msgs = list_push(sc->outgoing_msgs, pkt);
             continue;
         } else {
             /*
              * if QoS > 0 we set packet identifier and track the inflight message,
              * proceed with the publish towards online subscriber.
              */
-            if (p->header.bits.qos > AT_MOST_ONCE) {
+            if (pkt->header.bits.qos > AT_MOST_ONCE) {
                 mid = next_free_mid(sc);
-                pkt.publish.pkt_id = mid;
+                pkt->publish.pkt_id = mid;
 
-                if (!sc->i_msgs[pkt.publish.pkt_id].in_use)
-                    inflight_msg_init(&sc->i_msgs[mid], sc, &pkt, PUBLISH, len);
+                if (!sc->i_msgs[pkt->publish.pkt_id].in_use)
+                    inflight_msg_init(&sc->i_msgs[mid], sc, pkt, len);
                 if (!sc->i_acks[mid].in_use) {
                     type = sub->qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
                     // TODO broken pointer, to be allocated or designed differently
@@ -138,13 +133,13 @@ void publish_message(struct mqtt_packet *p,
                         .header = (union mqtt_header) { .byte = type },
                     };
                     mqtt_ack(&ack, mid);
-                    inflight_msg_init(&sc->i_acks[mid], sc, &ack, type, len);
+                    inflight_msg_init(&sc->i_acks[mid], sc, &ack, len);
                 }
                 sc->has_inflight = true;
             }
         }
 
-        mqtt_pack(&pkt, sc->wbuf + sc->towrite);
+        mqtt_pack(pkt, sc->wbuf + sc->towrite);
         sc->towrite += len;
 
         // Schedule a write for the current subscriber on the next event cycle
@@ -154,12 +149,12 @@ void publish_message(struct mqtt_packet *p,
 
         log_debug("Sending PUBLISH to %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
                   sc->client_id,
-                  p->header.bits.dup,
-                  p->header.bits.qos,
-                  p->header.bits.retain,
-                  pkt.publish.pkt_id,
-                  p->publish.topic,
-                  p->publish.payloadlen);
+                  pkt->header.bits.dup,
+                  pkt->header.bits.qos,
+                  pkt->header.bits.retain,
+                  pkt->publish.pkt_id,
+                  pkt->publish.topic,
+                  pkt->publish.payloadlen);
     }
     iter_destroy(it);
 }
@@ -501,15 +496,17 @@ static int publish_handler(struct io_event *e) {
      * create a new one with the name selected
      */
     struct topic *t = sol_topic_get_or_create(&sol, topic);
-    struct mqtt_packet pkt = e->data;
+    struct mqtt_packet *pkt = memorypool_alloc(sol.pool);
+    pkt->header = e->data.header;
+    pkt->publish = e->data.publish;
 
-    size_t publen = mqtt_size(&pkt, NULL);
+    size_t publen = mqtt_size(&e->data, NULL);
     if (hdr->bits.retain == 1) {
         t->retained_msg = bstring_empty(publen);
-        mqtt_pack(&pkt, t->retained_msg);
+        mqtt_pack(&e->data, t->retained_msg);
     }
 
-    publish_message(&pkt, t, e->ctx);
+    publish_message(pkt, t, e->ctx);
 
     // We have to answer to the publisher
     if (qos == AT_MOST_ONCE)
@@ -522,7 +519,7 @@ static int publish_handler(struct io_event *e) {
         ptype = PUBREC;
         struct mqtt_packet ack;
         mqtt_ack(&ack, orig_mid);
-        inflight_msg_init(&c->in_i_acks[orig_mid], c, &ack, ptype, publen);
+        inflight_msg_init(&c->in_i_acks[orig_mid], c, &ack, publen);
         c->has_inflight = true;
     }
 
@@ -549,6 +546,7 @@ static int puback_handler(struct io_event *e) {
     log_debug("Received PUBACK from %s (m%u)",
               c->client_id, e->data.ack.pkt_id);
     c->i_msgs[e->data.ack.pkt_id].in_use = 0;
+    memorypool_free(sol.pool, c->i_msgs[e->data.ack.pkt_id].packet);
     c->i_acks[e->data.ack.pkt_id].in_use = 0;
     c->has_inflight = false;
     return NOREPLY;
@@ -563,8 +561,7 @@ static int pubrec_handler(struct io_event *e) {
     e->data.header.bits.type = PUBREL;
     // Update inflight acks table
     if (c->i_acks[e->data.ack.pkt_id].in_use) {
-        c->i_acks[e->data.ack.pkt_id].type = PUBREL;
-        c->i_acks[e->data.ack.pkt_id].packet = &e->data;
+        c->i_acks[e->data.ack.pkt_id].packet->header.bits.type = PUBREL;
         c->i_acks[e->data.ack.pkt_id].sent_timestamp = time(NULL);
     }
     log_debug("Sending PUBREL to %s (m%u)", c->client_id, e->data.ack.pkt_id);
@@ -589,6 +586,7 @@ static int pubcomp_handler(struct io_event *e) {
               c->client_id, e->data.ack.pkt_id);
     c->i_acks[e->data.ack.pkt_id].in_use = 0;
     c->i_msgs[e->data.ack.pkt_id].in_use = 0;
+    memorypool_free(sol.pool, c->i_msgs[e->data.ack.pkt_id].packet);
     c->has_inflight = false;
     return NOREPLY;
 }

@@ -48,10 +48,9 @@
  */
 struct inflight_msg {
     struct client *client;
-    int type;
     int in_use;
     time_t sent_timestamp;
-    unsigned long size;
+    size_t size;
     struct mqtt_packet *packet;
 };
 
@@ -129,10 +128,10 @@ void client_init(struct client *);
 struct client *sol_client_new(struct connection *);
 
 struct inflight_msg *inflight_msg_new(struct client *,
-                                      struct mqtt_packet *, int, size_t);
+                                      struct mqtt_packet *, size_t);
 
 void inflight_msg_init(struct inflight_msg *, struct client *,
-                       struct mqtt_packet *, int, size_t);
+                       struct mqtt_packet *, size_t);
 
 struct topic *topic_new(const char *);
 
