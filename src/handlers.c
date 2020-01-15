@@ -349,7 +349,6 @@ static int disconnect_handler(struct io_event *e) {
         }
         iter_destroy(it);
     }
-    // TODO remove from all topic where it subscribed
     return -ERRCLIENTDC;
 }
 
@@ -414,6 +413,7 @@ static int subscribe_handler(struct io_event *e) {
 
         // Clean session true for now
         topic_add_subscriber(t, e->client, s->tuples[i].qos, false);
+        e->client->subscriptions = list_push(e->client->subscriptions, t);
 
         // Retained message? Publish it
         // TODO move to IO threadpool
