@@ -31,8 +31,12 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/eventfd.h>
+#include <openssl/ssl.h>
 #include "mqtt.h"
 #include "pack.h"
+#include "trie.h"
+#include "network.h"
+#include "hashtable.h"
 
 /*
  * Epoll default settings for concurrent events monitored and timeout, -1
@@ -41,7 +45,8 @@
 #define EVENTLOOP_MAX_EVENTS    1024
 #define EVENTLOOP_TIMEOUT       -1
 
-/* Error codes for packet reception, signaling respectively
+/*
+ * Error codes for packet reception, signaling respectively
  * - client disconnection
  * - error reading packet
  * - error packet sent exceeds size defined by configuration (generally default
@@ -53,12 +58,19 @@
 #define ERRMAXREQSIZE       3
 #define ERREAGAIN           4
 
-/* Return code of handler functions, signaling if there's data payload to be
+/*
+ * Return code of handler functions, signaling if there's data payload to be
  * sent out or if the server just need to re-arm closure for reading incoming
  * bytes
  */
 #define REPLY               0
 #define NOREPLY             1
+
+/* The maximum number of pensing/not acknowledged packets for each client */
+#define MAX_INFLIGHT_MSGS 65536
+
+/* Initial memory allocation for clients on server start-up */
+#define BASE_CLIENTS_NUM  1024
 
 /*
  * IO event strucuture, it's the main information that will be communicated
@@ -100,6 +112,116 @@ struct sol_info {
  * periodically to internal topics
  */
 extern struct sol_info info;
+
+/*
+ * Main structure, a global instance will be instantiated at start, tracking
+ * topics, connected clients and registered closures.
+ *
+ * pending_msgs and pendings_acks are two arrays used to track remaining
+ * messages to push out and acks respectively.
+ */
+struct server {
+    int maxfd;
+    struct client *clients;
+    struct memorypool *mqttpool;
+    struct memorypool *sessionpool;
+    Trie topics;
+    HashTable *sessions;
+    HashTable *authentications;
+    SSL_CTX *ssl_ctx;
+};
+
+extern struct server server;
+
+/*
+ * Pending messages remaining to be sent out, they can be either PUBLISH or
+ * generic ACKs, fields required are the descriptor of destination, the type
+ * of the message, the timestamp of the last send try, the size of the packet
+ * and the packet himself
+ */
+struct inflight_msg {
+    struct client *client;
+    int in_use;
+    time_t sent_timestamp;
+    size_t size;
+    struct mqtt_packet *packet;
+};
+
+struct topic {
+    const char *name;
+    bstring retained_msg;
+    HashTable *subscribers;
+};
+
+struct subscriber {
+    unsigned qos;
+    struct client *client;
+    unsigned refs;
+};
+
+enum client_status {
+    WAITING_HEADER,
+    WAITING_LENGTH,
+    WAITING_DATA,
+    SENDING_DATA
+};
+
+/*
+ * Wrapper structure around a connected client, each client can be a publisher
+ * or a subscriber, it can be used to track sessions too.
+ */
+struct client {
+    bool online;  // just a boolean will be fine for now
+    bool has_lwt;
+    bool clean_session;
+    int rc;
+    int status;
+    int rpos;
+    size_t read;
+    size_t toread;
+    unsigned char *rbuf;
+    size_t wrote;
+    size_t towrite;
+    unsigned char *wbuf;
+    char client_id[MQTT_CLIENT_ID_LEN];
+    struct connection conn;
+    struct client_session *session;
+    unsigned long last_seen;
+};
+
+struct client_session {
+    bool has_inflight;
+    int next_free_mid;
+    List *subscriptions;
+    List *outgoing_msgs;
+    struct mqtt_packet lwt_msg;
+    struct inflight_msg *i_acks;
+    struct inflight_msg *i_msgs;
+    struct inflight_msg *in_i_acks;
+};
+
+void inflight_msg_init(struct inflight_msg *, struct client *,
+                       struct mqtt_packet *, size_t);
+
+void topic_add_subscriber(struct topic *, struct client *, unsigned);
+
+void topic_del_subscriber(struct topic *, struct client *);
+
+bool topic_exists(const struct server *, const char *);
+
+void topic_put(struct server *, struct topic *);
+
+void topic_del(struct server *, const char *);
+
+/* Find a topic by name and return it */
+struct topic *topic_get(const struct server *, const char *);
+
+/* Get or create a new topic if it doesn't exists */
+struct topic *topic_get_or_create(struct server *, const char *);
+
+unsigned next_free_mid(struct client *);
+
+void session_init(struct client_session *);
 
 int start_server(const char *, const char *);
 

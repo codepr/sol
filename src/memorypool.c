@@ -34,12 +34,13 @@ struct memorypool *memorypool_new(size_t blocks_nr, size_t blocksize) {
         return NULL;
     blocksize = blocksize >= sizeof(uintptr_t) ? blocksize : sizeof(uintptr_t);
     pool->memory = xmalloc(blocksize * blocks_nr);
-    if (!pool->memory) {
+    pool->free = pool->memory;
+    pool->blocks_nr = blocks_nr;
+    pool->blocksize = blocksize;
+    if (!pool->free) {
         xfree(pool);
         return NULL;
     }
-    pool->free = pool->memory;
-    uintptr_t *ptr = pool->free;
     /*
      * We pre-assign the position of each free block in the free pointer, this
      * way we know every block position before allocating new memory, we'll
@@ -65,9 +66,10 @@ struct memorypool *memorypool_new(size_t blocks_nr, size_t blocksize) {
      * This way everytime we allocate a new block we can refresh the next free
      * block in the list.
      */
+    intptr_t *ptr = pool->free;
     for (size_t i = 1; i < blocks_nr; ++i) {
-        *ptr = *((char *) pool->memory + blocksize * i);
-        ptr = (uintptr_t *) ((char *) pool->memory + blocksize * i);
+        *ptr = (intptr_t)((char *) pool->free + blocksize * i);
+        ptr = (intptr_t *)((char *) pool->free + blocksize * i);
     }
     return pool;
 }
@@ -84,7 +86,7 @@ void *memorypool_alloc(struct memorypool *pool) {
      * update the next free block address on the free pointer. The address is
      * already stored in the "header" of the block.
      */
-    pool->free = &(*((uintptr_t *) pool->free));
+    pool->free = (intptr_t *)(*((intptr_t *) pool->free));
     return ptr;
 }
 
@@ -94,6 +96,6 @@ void memorypool_free(struct memorypool *pool, void *ptr) {
      * location and udpate the current free location by pointing it to the
      * free'd pointer
      */
-    *((uintptr_t *) ptr) = *((uintptr_t *) pool->free);
+    *((intptr_t *) ptr) = *((intptr_t *) pool->free);
     pool->free = ptr;
 }

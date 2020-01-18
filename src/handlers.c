@@ -28,7 +28,6 @@
 #include <errno.h>
 #include <string.h>
 #include <sys/epoll.h>
-#include "core.h"
 #include "mqtt.h"
 #include "util.h"
 #include "config.h"
@@ -113,7 +112,7 @@ void publish_message(struct mqtt_packet *pkt,
          */
         if (sc->online == false) {
             if (sc->clean_session == false)
-                sc->outgoing_msgs = list_push(sc->outgoing_msgs, pkt);
+                list_push(sc->session->outgoing_msgs, pkt);
             continue;
         } else {
             /*
@@ -124,18 +123,18 @@ void publish_message(struct mqtt_packet *pkt,
                 mid = next_free_mid(sc);
                 pkt->publish.pkt_id = mid;
 
-                if (!sc->i_msgs[pkt->publish.pkt_id].in_use)
-                    inflight_msg_init(&sc->i_msgs[mid], sc, pkt, len);
-                if (!sc->i_acks[mid].in_use) {
+                if (!sc->session->i_msgs[pkt->publish.pkt_id].in_use)
+                    inflight_msg_init(&sc->session->i_msgs[mid], sc, pkt, len);
+                if (!sc->session->i_acks[mid].in_use) {
                     type = sub->qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
                     // TODO broken pointer, to be allocated or designed differently
                     struct mqtt_packet ack = {
                         .header = (union mqtt_header) { .byte = type },
                     };
                     mqtt_ack(&ack, mid);
-                    inflight_msg_init(&sc->i_acks[mid], sc, &ack, len);
+                    inflight_msg_init(&sc->session->i_acks[mid], sc, &ack, len);
                 }
-                sc->has_inflight = true;
+                sc->session->has_inflight = true;
             }
         }
 
@@ -191,7 +190,8 @@ static int connect_handler(struct io_event *e) {
         if (c->bits.username == 0 || c->bits.password == 0)
             goto bad_auth;
         else {
-            void *salt = hashtable_get(sol.authentications, c->payload.username);
+            void *salt =
+                hashtable_get(server.authentications, c->payload.username);
             if (!salt)
                 goto bad_auth;
 
@@ -216,26 +216,32 @@ static int connect_handler(struct io_event *e) {
     } else {
         // First we check if a session is present
         if (c->bits.clean_session == false) {
-            /*
-             * If there's already some subscriptions and pending messages,
-             * empty the queue
-             */
-            if (list_size(cc->outgoing_msgs) > 0) {
-                size_t len = 0;
-                struct iterator *it =
-                    iter_new(cc->outgoing_msgs, list_iter_next);
-                FOREACH (it) {
-                    len = mqtt_size(it->ptr, NULL);
-                    mqtt_pack(it->ptr, cc->wbuf + cc->towrite);
-                    cc->towrite += len;
+            cc->session = hashtable_get(server.sessions, c->payload.client_id);
+            if (cc->session) {
+                /*
+                 * If there's already some subscriptions and pending messages,
+                 * empty the queue
+                 */
+                if (list_size(cc->session->outgoing_msgs) > 0) {
+                    size_t len = 0;
+                    struct iterator *it =
+                        iter_new(cc->session->outgoing_msgs, list_iter_next);
+                    FOREACH (it) {
+                        len = mqtt_size(it->ptr, NULL);
+                        mqtt_pack(it->ptr, cc->wbuf + cc->towrite);
+                        cc->towrite += len;
+                    }
+                    enqueue_event_write(e->ctx, cc);
                 }
-                enqueue_event_write(e->ctx, cc);
             }
+        } else {
+            // Clean session true, we have to clean old session, if any
+            hashtable_del(server.sessions, c->payload.client_id);
         }
     }
 
-    if (sol.clients[e->client->conn.fd].online == true &&
-        strncmp(sol.clients[e->client->conn.fd].client_id,
+    if (server.clients[e->client->conn.fd].online == true &&
+        strncmp(server.clients[e->client->conn.fd].client_id,
                 (const char *) c->payload.client_id, MQTT_CLIENT_ID_LEN) == 1) {
 
         // Already connected client, 2 CONNECT packet should be interpreted as
@@ -256,20 +262,31 @@ static int connect_handler(struct io_event *e) {
      * connected, kick him out accordingly to the MQTT v3.1.1 specs.
      */
     strncpy(e->client->client_id, (char *) c->payload.client_id, MQTT_CLIENT_ID_LEN);
+
+    /*
+     * If no session was found or the client is a new connecting client or an
+     * anonymous one, we create a session here
+     */
+    if (c->bits.clean_session == true || !cc->session) {
+        cc->session = memorypool_alloc(server.sessionpool);
+        session_init(cc->session);
+        hashtable_put(server.sessions, cc->client_id, cc->session);
+    }
+
     // Add LWT topic and message if present
     if (c->bits.will) {
         e->client->has_lwt = true;
         const char *will_topic = (const char *) c->payload.will_topic;
         const char *will_message = (const char *) c->payload.will_message;
         // TODO check for will_topic != NULL
-        struct topic *t = sol_topic_get_or_create(&sol, will_topic);
-        if (!sol_topic_exists(&sol, t->name))
-            sol_topic_put(&sol, t);
+        struct topic *t = topic_get_or_create(&server, will_topic);
+        if (!topic_exists(&server, t->name))
+            topic_put(&server, t);
         // I'm sure that the string will be NUL terminated by unpack function
         size_t msg_len = strlen(will_message);
         size_t tpc_len = strlen(will_topic);
 
-        e->client->lwt_msg = (struct mqtt_packet) {
+        e->client->session->lwt_msg = (struct mqtt_packet) {
             .header = (union mqtt_header) { .byte = PUBLISH_B },
             .publish = (struct mqtt_publish) {
                 .pkt_id = 0,  // placeholder
@@ -280,28 +297,24 @@ static int connect_handler(struct io_event *e) {
             }
         };
 
-        e->client->lwt_msg.header.bits.qos = c->bits.will_qos;
+        e->client->session->lwt_msg.header.bits.qos = c->bits.will_qos;
         // We must store the retained message in the topic
         if (c->bits.will_retain == 1) {
-            size_t publen = mqtt_size(&e->client->lwt_msg, NULL);
+            size_t publen = mqtt_size(&e->client->session->lwt_msg, NULL);
             bstring payload = bstring_empty(publen);
-            mqtt_pack(&e->client->lwt_msg, payload);
+            mqtt_pack(&e->client->session->lwt_msg, payload);
             // We got a ready-to-be sent bytestring in the retained message
             // field
             t->retained_msg = payload;
         }
         log_info("Will message specified (%lu bytes)",
-                 e->client->lwt_msg.publish.payloadlen);
-        log_info("\t%s", e->client->lwt_msg.publish.payload);
+                 e->client->session->lwt_msg.publish.payloadlen);
+        log_info("\t%s", e->client->session->lwt_msg.publish.payload);
     }
 
     // TODO check for session already present
 
     e->client->clean_session = c->bits.clean_session;
-    if (c->bits.clean_session == true) {
-        cc->subscriptions = list_new(NULL);
-        cc->outgoing_msgs = list_new(NULL);
-    }
 
     set_payload_connack(cc, MQTT_CONNECTION_ACCEPTED);
 
@@ -334,13 +347,14 @@ static int disconnect_handler(struct io_event *e) {
     log_debug("Received DISCONNECT from %s", e->client->client_id);
 
     // Remove from subscriptions if clean_session == true
-    if (e->client->clean_session == true && list_size(e->client->subscriptions)) {
+    if (e->client->clean_session == true
+        && list_size(e->client->session->subscriptions)) {
         struct iterator *it =
-            iter_new(e->client->subscriptions, list_iter_next);
+            iter_new(e->client->session->subscriptions, list_iter_next);
         FOREACH (it) {
             log_debug("Removing %s from topic %s",
                       e->client->client_id, ((struct topic *) it->ptr)->name);
-            topic_del_subscriber(it->ptr, e->client, false);
+            topic_del_subscriber(it->ptr, e->client);
         }
         iter_destroy(it);
     }
@@ -358,7 +372,7 @@ static void recursive_sub(struct trie_node *node, void *arg) {
     hashtable_put(t->subscribers, s->client->client_id, s);
     // If clean_session == false we have to track the subscription
     if (s->client->clean_session == false)
-        s->client->subscriptions = list_push(s->client->subscriptions, t);
+        list_push(s->client->session->subscriptions, t);
 }
 
 static int subscribe_handler(struct io_event *e) {
@@ -396,19 +410,19 @@ static int subscribe_handler(struct io_event *e) {
             topic[s->tuples[i].topic_len + 1] = '\0';
         }
 
-        struct topic *t = sol_topic_get_or_create(&sol, topic);
+        struct topic *t = topic_get_or_create(&server, topic);
 
         if (wildcard == true) {
             struct subscriber *sub = xmalloc(sizeof(*sub));
             sub->client = e->client;
             sub->qos = s->tuples[i].qos;
             sub->refs = 0;
-            trie_prefix_map(sol.topics.root, topic, recursive_sub, sub);
+            trie_prefix_map(server.topics.root, topic, recursive_sub, sub);
         }
 
         // Clean session true for now
-        topic_add_subscriber(t, e->client, s->tuples[i].qos, false);
-        e->client->subscriptions = list_push(e->client->subscriptions, t);
+        topic_add_subscriber(t, e->client, s->tuples[i].qos);
+        list_push(e->client->session->subscriptions, t);
 
         // Retained message? Publish it
         // TODO move to IO threadpool
@@ -444,10 +458,10 @@ static int unsubscribe_handler(struct io_event *e) {
 
     struct topic *t = NULL;
     for (int i = 0; i < e->data.unsubscribe.tuples_len; ++i) {
-        t = sol_topic_get(&sol,
-                          (const char *) e->data.unsubscribe.tuples[i].topic);
+        t = topic_get(&server,
+                      (const char *) e->data.unsubscribe.tuples[i].topic);
         if (t)
-            topic_del_subscriber(t, c, false);
+            topic_del_subscriber(t, c);
     }
 
     mqtt_pack_mono(c->wbuf + c->towrite, UNSUBACK, e->data.unsubscribe.pkt_id);
@@ -495,8 +509,8 @@ static int publish_handler(struct io_event *e) {
      * Retrieve the topic from the global map, if it wasn't created before,
      * create a new one with the name selected
      */
-    struct topic *t = sol_topic_get_or_create(&sol, topic);
-    struct mqtt_packet *pkt = memorypool_alloc(sol.pool);
+    struct topic *t = topic_get_or_create(&server, topic);
+    struct mqtt_packet *pkt = memorypool_alloc(server.mqttpool);
     pkt->header = e->data.header;
     pkt->publish = e->data.publish;
 
@@ -519,8 +533,8 @@ static int publish_handler(struct io_event *e) {
         ptype = PUBREC;
         struct mqtt_packet ack;
         mqtt_ack(&ack, orig_mid);
-        inflight_msg_init(&c->in_i_acks[orig_mid], c, &ack, publen);
-        c->has_inflight = true;
+        inflight_msg_init(&c->session->in_i_acks[orig_mid], c, &ack, publen);
+        c->session->has_inflight = true;
     }
 
     log_debug("Sending %s to %s (m%u)",
@@ -545,10 +559,11 @@ static int puback_handler(struct io_event *e) {
     struct client *c = e->client;
     log_debug("Received PUBACK from %s (m%u)",
               c->client_id, e->data.ack.pkt_id);
-    c->i_msgs[e->data.ack.pkt_id].in_use = 0;
-    memorypool_free(sol.pool, c->i_msgs[e->data.ack.pkt_id].packet);
-    c->i_acks[e->data.ack.pkt_id].in_use = 0;
-    c->has_inflight = false;
+    c->session->i_msgs[e->data.ack.pkt_id].in_use = 0;
+    memorypool_free(server.mqttpool,
+                    c->session->i_msgs[e->data.ack.pkt_id].packet);
+    c->session->i_acks[e->data.ack.pkt_id].in_use = 0;
+    c->session->has_inflight = false;
     return NOREPLY;
 }
 
@@ -560,9 +575,9 @@ static int pubrec_handler(struct io_event *e) {
     c->towrite += MQTT_ACK_LEN;
     e->data.header.bits.type = PUBREL;
     // Update inflight acks table
-    if (c->i_acks[e->data.ack.pkt_id].in_use) {
-        c->i_acks[e->data.ack.pkt_id].packet->header.bits.type = PUBREL;
-        c->i_acks[e->data.ack.pkt_id].sent_timestamp = time(NULL);
+    if (c->session->i_acks[e->data.ack.pkt_id].in_use) {
+        c->session->i_acks[e->data.ack.pkt_id].packet->header.bits.type = PUBREL;
+        c->session->i_acks[e->data.ack.pkt_id].sent_timestamp = time(NULL);
     }
     log_debug("Sending PUBREL to %s (m%u)", c->client_id, e->data.ack.pkt_id);
     return REPLY;
@@ -574,8 +589,8 @@ static int pubrel_handler(struct io_event *e) {
               c->client_id, e->data.ack.pkt_id);
     mqtt_pack_mono(c->wbuf + c->towrite, PUBCOMP, e->data.ack.pkt_id);
     c->towrite += MQTT_ACK_LEN;
-    c->in_i_acks[e->data.ack.pkt_id].in_use = 0;
-    c->has_inflight = false;
+    c->session->in_i_acks[e->data.ack.pkt_id].in_use = 0;
+    c->session->has_inflight = false;
     log_debug("Sending PUBCOMP to %s (m%u)", c->client_id, e->data.ack.pkt_id);
     return REPLY;
 }
@@ -584,10 +599,11 @@ static int pubcomp_handler(struct io_event *e) {
     struct client *c = e->client;
     log_debug("Received PUBCOMP from %s (m%u)",
               c->client_id, e->data.ack.pkt_id);
-    c->i_acks[e->data.ack.pkt_id].in_use = 0;
-    c->i_msgs[e->data.ack.pkt_id].in_use = 0;
-    memorypool_free(sol.pool, c->i_msgs[e->data.ack.pkt_id].packet);
-    c->has_inflight = false;
+    c->session->i_acks[e->data.ack.pkt_id].in_use = 0;
+    c->session->i_msgs[e->data.ack.pkt_id].in_use = 0;
+    memorypool_free(server.mqttpool,
+                    c->session->i_msgs[e->data.ack.pkt_id].packet);
+    c->session->has_inflight = false;
     return NOREPLY;
 }
 

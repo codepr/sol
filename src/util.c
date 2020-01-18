@@ -60,13 +60,13 @@ void sol_log_close(void) {
 
 void sol_log(int level, const char *fmt, ...) {
 
+    if (level < conf->loglevel)
+        return;
+
     assert(fmt);
 
     va_list ap;
     char msg[MAX_LOG_SIZE + 4];
-
-    if (level < conf->loglevel)
-        return;
 
     va_start(ap, fmt);
     vsnprintf(msg, sizeof(msg), fmt, ap);
