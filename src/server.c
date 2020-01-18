@@ -355,6 +355,11 @@ static int client_destructor(struct client *client) {
     if (client->has_lwt)
         mqtt_packet_destroy(&client->session->lwt_msg, PUBLISH);
 
+    if (client->clean_session == true) {
+        hashtable_del(server.sessions, client->client_id);
+        memorypool_free(server.sessionpool, client->session);
+    }
+
     client->online = false;
     client->has_lwt = false;
     client->client_id[0] = '\0';
@@ -805,7 +810,7 @@ int start_server(const char *addr, const char *port) {
     server.clients = xcalloc(BASE_CLIENTS_NUM, sizeof(struct client));
     server.authentications = hashtable_new(auth_destructor);
     server.sessions = hashtable_new(session_destructor);
-    server.mqttpool = memorypool_new(1024, sizeof(struct mqtt_packet));
+    server.mqttpool = memorypool_new(1024 * 512, sizeof(struct mqtt_packet));
     server.sessionpool = memorypool_new(1024, sizeof(struct client_session));
 
     if (conf->allow_anonymous == false)
