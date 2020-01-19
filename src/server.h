@@ -123,6 +123,7 @@ extern struct sol_info info;
 struct server {
     int maxfd;
     struct client *clients;
+    struct memorypool *refpool;
     struct memorypool *mqttpool;
     struct memorypool *sessionpool;
     Trie topics;
@@ -144,7 +145,8 @@ struct inflight_msg {
     int in_use;
     time_t sent_timestamp;
     size_t size;
-    struct mqtt_packet *packet;
+    struct refobj *refobj;
+    // struct mqtt_packet *packet;
 };
 
 struct topic {
@@ -201,7 +203,9 @@ struct client_session {
 };
 
 void inflight_msg_init(struct inflight_msg *, struct client *,
-                       struct mqtt_packet *, size_t);
+                       struct refobj *, size_t);
+
+void inflight_msg_clear(struct inflight_msg *);
 
 void topic_add_subscriber(struct topic *, struct client *, unsigned);
 

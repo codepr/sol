@@ -25,28 +25,23 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MEMORYPOOL_H
-#define MEMORYPOOL_H
+#include "objpool.h"
+#include "memorypool.h"
 
-#include <stdlib.h>
+struct refobj *objpool_addref(struct memorypool *pool, struct refobj *ro) {
+    if (!ro) {
+        struct refobj *obj = memorypool_alloc(pool);
+        obj->refcount = 0;
+        obj->data = NULL;
+        return obj;
+    }
+    ro->refcount++;
+    return ro;
+}
 
-/*
- * Simple memory object-pool, the purpose is to allow for fixed size objects to
- * be pre-allocated and re-use of memory blocks, so no size have to be
- * specified like in a normal malloc but only alloc and free of a pointer is
- * possible.
- */
-struct memorypool {
-    void *memory;
-    void *free;
-    int block_used;
-    size_t blocks_nr;
-    size_t blocksize;
-};
-
-struct memorypool *memorypool_new(size_t, size_t);
-void memorypool_destroy(struct memorypool *);
-void *memorypool_alloc(struct memorypool *);
-void memorypool_free(struct memorypool *, void *);
-
-#endif
+int objpool_delref(struct memorypool *pool, struct refobj *ro) {
+    ro->refcount--;
+    if (ro->refcount <= 0)
+        memorypool_free(pool, ro);
+    return ro->refcount;
+}

@@ -34,6 +34,7 @@
 #include "server.h"
 #include "handlers.h"
 #include "hashtable.h"
+#include "objpool.h"
 #include "memorypool.h"
 
 /* Prototype for a command handler */
@@ -77,11 +78,15 @@ void publish_message(struct mqtt_packet *pkt,
     unsigned short mid = 0;
     unsigned qos = pkt->header.bits.qos;
 
-    if (hashtable_size(t->subscribers) == 0)
+    if (hashtable_size(t->subscribers) == 0) {
+        memorypool_free(server.mqttpool, pkt);
         return;
+    }
 
     struct iterator *it = iter_new(t->subscribers, hashtable_iter_next);
     unsigned char type;
+    struct refobj *ro = objpool_addref(server.refpool, NULL);
+    ro->data = pkt;
 
     // first run check
     FOREACH (it) {
@@ -111,26 +116,32 @@ void publish_message(struct mqtt_packet *pkt,
          * clean_session == false connection
          */
         if (sc->online == false) {
-            if (sc->clean_session == false)
-                list_push(sc->session->outgoing_msgs, pkt);
+            if (sc->clean_session == false) {
+                objpool_addref(server.refpool, ro);
+                list_push(sc->session->outgoing_msgs, ro);
+            }
             continue;
         } else {
             /*
-             * if QoS > 0 we set packet identifier and track the inflight message,
-             * proceed with the publish towards online subscriber.
+             * if QoS > 0 we set packet identifier and track the inflight
+             * message, proceed with the publish towards online subscriber.
              */
             if (pkt->header.bits.qos > AT_MOST_ONCE) {
                 mid = next_free_mid(sc);
                 pkt->publish.pkt_id = mid;
 
-                if (!sc->session->i_msgs[pkt->publish.pkt_id].in_use)
-                    inflight_msg_init(&sc->session->i_msgs[mid], sc, pkt, len);
+                if (!sc->session->i_msgs[pkt->publish.pkt_id].in_use) {
+                    objpool_addref(server.refpool, ro);
+                    inflight_msg_init(&sc->session->i_msgs[mid], sc, ro, len);
+                }
                 if (!sc->session->i_acks[mid].in_use) {
                     type = sub->qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
                     struct mqtt_packet *ack = memorypool_alloc(server.mqttpool);
                     ack->header = (union mqtt_header) { .byte = type };
                     mqtt_ack(ack, mid);
-                    inflight_msg_init(&sc->session->i_acks[mid], sc, ack, len);
+                    struct refobj *ackref = objpool_addref(server.refpool, NULL);
+                    ackref->data = ack;
+                    inflight_msg_init(&sc->session->i_acks[mid], sc, ackref, len);
                 }
                 sc->session->has_inflight = true;
             }
@@ -531,7 +542,9 @@ static int publish_handler(struct io_event *e) {
         ptype = PUBREC;
         struct mqtt_packet *ack = memorypool_alloc(server.mqttpool);
         mqtt_ack(ack, orig_mid);
-        inflight_msg_init(&c->session->in_i_acks[orig_mid], c, ack, publen);
+        struct refobj *ro = objpool_addref(server.refpool, NULL);
+        ro->data = ack;
+        inflight_msg_init(&c->session->in_i_acks[orig_mid], c, ro, publen);
         c->session->has_inflight = true;
     }
 
@@ -558,9 +571,9 @@ static int puback_handler(struct io_event *e) {
     unsigned pkt_id = e->data.ack.pkt_id;
     log_debug("Received PUBACK from %s (m%u)", c->client_id, pkt_id);
     c->session->i_msgs[pkt_id].in_use = 0;
-    memorypool_free(server.mqttpool, c->session->i_msgs[pkt_id].packet);
+    inflight_msg_clear(&c->session->i_msgs[pkt_id]);
     c->session->i_acks[pkt_id].in_use = 0;
-    memorypool_free(server.mqttpool, c->session->i_acks[pkt_id].packet);
+    inflight_msg_clear(&c->session->i_acks[pkt_id]);
     c->session->has_inflight = false;
     return NOREPLY;
 }
@@ -571,12 +584,9 @@ static int pubrec_handler(struct io_event *e) {
     log_debug("Received PUBREC from %s (m%u)", c->client_id, pkt_id);
     mqtt_pack_mono(c->wbuf + c->towrite, PUBREL, pkt_id);
     c->towrite += MQTT_ACK_LEN;
-    /* e->data.header.bits.type = PUBREL; */
     // Update inflight acks table
-    if (c->session->i_acks[pkt_id].in_use) {
-        c->session->i_acks[pkt_id].packet->header.bits.type = PUBREL;
+    if (c->session->i_acks[pkt_id].in_use)
         c->session->i_acks[pkt_id].sent_timestamp = time(NULL);
-    }
     log_debug("Sending PUBREL to %s (m%u)", c->client_id, pkt_id);
     return REPLY;
 }
@@ -589,7 +599,7 @@ static int pubrel_handler(struct io_event *e) {
     c->towrite += MQTT_ACK_LEN;
     c->session->in_i_acks[pkt_id].in_use = 0;
     c->session->has_inflight = false;
-    memorypool_free(server.mqttpool, c->session->in_i_acks[pkt_id].packet);
+    inflight_msg_clear(&c->session->in_i_acks[pkt_id]);
     log_debug("Sending PUBCOMP to %s (m%u)", c->client_id, pkt_id);
     return REPLY;
 }
@@ -600,8 +610,8 @@ static int pubcomp_handler(struct io_event *e) {
     log_debug("Received PUBCOMP from %s (m%u)", c->client_id, pkt_id);
     c->session->i_acks[pkt_id].in_use = 0;
     c->session->i_msgs[pkt_id].in_use = 0;
-    memorypool_free(server.mqttpool, c->session->i_msgs[pkt_id].packet);
-    memorypool_free(server.mqttpool, c->session->i_acks[pkt_id].packet);
+    inflight_msg_clear(&c->session->i_msgs[pkt_id]);
+    inflight_msg_clear(&c->session->i_acks[pkt_id]);
     c->session->has_inflight = false;
     return NOREPLY;
 }

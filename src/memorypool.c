@@ -25,15 +25,18 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <string.h>
 #include "util.h"
 #include "memorypool.h"
+
+static void memorypool_resize(struct memorypool *);
 
 struct memorypool *memorypool_new(size_t blocks_nr, size_t blocksize) {
     struct memorypool *pool = xmalloc(sizeof(*pool));
     if (!pool)
         return NULL;
     blocksize = blocksize >= sizeof(uintptr_t) ? blocksize : sizeof(uintptr_t);
-    pool->memory = xmalloc(blocksize * blocks_nr);
+    pool->memory = xcalloc(blocks_nr, blocksize);
     pool->free = pool->memory;
     pool->blocks_nr = blocks_nr;
     pool->blocksize = blocksize;
@@ -71,6 +74,7 @@ struct memorypool *memorypool_new(size_t blocks_nr, size_t blocksize) {
         *ptr = (intptr_t)((char *) pool->free + blocksize * i);
         ptr = (intptr_t *)((char *) pool->free + blocksize * i);
     }
+    pool->block_used = 0;
     return pool;
 }
 
@@ -86,7 +90,11 @@ void *memorypool_alloc(struct memorypool *pool) {
      * update the next free block address on the free pointer. The address is
      * already stored in the "header" of the block.
      */
+    if ((intptr_t *)(*((intptr_t *) pool->free)) == NULL)
+        memorypool_resize(pool);
     pool->free = (intptr_t *)(*((intptr_t *) pool->free));
+    pool->block_used++;
+    printf("Alloc %d\n", pool->block_used);
     return ptr;
 }
 
@@ -96,6 +104,30 @@ void memorypool_free(struct memorypool *pool, void *ptr) {
      * location and udpate the current free location by pointing it to the
      * free'd pointer
      */
+    /* if ((intptr_t *)(*((intptr_t *) pool->free)) == NULL) */
+    if (((intptr_t *) pool->free) == NULL)
+        memorypool_resize(pool);
     *((intptr_t *) ptr) = *((intptr_t *) pool->free);
     pool->free = ptr;
+    pool->block_used--;
+    printf("Free %d\n", pool->block_used);
 }
+
+/* static void memorypool_resize(struct memorypool *pool) { */
+/*     size_t newsize = (pool->blocks_nr * pool->blocksize) * 2; */
+/*     size_t newblocks_nr = pool->blocks_nr * 2; */
+/*     pool->memory = xrealloc(pool->memory, newsize); */
+/*     #<{(| memset((char *) pool->memory + (pool->blocks_nr * pool->blocksize), 0x00, |)}># */
+/*     #<{(|        pool->blocks_nr * pool->blocksize); |)}># */
+/*     #<{(| */
+/*      * Apply the same logic of the init, but starting from the updated offset, */
+/*      * the ald size of the pool */
+/*      |)}># */
+/*     intptr_t *ptr = (intptr_t *) pool->free; */
+/*     for (size_t i = 1; i < pool->blocks_nr; ++i) { */
+/*         printf("Resizin\n"); */
+/*         *ptr = (intptr_t)((char *) ptr + pool->blocksize); */
+/*         ptr = (intptr_t *)((char *) ptr + pool->blocksize); */
+/*     } */
+/*     pool->blocks_nr = newblocks_nr; */
+/* } */
