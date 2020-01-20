@@ -29,6 +29,7 @@
 #define UTIL_H
 
 #include <stdio.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <strings.h>
@@ -71,5 +72,8 @@ long get_fh_soft_limit(void);
 #define log_info(...) log(INFORMATION, __VA_ARGS__)
 
 #define STREQ(s1, s2, len) strncasecmp(s1, s2, len) == 0 ? true : false
+
+#define container_of(ptr, type, field) \
+    ((type *)((char *)(ptr) - offsetof(type, field)))
 
 #endif

@@ -44,8 +44,7 @@
 #include "server.h"
 #include "handlers.h"
 #include "hashtable.h"
-#include "memorypool.h"
-#include "objpool.h"
+#include "ref.h"
 #include "ev.h"
 
 /* Seconds in a Sol, easter egg */
@@ -299,7 +298,7 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
     struct mqtt_packet *p = NULL;
     for (int i = 0; i < server.maxfd; ++i) {
         struct client *c = &server.clients[i];
-        if (c->online == false || c->session->has_inflight == false)
+        if (c->online == false || !c->session || c->session->has_inflight == false)
             continue;
         for (int i = 1; i < MAX_INFLIGHT_MSGS; ++i) {
             // TODO remove 20 hardcoded value
@@ -308,7 +307,7 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
                 && (now - c->session->i_msgs[i].sent_timestamp) > 20) {
                 log_debug("Re-sending %s",
                           c->session->i_msgs[i].client->client_id);
-                p = c->session->i_msgs[i].refobj->data;
+                p = c->session->i_msgs[i].packet;
                 // Set DUP flag to 1
                 mqtt_set_dup(p);
                 // Serialize the packet and send it out again
@@ -325,7 +324,7 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
             // ACKs
             if (c->session->i_acks[i].in_use
                 && (now - c->session->i_acks[i].sent_timestamp) > 20) {
-                p = c->session->i_acks[i].refobj->data;
+                p = c->session->i_acks[i].packet;
                 // Set DUP flag to 1
                 mqtt_set_dup(p);
                 // Serialize the packet and send it out again
@@ -359,10 +358,8 @@ static int client_destructor(struct client *client) {
     if (client->has_lwt)
         mqtt_packet_destroy(&client->session->lwt_msg, PUBLISH);
 
-    if (client->clean_session == true) {
+    if (client->clean_session == true)
         hashtable_del(server.sessions, client->client_id);
-        memorypool_free(server.sessionpool, client->session);
-    }
 
     client->online = false;
     client->has_lwt = false;
@@ -791,13 +788,7 @@ static void eventloop_start(void *args) {
 static int session_destructor(struct hashtable_entry *entry) {
     if (!entry)
         return -HASHTABLE_ERR;
-    struct client_session *session = entry->val;
-    list_destroy(session->subscriptions, 0);
-    list_destroy(session->outgoing_msgs, 0);
-
-    xfree(session->i_acks);
-    xfree(session->i_msgs);
-    xfree(session->in_i_acks);
+    session_decref(entry->val);
     return HASHTABLE_OK;
 }
 
@@ -814,9 +805,6 @@ int start_server(const char *addr, const char *port) {
     server.clients = xcalloc(BASE_CLIENTS_NUM, sizeof(struct client));
     server.authentications = hashtable_new(auth_destructor);
     server.sessions = hashtable_new(session_destructor);
-    server.refpool = memorypool_new(1024 * 512, sizeof(struct refobj));
-    server.mqttpool = memorypool_new(1024 * 512, sizeof(struct mqtt_packet));
-    server.sessionpool = memorypool_new(1024, sizeof(struct client_session));
 
     if (conf->allow_anonymous == false)
         config_read_passwd_file(conf->password_file, server.authentications);
@@ -845,9 +833,6 @@ int start_server(const char *addr, const char *port) {
     close(sfd);
     hashtable_destroy(server.authentications);
     hashtable_destroy(server.sessions);
-    memorypool_destroy(server.refpool);
-    memorypool_destroy(server.mqttpool);
-    memorypool_destroy(server.sessionpool);
     // free client resources
     for (int i = 0; i < server.maxfd; ++i)
         client_destructor(&server.clients[i]);
@@ -928,6 +913,25 @@ static void topic_init(struct topic *t, const char *name) {
     t->retained_msg = NULL;
 }
 
+static void session_free(const struct ref *refcount) {
+    struct client_session *session =
+        container_of(refcount, struct client_session, refcount);
+    list_destroy(session->subscriptions, 0);
+    list_destroy(session->outgoing_msgs, 0);
+    for (int i = 0; i < MAX_INFLIGHT_MSGS; ++i) {
+        if (session->i_acks[i].in_use)
+            mqtt_packet_decref(session->i_acks[i].packet);
+        if (session->in_i_acks[i].in_use)
+            mqtt_packet_decref(session->in_i_acks[i].packet);
+        if (session->i_msgs[i].in_use)
+            mqtt_packet_decref(session->i_msgs[i].packet);
+    }
+    xfree(session->i_acks);
+    xfree(session->i_msgs);
+    xfree(session->in_i_acks);
+    xfree(session);
+}
+
 void session_init(struct client_session *session) {
     session->has_inflight = false;
     session->next_free_mid = 1;
@@ -936,6 +940,7 @@ void session_init(struct client_session *session) {
     session->i_acks = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
     session->i_msgs = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
     session->in_i_acks = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
+    session->refcount = (struct ref) { session_free, 0 };
 }
 
 void topic_add_subscriber(struct topic *t, struct client *c, unsigned qos) {
@@ -978,36 +983,37 @@ struct topic *topic_get_or_create(struct server *server, const char *name) {
     return t;
 }
 
-struct inflight_msg *inflight_msg_new(struct client *c,
-                                      struct refobj *ro,
-                                      /* struct mqtt_packet *p, */
-                                      size_t size) {
-    struct inflight_msg *imsg = xmalloc(sizeof(*imsg));
-    inflight_msg_init(imsg, c, ro, size);
-    return imsg;
-}
-
 void inflight_msg_init(struct inflight_msg *imsg,
                        struct client *c,
-                       struct refobj *ro,
-                       /* struct mqtt_packet *p, */
+                       struct mqtt_packet *p,
                        size_t size) {
     imsg->client = c;
     imsg->sent_timestamp = time(NULL);
-    /* imsg->packet = p; */
-    imsg->refobj = ro;
+    imsg->packet = p;
     imsg->size = size;
     imsg->in_use = 1;
 }
 
 void inflight_msg_clear(struct inflight_msg *imsg) {
-    int refcount = objpool_delref(server.refpool, imsg->refobj);
-    if (refcount <= 0)
-        memorypool_free(server.mqttpool, imsg->refobj->data);
+    mqtt_packet_decref(imsg->packet);
 }
 
 unsigned next_free_mid(struct client *client) {
     if (client->session->next_free_mid == MAX_INFLIGHT_MSGS)
         client->session->next_free_mid = 1;
     return client->session->next_free_mid++;
+}
+
+struct client_session *client_session_alloc(void) {
+    struct client_session *session = xmalloc(sizeof(*session));
+    session_init(session);
+    return session;
+}
+
+void session_incref(struct client_session *session) {
+    ref_inc(&session->refcount);
+}
+
+void session_decref(struct client_session *session) {
+    ref_dec(&session->refcount);
 }

@@ -29,6 +29,7 @@
 #define MQTT_H
 
 #include <stdio.h>
+#include "ref.h"
 #include "pack.h"
 
 // Packing/unpacking error codes
@@ -95,7 +96,7 @@ struct mqtt_connect {
     union {
         unsigned char byte;
         struct {
-            int reserved : 1;
+            unsigned reserved : 1;
             unsigned clean_session : 1;
             unsigned will : 1;
             unsigned will_qos : 2;
@@ -129,9 +130,9 @@ struct mqtt_subscribe {
     unsigned short pkt_id;
     unsigned short tuples_len;
     struct {
+        unsigned qos;
         unsigned short topic_len;
         unsigned char *topic;
-        unsigned qos;
     } *tuples;
 };
 
@@ -185,6 +186,7 @@ struct mqtt_packet {
         struct mqtt_subscribe subscribe;
         struct mqtt_unsubscribe unsubscribe;
     };
+    struct ref refcount;
 };
 
 /*
@@ -253,5 +255,15 @@ int mqtt_pack_mono(unsigned char *, unsigned char, unsigned short);
  * to get the len reserved for storing the remaining length of the full packet
  */
 size_t mqtt_size(const struct mqtt_packet *, size_t *);
+
+/*
+ * Allocate struct mqtt_packet on the heap. This should be used in place of
+ * malloc/calloc in order to leverage the refcounter
+ */
+struct mqtt_packet *mqtt_packet_alloc(unsigned char);
+
+void mqtt_packet_incref(struct mqtt_packet *);
+
+void mqtt_packet_decref(struct mqtt_packet *);
 
 #endif

@@ -27,6 +27,7 @@
 
 #include <string.h>
 #include <arpa/inet.h>
+#include "ref.h"
 #include "util.h"
 #include "pack.h"
 #include "mqtt.h"
@@ -585,4 +586,24 @@ size_t mqtt_size(const struct mqtt_packet *pkt, size_t *len) {
     if (len)
         *len = size - MQTT_HEADER_LEN - remaninglen_offset;
     return size;
+}
+
+static void mqtt_packet_free(const struct ref *refcount) {
+    struct mqtt_packet *pkt = container_of(refcount, struct mqtt_packet, refcount);
+    xfree(pkt);
+}
+
+struct mqtt_packet *mqtt_packet_alloc(unsigned char byte) {
+    struct mqtt_packet *packet = xmalloc(sizeof(*packet));
+    packet->header = (union mqtt_header) { .byte = byte };
+    packet->refcount = (struct ref) { mqtt_packet_free, 0 };
+    return packet;
+}
+
+void mqtt_packet_incref(struct mqtt_packet *packet) {
+    ref_inc(&packet->refcount);
+}
+
+void mqtt_packet_decref(struct mqtt_packet *packet) {
+    ref_dec(&packet->refcount);
 }

@@ -123,9 +123,6 @@ extern struct sol_info info;
 struct server {
     int maxfd;
     struct client *clients;
-    struct memorypool *refpool;
-    struct memorypool *mqttpool;
-    struct memorypool *sessionpool;
     Trie topics;
     HashTable *sessions;
     HashTable *authentications;
@@ -145,8 +142,7 @@ struct inflight_msg {
     int in_use;
     time_t sent_timestamp;
     size_t size;
-    struct refobj *refobj;
-    // struct mqtt_packet *packet;
+    struct mqtt_packet *packet;
 };
 
 struct topic {
@@ -200,10 +196,11 @@ struct client_session {
     struct inflight_msg *i_acks;
     struct inflight_msg *i_msgs;
     struct inflight_msg *in_i_acks;
+    struct ref refcount;
 };
 
 void inflight_msg_init(struct inflight_msg *, struct client *,
-                       struct refobj *, size_t);
+                       struct mqtt_packet *, size_t);
 
 void inflight_msg_clear(struct inflight_msg *);
 
@@ -232,5 +229,11 @@ int start_server(const char *, const char *);
 void enqueue_event_write(struct ev_ctx *, struct client *);
 
 void daemonize(void);
+
+struct client_session *client_session_alloc(void);
+
+void session_incref(struct client_session *);
+
+void session_decref(struct client_session *);
 
 #endif

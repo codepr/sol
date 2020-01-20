@@ -34,8 +34,6 @@
 #include "server.h"
 #include "handlers.h"
 #include "hashtable.h"
-#include "objpool.h"
-#include "memorypool.h"
 
 /* Prototype for a command handler */
 typedef int handler(struct io_event *);
@@ -71,22 +69,19 @@ static handler *handlers[15] = {
     disconnect_handler
 };
 
-void publish_message(struct mqtt_packet *pkt,
-                     const struct topic *t, struct ev_ctx *ctx) {
+int publish_message(struct mqtt_packet *pkt,
+                    const struct topic *t, struct ev_ctx *ctx) {
 
     size_t len = 0;
     unsigned short mid = 0;
     unsigned qos = pkt->header.bits.qos;
+    int count = hashtable_size(t->subscribers);
 
-    if (hashtable_size(t->subscribers) == 0) {
-        memorypool_free(server.mqttpool, pkt);
-        return;
-    }
+    if (count == 0)
+        goto exit;
 
     struct iterator *it = iter_new(t->subscribers, hashtable_iter_next);
     unsigned char type;
-    struct refobj *ro = objpool_addref(server.refpool, NULL);
-    ro->data = pkt;
 
     // first run check
     FOREACH (it) {
@@ -115,10 +110,11 @@ void publish_message(struct mqtt_packet *pkt,
          * of the client, they will be sent out only in case of a
          * clean_session == false connection
          */
+        // TODO check for side-effects
         if (sc->online == false) {
             if (sc->clean_session == false) {
-                objpool_addref(server.refpool, ro);
-                list_push(sc->session->outgoing_msgs, ro);
+                mqtt_packet_incref(pkt);
+                list_push(sc->session->outgoing_msgs, pkt);
             }
             continue;
         } else {
@@ -131,17 +127,14 @@ void publish_message(struct mqtt_packet *pkt,
                 pkt->publish.pkt_id = mid;
 
                 if (!sc->session->i_msgs[pkt->publish.pkt_id].in_use) {
-                    objpool_addref(server.refpool, ro);
-                    inflight_msg_init(&sc->session->i_msgs[mid], sc, ro, len);
+                    mqtt_packet_incref(pkt);
+                    inflight_msg_init(&sc->session->i_msgs[mid], sc, pkt, len);
                 }
                 if (!sc->session->i_acks[mid].in_use) {
                     type = sub->qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
-                    struct mqtt_packet *ack = memorypool_alloc(server.mqttpool);
-                    ack->header = (union mqtt_header) { .byte = type };
+                    struct mqtt_packet *ack = mqtt_packet_alloc(type);
                     mqtt_ack(ack, mid);
-                    struct refobj *ackref = objpool_addref(server.refpool, NULL);
-                    ackref->data = ack;
-                    inflight_msg_init(&sc->session->i_acks[mid], sc, ackref, len);
+                    inflight_msg_init(&sc->session->i_acks[mid], sc, ack, len);
                 }
                 sc->session->has_inflight = true;
             }
@@ -165,6 +158,10 @@ void publish_message(struct mqtt_packet *pkt,
                   pkt->publish.payloadlen);
     }
     iter_destroy(it);
+
+exit:
+
+    return count;
 }
 
 /*
@@ -277,8 +274,7 @@ static int connect_handler(struct io_event *e) {
      * anonymous one, we create a session here
      */
     if (c->bits.clean_session == true || !cc->session) {
-        cc->session = memorypool_alloc(server.sessionpool);
-        session_init(cc->session);
+        cc->session = client_session_alloc();
         hashtable_put(server.sessions, cc->client_id, cc->session);
     }
 
@@ -519,8 +515,8 @@ static int publish_handler(struct io_event *e) {
      * create a new one with the name selected
      */
     struct topic *t = topic_get_or_create(&server, topic);
-    struct mqtt_packet *pkt = memorypool_alloc(server.mqttpool);
-    pkt->header = e->data.header;
+    struct mqtt_packet *pkt = mqtt_packet_alloc(e->data.header.byte);
+    // TODO must perform a deep copy here
     pkt->publish = e->data.publish;
 
     size_t publen = mqtt_size(&e->data, NULL);
@@ -529,7 +525,8 @@ static int publish_handler(struct io_event *e) {
         mqtt_pack(&e->data, t->retained_msg);
     }
 
-    publish_message(pkt, t, e->ctx);
+    if (publish_message(pkt, t, e->ctx) == 0)
+        xfree(pkt);
 
     // We have to answer to the publisher
     if (qos == AT_MOST_ONCE)
@@ -540,11 +537,9 @@ static int publish_handler(struct io_event *e) {
     // TODO check for unwanted values
     if (qos == EXACTLY_ONCE) {
         ptype = PUBREC;
-        struct mqtt_packet *ack = memorypool_alloc(server.mqttpool);
+        struct mqtt_packet *ack = mqtt_packet_alloc(ptype);
         mqtt_ack(ack, orig_mid);
-        struct refobj *ro = objpool_addref(server.refpool, NULL);
-        ro->data = ack;
-        inflight_msg_init(&c->session->in_i_acks[orig_mid], c, ro, publen);
+        inflight_msg_init(&c->session->in_i_acks[orig_mid], c, ack, publen);
         c->session->has_inflight = true;
     }
 
