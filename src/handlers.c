@@ -117,27 +117,21 @@ int publish_message(struct mqtt_packet *pkt,
                 list_push(sc->session->outgoing_msgs, pkt);
             }
             continue;
-        } else {
-            /*
-             * if QoS > 0 we set packet identifier and track the inflight
-             * message, proceed with the publish towards online subscriber.
-             */
-            if (pkt->header.bits.qos > AT_MOST_ONCE) {
-                mid = next_free_mid(sc);
-                pkt->publish.pkt_id = mid;
-
-                if (!sc->session->i_msgs[pkt->publish.pkt_id].in_use) {
-                    mqtt_packet_incref(pkt);
-                    inflight_msg_init(&sc->session->i_msgs[mid], sc, pkt, len);
-                }
-                if (!sc->session->i_acks[mid].in_use) {
-                    type = sub->qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
-                    struct mqtt_packet *ack = mqtt_packet_alloc(type);
-                    mqtt_ack(ack, mid);
-                    inflight_msg_init(&sc->session->i_acks[mid], sc, ack, len);
-                }
-                sc->session->has_inflight = true;
-            }
+        }
+        /*
+         * if QoS > 0 we set packet identifier and track the inflight
+         * message, proceed with the publish towards online subscriber.
+         */
+        if (pkt->header.bits.qos > AT_MOST_ONCE) {
+            mid = next_free_mid(sc);
+            pkt->publish.pkt_id = mid;
+            mqtt_packet_incref(pkt);
+            inflight_msg_init(&sc->session->i_msgs[mid], sc, pkt, len);
+            type = sub->qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
+            struct mqtt_packet *ack = mqtt_packet_alloc(type);
+            mqtt_ack(ack, mid);
+            inflight_msg_init(&sc->session->i_acks[mid], sc, ack, len);
+            sc->session->has_inflight = true;
         }
 
         mqtt_pack(pkt, sc->wbuf + sc->towrite);
@@ -580,8 +574,7 @@ static int pubrec_handler(struct io_event *e) {
     mqtt_pack_mono(c->wbuf + c->towrite, PUBREL, pkt_id);
     c->towrite += MQTT_ACK_LEN;
     // Update inflight acks table
-    if (c->session->i_acks[pkt_id].in_use)
-        c->session->i_acks[pkt_id].sent_timestamp = time(NULL);
+    c->session->i_acks[pkt_id].sent_timestamp = time(NULL);
     log_debug("Sending PUBREL to %s (m%u)", c->client_id, pkt_id);
     return REPLY;
 }

@@ -468,6 +468,34 @@ static ssize_t recv_packet(struct client *c) {
         if (errno == EAGAIN && c->read < 4)
             return -ERREAGAIN;
 
+        /*
+         * Read remaning length bytes which starts at byte 2 and can be long to
+         * 4 bytes based on the size stored, so byte 2-5 is dedicated to the
+         * packet length.
+         */
+        pktlen = mqtt_decode_length(c->rbuf + 1, &pos);
+
+        /*
+         * Set return code to -ERRMAXREQSIZE in case the total packet len
+         * exceeds the configuration limit `max_request_size`
+         */
+        if (pktlen > conf->max_request_size)
+            return -ERRMAXREQSIZE;
+
+        /*
+         * Update the toread field for the client with the entire length of
+         * the current packet, which is comprehensive of packet length,
+         * bytes used to encode it and 1 byte for the header
+         * We've already tracked the bytes we read so far, we just need to
+         * read toread-read bytes.
+         */
+        c->rpos = pos + 1;
+        c->toread = pktlen + pos + 1;  // pos = bytes used to store length
+
+        /* Looks like we got an ACK packet, we're done reading */
+        if (pktlen <= 4)
+            goto exit;
+
         c->status = WAITING_DATA;
     }
 
@@ -475,47 +503,14 @@ static ssize_t recv_packet(struct client *c) {
      * Last status, we have access to the length of the packet and we know for
      * sure that it's not a PINGREQ/PINGRESP/DISCONNECT packet.
      */
-    if (c->status == WAITING_DATA) {
+    nread = recv_data(&c->conn, c->rbuf + c->read, c->toread - c->read);
 
-        if (c->toread == 0) {
-            /*
-             * Read remaning length bytes which starts at byte 2 and can be long to
-             * 4 bytes based on the size stored, so byte 2-5 is dedicated to the
-             * packet length.
-             */
-            pktlen = mqtt_decode_length(c->rbuf + 1, &pos);
+    if (errno != EAGAIN && errno != EWOULDBLOCK && nread <= 0)
+        return -ERRCLIENTDC;
 
-            /*
-             * Set return code to -ERRMAXREQSIZE in case the total packet len
-             * exceeds the configuration limit `max_request_size`
-             */
-            if (pktlen > conf->max_request_size)
-                return -ERRMAXREQSIZE;
-
-            /*
-             * Update the toread field for the client with the entire length of
-             * the current packet, which is comprehensive of packet length,
-             * bytes used to encode it and 1 byte for the header
-             * We've already tracked the bytes we read so far, we just need to
-             * read toread-read bytes.
-             */
-            c->rpos = pos + 1;
-            c->toread = pktlen + pos + 1;  // pos = bytes used to store length
-
-            /* Looks like we got an ACK packet, we're done reading */
-            if (pktlen <= 4)
-                goto exit;
-        }
-
-        nread = recv_data(&c->conn, c->rbuf + c->read, c->toread - c->read);
-
-        if (errno != EAGAIN && errno != EWOULDBLOCK && nread <= 0)
-            return -ERRCLIENTDC;
-
-        c->read += nread;
-        if (errno == EAGAIN && c->read < c->toread)
-            return -ERREAGAIN;
-    }
+    c->read += nread;
+    if (errno == EAGAIN && c->read < c->toread)
+        return -ERREAGAIN;
 
 exit:
 
@@ -943,6 +938,20 @@ void session_init(struct client_session *session) {
     session->refcount = (struct ref) { session_free, 0 };
 }
 
+struct client_session *client_session_alloc(void) {
+    struct client_session *session = xmalloc(sizeof(*session));
+    session_init(session);
+    return session;
+}
+
+void session_incref(struct client_session *session) {
+    ref_inc(&session->refcount);
+}
+
+void session_decref(struct client_session *session) {
+    ref_dec(&session->refcount);
+}
+
 void topic_add_subscriber(struct topic *t, struct client *c, unsigned qos) {
     struct subscriber *sub = xmalloc(sizeof(*sub));
     sub->client = c;
@@ -1002,18 +1011,4 @@ unsigned next_free_mid(struct client *client) {
     if (client->session->next_free_mid == MAX_INFLIGHT_MSGS)
         client->session->next_free_mid = 1;
     return client->session->next_free_mid++;
-}
-
-struct client_session *client_session_alloc(void) {
-    struct client_session *session = xmalloc(sizeof(*session));
-    session_init(session);
-    return session;
-}
-
-void session_incref(struct client_session *session) {
-    ref_inc(&session->refcount);
-}
-
-void session_decref(struct client_session *session) {
-    ref_dec(&session->refcount);
 }

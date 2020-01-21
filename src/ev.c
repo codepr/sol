@@ -153,7 +153,8 @@ static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
  * Get the event on the idx position inside the events map. The event can also
  * be an unset one (EV_NONE)
  */
-static struct ev *ev_api_fetch_event(const struct ev_ctx *ctx, int idx, int mask) {
+static inline struct ev *ev_api_fetch_event(const struct ev_ctx *ctx,
+                                            int idx, int mask) {
     int fd = ((struct epoll_api *) ctx->api)->events[idx].data.fd;
     return ctx->events_monitored + fd;
 }
@@ -269,7 +270,8 @@ static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
  * Get the event on the idx position inside the events map. The event can also
  * be an unset one (EV_NONE)
  */
-static struct ev *ev_api_fetch_event(const struct ev_ctx *ctx, int idx, int mask) {
+static inline struct ev *ev_api_fetch_event(const struct ev_ctx *ctx,
+                                            int idx, int mask) {
     return ctx->events_monitored + ((struct poll_api *) ctx->api)->fds[idx].fd;
 }
 
@@ -382,7 +384,8 @@ static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
  * Get the event on the idx position inside the events map. The event can also
  * be an unset one (EV_NONE)
  */
-static struct ev *ev_api_fetch_event(const struct ev_ctx *ctx, int idx, int mask) {
+static inline struct ev *ev_api_fetch_event(const struct ev_ctx *ctx,
+                                            int idx, int mask) {
     return ctx->events_monitored + idx;
 }
 
@@ -460,7 +463,7 @@ static void ev_add_monitored(struct ev_ctx *ctx, int fd, int mask,
     }
 }
 
-static int ev_get_event_type(struct ev_ctx *ctx, int idx) {
+static inline int ev_get_event_type(struct ev_ctx *ctx, int idx) {
     return ev_api_get_event_type(ctx, idx);
 }
 

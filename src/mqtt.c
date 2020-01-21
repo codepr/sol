@@ -380,10 +380,7 @@ static size_t pack_mqtt_header(const union mqtt_header *hdr,
 
 static size_t pack_mqtt_ack(const struct mqtt_packet *pkt, unsigned char *buf) {
 
-    pack(buf++, "B", pkt->header.byte);
-    buf += mqtt_encode_length(buf, MQTT_HEADER_LEN);
-
-    pack(buf, "H", pkt->ack.pkt_id);
+    pack(buf, "BBH", pkt->header.byte, MQTT_HEADER_LEN, pkt->ack.pkt_id);
 
     return MQTT_ACK_LEN;
 }
