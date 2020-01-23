@@ -75,7 +75,7 @@ int publish_message(struct mqtt_packet *pkt,
     bool all_at_most_once = true;
     size_t len = 0;
     unsigned short mid = 0;
-    unsigned qos = pkt->header.bits.qos;
+    unsigned char qos = pkt->header.bits.qos;
     int count = hashtable_size(t->subscribers);
 
     if (count == 0)
@@ -88,7 +88,19 @@ int publish_message(struct mqtt_packet *pkt,
     FOREACH (it) {
         struct subscriber *sub = it->ptr;
         struct client *sc = sub->client;
-
+        /*
+         * If offline, we must enqueue messages in the inflight queue
+         * of the client, they will be sent out only in case of a
+         * clean_session == false connection
+         */
+        // TODO check for side-effects
+        if (sc->online == false) {
+            if (sc->clean_session == false) {
+                INCREF(pkt, struct mqtt_packet);
+                list_push(sc->session->outgoing_msgs, pkt);
+            }
+            continue;
+        }
         /*
          * Update QoS according to subscriber's one, following MQTT
          * rules: The min between the original QoS and the subscriber
@@ -107,19 +119,6 @@ int publish_message(struct mqtt_packet *pkt,
         pkt->publish.pkt_id = 0;
 
         /*
-         * If offline, we must enqueue messages in the inflight queue
-         * of the client, they will be sent out only in case of a
-         * clean_session == false connection
-         */
-        // TODO check for side-effects
-        if (sc->online == false) {
-            if (sc->clean_session == false) {
-                INCREF(pkt, struct mqtt_packet);
-                list_push(sc->session->outgoing_msgs, pkt);
-            }
-            continue;
-        }
-        /*
          * if QoS > 0 we set packet identifier and track the inflight
          * message, proceed with the publish towards online subscriber.
          */
@@ -130,6 +129,7 @@ int publish_message(struct mqtt_packet *pkt,
             inflight_msg_init(&sc->session->i_msgs[mid], sc, pkt, len);
             type = sub->qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
             struct mqtt_packet *ack = mqtt_packet_alloc(type);
+            INCREF(ack, struct mqtt_packet);
             mqtt_ack(ack, mid);
             inflight_msg_init(&sc->session->i_acks[mid], sc, ack, len);
             sc->session->has_inflight = true;
@@ -155,8 +155,9 @@ int publish_message(struct mqtt_packet *pkt,
     }
     iter_destroy(it);
 
+    // add return code
     if (all_at_most_once == true)
-        xfree(pkt);
+        count = 0;
 
 exit:
 
@@ -274,6 +275,7 @@ static int connect_handler(struct io_event *e) {
      */
     if (c->bits.clean_session == true || !cc->session) {
         cc->session = client_session_alloc();
+        INCREF(cc->session, struct client_session);
         hashtable_put(server.sessions, cc->client_id, cc->session);
     }
 
@@ -531,6 +533,7 @@ static int publish_handler(struct io_event *e) {
     if (qos == EXACTLY_ONCE) {
         ptype = PUBREC;
         struct mqtt_packet *ack = mqtt_packet_alloc(ptype);
+        INCREF(ack, struct mqtt_packet);
         mqtt_ack(ack, orig_mid);
         inflight_msg_init(&c->session->in_i_acks[orig_mid], c, ack, publen);
         c->session->has_inflight = true;

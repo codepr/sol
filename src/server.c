@@ -820,7 +820,6 @@ int start_server(const char *addr, const char *port) {
 
     close(sfd);
     hashtable_destroy(server.authentications);
-    hashtable_destroy(server.sessions);
     // free client resources
     for (int i = 0; i < server.maxfd; ++i)
         client_destructor(&server.clients[i]);

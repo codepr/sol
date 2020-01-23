@@ -45,7 +45,7 @@ static inline void ref_inc(const struct ref *ref) {
 }
 
 static inline void ref_dec(const struct ref *ref) {
-    if (--((struct ref *) ref)->count <= 0)
+    if (--((struct ref *) ref)->count == 0)
         ref->free(ref);
 }
 
