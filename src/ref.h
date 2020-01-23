@@ -1,5 +1,4 @@
-/*
- * BSD 2-Clause License
+/* BSD 2-Clause License
  *
  * Copyright (c) 2019, Andrea Giacomo Baldan All rights reserved.
  *
@@ -26,33 +25,30 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef ITERATOR_H
-#define ITERATOR_H
-
 /*
- * Generic iterator strucuture, have the following fields
- * - unsigned long index: The index of the last visited item in the iterable
- * - void *ptr: The pointer to the current visited item
- * - void *iterable: The iterable data structure to iterate on
- * - void (*next)(struct iterator *): Function pointer used to update the ptr
- *   value, it has to be defined for each different data structure
+ * Extremely simple reference counting library, the usage expect the struct ref
+ * to be embedded into the target struct to be reference counted, accessed by
+ * a custom defined free function using the macro container_of defined in util.
+ *
+ * See https://nullprogram.com/blog/2015/02/17/ for more info
  */
-struct iterator {
-    unsigned long index;
-    void *ptr;
-    void *iterable;
-    void (*next)(struct iterator *);
+
+#pragma once
+
+struct ref {
+    void (*free)(const struct ref *);
+    int count;
 };
 
-struct iterator *iter_new(void *, void (*next)(struct iterator *));
-void iter_init(struct iterator *, void *, void (*next)(struct iterator *));
-struct iterator *iter_next(struct iterator *);
-void iter_destroy(struct iterator *);
+static inline void ref_inc(const struct ref *ref) {
+    ((struct ref *) ref)->count++;
+}
 
-#define FOREACH(it)  \
-    for (; it && it->ptr; it = iter_next(it))
+static inline void ref_dec(const struct ref *ref) {
+    if (--((struct ref *) ref)->count <= 0)
+        ref->free(ref);
+}
 
-#define MAP(it, fn, arg) \
-    for (; it && it->ptr; it = iter_next(it)) { fn(it->ptr, arg); }
+#define INCREF(ptr, type) do { ref_inc(&((type *) ptr)->refcount); } while (0);
 
-#endif
+#define DECREF(ptr, type) do { ref_dec(&((type *) ptr)->refcount); } while (0);

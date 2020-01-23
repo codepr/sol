@@ -138,11 +138,12 @@ extern struct server server;
  * and the packet himself
  */
 struct inflight_msg {
-    struct client *client;
     int in_use;
-    time_t sent_timestamp;
+    time_t seen;
     size_t size;
+    struct client *client;
     struct mqtt_packet *packet;
+    unsigned char qos;
 };
 
 struct topic {
@@ -152,9 +153,9 @@ struct topic {
 };
 
 struct subscriber {
-    unsigned qos;
     struct client *client;
-    unsigned refs;
+    unsigned char qos;
+    struct ref refcount;
 };
 
 enum client_status {
@@ -204,7 +205,8 @@ void inflight_msg_init(struct inflight_msg *, struct client *,
 
 void inflight_msg_clear(struct inflight_msg *);
 
-void topic_add_subscriber(struct topic *, struct client *, unsigned);
+struct subscriber *topic_add_subscriber(struct topic *,
+                                        struct client *, unsigned);
 
 void topic_del_subscriber(struct topic *, struct client *);
 
@@ -231,9 +233,5 @@ void enqueue_event_write(struct ev_ctx *, struct client *);
 void daemonize(void);
 
 struct client_session *client_session_alloc(void);
-
-void session_incref(struct client_session *);
-
-void session_decref(struct client_session *);
 
 #endif

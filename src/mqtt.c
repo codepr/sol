@@ -596,11 +596,3 @@ struct mqtt_packet *mqtt_packet_alloc(unsigned char byte) {
     packet->refcount = (struct ref) { mqtt_packet_free, 0 };
     return packet;
 }
-
-void mqtt_packet_incref(struct mqtt_packet *packet) {
-    ref_inc(&packet->refcount);
-}
-
-void mqtt_packet_decref(struct mqtt_packet *packet) {
-    ref_dec(&packet->refcount);
-}

@@ -113,7 +113,7 @@ int publish_message(struct mqtt_packet *pkt,
         // TODO check for side-effects
         if (sc->online == false) {
             if (sc->clean_session == false) {
-                mqtt_packet_incref(pkt);
+                INCREF(pkt, struct mqtt_packet);
                 list_push(sc->session->outgoing_msgs, pkt);
             }
             continue;
@@ -125,7 +125,7 @@ int publish_message(struct mqtt_packet *pkt,
         if (pkt->header.bits.qos > AT_MOST_ONCE) {
             mid = next_free_mid(sc);
             pkt->publish.pkt_id = mid;
-            mqtt_packet_incref(pkt);
+            INCREF(pkt, struct mqtt_packet);
             inflight_msg_init(&sc->session->i_msgs[mid], sc, pkt, len);
             type = sub->qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
             struct mqtt_packet *ack = mqtt_packet_alloc(type);
@@ -365,13 +365,11 @@ static void recursive_sub(struct trie_node *node, void *arg) {
         return;
     struct topic *t = node->data;
     struct subscriber *s = arg;
-    s->refs++;
+    INCREF(s, struct subscriber);
     log_debug("Adding subscriber %s to topic %s",
               s->client->client_id, t->name);
     hashtable_put(t->subscribers, s->client->client_id, s);
-    // If clean_session == false we have to track the subscription
-    if (s->client->clean_session == false)
-        list_push(s->client->session->subscriptions, t);
+    list_push(s->client->session->subscriptions, t);
 }
 
 static int subscribe_handler(struct io_event *e) {
@@ -410,18 +408,14 @@ static int subscribe_handler(struct io_event *e) {
         }
 
         struct topic *t = topic_get_or_create(&server, topic);
-
-        if (wildcard == true) {
-            struct subscriber *sub = xmalloc(sizeof(*sub));
-            sub->client = e->client;
-            sub->qos = s->tuples[i].qos;
-            sub->refs = 0;
-            trie_prefix_map(server.topics.root, topic, recursive_sub, sub);
-        }
-
         // Clean session true for now
-        topic_add_subscriber(t, e->client, s->tuples[i].qos);
+        struct subscriber *sub =
+            topic_add_subscriber(t, e->client, s->tuples[i].qos);
+        // we increment reference for the subscriptions session
+        INCREF(sub, struct subscriber);
         list_push(e->client->session->subscriptions, t);
+        if (wildcard == true)
+            trie_prefix_map(server.topics.root, topic, recursive_sub, sub);
 
         // Retained message? Publish it
         // TODO move to IO threadpool
@@ -574,7 +568,7 @@ static int pubrec_handler(struct io_event *e) {
     mqtt_pack_mono(c->wbuf + c->towrite, PUBREL, pkt_id);
     c->towrite += MQTT_ACK_LEN;
     // Update inflight acks table
-    c->session->i_acks[pkt_id].sent_timestamp = time(NULL);
+    c->session->i_acks[pkt_id].seen = time(NULL);
     log_debug("Sending PUBREL to %s (m%u)", c->client_id, pkt_id);
     return REPLY;
 }

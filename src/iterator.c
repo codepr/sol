@@ -35,12 +35,17 @@
  */
 struct iterator *iter_new(void *iterable, void (*next)(struct iterator *)) {
     struct iterator *i = xmalloc(sizeof(*i));
+    iter_init(i, iterable, next);
+    return i;
+}
+
+void iter_init(struct iterator *i, void *iterable,
+               void (*next)(struct iterator *)) {
     i->index = 0;
     i->iterable = iterable;
     i->ptr = NULL;
     i->next = next;
     iter_next(i);
-    return i;
 }
 
 void iter_destroy(struct iterator *i) {

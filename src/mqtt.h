@@ -262,8 +262,4 @@ size_t mqtt_size(const struct mqtt_packet *, size_t *);
  */
 struct mqtt_packet *mqtt_packet_alloc(unsigned char);
 
-void mqtt_packet_incref(struct mqtt_packet *);
-
-void mqtt_packet_decref(struct mqtt_packet *);
-
 #endif

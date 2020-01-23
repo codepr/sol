@@ -298,13 +298,13 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
     struct mqtt_packet *p = NULL;
     for (int i = 0; i < server.maxfd; ++i) {
         struct client *c = &server.clients[i];
-        if (c->online == false || !c->session || c->session->has_inflight == false)
+        if (!c->online || !c->session || !c->session->has_inflight)
             continue;
         for (int i = 1; i < MAX_INFLIGHT_MSGS; ++i) {
             // TODO remove 20 hardcoded value
             // Messages
             if (c->session->i_msgs[i].in_use
-                && (now - c->session->i_msgs[i].sent_timestamp) > 20) {
+                && (now - c->session->i_msgs[i].seen) > 20) {
                 log_debug("Re-sending %s",
                           c->session->i_msgs[i].client->client_id);
                 p = c->session->i_msgs[i].packet;
@@ -323,7 +323,7 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
             }
             // ACKs
             if (c->session->i_acks[i].in_use
-                && (now - c->session->i_acks[i].sent_timestamp) > 20) {
+                && (now - c->session->i_acks[i].seen) > 20) {
                 p = c->session->i_acks[i].packet;
                 // Set DUP flag to 1
                 mqtt_set_dup(p);
@@ -783,7 +783,7 @@ static void eventloop_start(void *args) {
 static int session_destructor(struct hashtable_entry *entry) {
     if (!entry)
         return -HASHTABLE_ERR;
-    session_decref(entry->val);
+    DECREF(entry->val, struct client_session);
     return HASHTABLE_OK;
 }
 
@@ -885,20 +885,16 @@ static struct topic *topic_new(const char *name) {
     return t;
 }
 
-static int subscriber_destroy(struct hashtable_entry *entry) {
+static void subscriber_free(const struct ref *r) {
+    struct subscriber *sub = container_of(r, struct subscriber, refcount);
+    xfree(sub);
+}
 
+static int subscriber_destroy(struct hashtable_entry *entry) {
     if (!entry)
         return -HASHTABLE_ERR;
-
     // free value field
-    if (entry->val) {
-        struct subscriber *sub = entry->val;
-        if (sub->refs == 1)
-            xfree(entry->val);
-        else
-            sub->refs--;
-    }
-
+    if (entry->val) DECREF(entry->val, struct subscriber);
     return HASHTABLE_OK;
 }
 
@@ -915,11 +911,11 @@ static void session_free(const struct ref *refcount) {
     list_destroy(session->outgoing_msgs, 0);
     for (int i = 0; i < MAX_INFLIGHT_MSGS; ++i) {
         if (session->i_acks[i].in_use)
-            mqtt_packet_decref(session->i_acks[i].packet);
+            DECREF(session->i_acks[i].packet, struct mqtt_packet);
         if (session->in_i_acks[i].in_use)
-            mqtt_packet_decref(session->in_i_acks[i].packet);
+            DECREF(session->in_i_acks[i].packet, struct mqtt_packet);
         if (session->i_msgs[i].in_use)
-            mqtt_packet_decref(session->i_msgs[i].packet);
+            DECREF(session->i_msgs[i].packet, struct mqtt_packet);
     }
     xfree(session->i_acks);
     xfree(session->i_msgs);
@@ -944,20 +940,14 @@ struct client_session *client_session_alloc(void) {
     return session;
 }
 
-void session_incref(struct client_session *session) {
-    ref_inc(&session->refcount);
-}
-
-void session_decref(struct client_session *session) {
-    ref_dec(&session->refcount);
-}
-
-void topic_add_subscriber(struct topic *t, struct client *c, unsigned qos) {
+struct subscriber *topic_add_subscriber(struct topic *t,
+                                        struct client *c, unsigned qos) {
     struct subscriber *sub = xmalloc(sizeof(*sub));
     sub->client = c;
     sub->qos = qos;
-    sub->refs = 1;
+    sub->refcount = (struct ref) { .count = 0, .free = subscriber_free };
     hashtable_put(t->subscribers, sub->client->client_id, sub);
+    return sub;
 }
 
 void topic_del_subscriber(struct topic *t, struct client *c) {
@@ -996,15 +986,16 @@ void inflight_msg_init(struct inflight_msg *imsg,
                        struct client *c,
                        struct mqtt_packet *p,
                        size_t size) {
-    imsg->client = c;
-    imsg->sent_timestamp = time(NULL);
-    imsg->packet = p;
+    imsg->seen = time(NULL);
     imsg->size = size;
+    imsg->packet = p;
+    imsg->client = c;
     imsg->in_use = 1;
+    imsg->qos = p->header.bits.qos;
 }
 
 void inflight_msg_clear(struct inflight_msg *imsg) {
-    mqtt_packet_decref(imsg->packet);
+    DECREF(imsg->packet, struct mqtt_packet);
 }
 
 unsigned next_free_mid(struct client *client) {
