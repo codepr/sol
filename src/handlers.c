@@ -72,6 +72,7 @@ static handler *handlers[15] = {
 int publish_message(struct mqtt_packet *pkt,
                     const struct topic *t, struct ev_ctx *ctx) {
 
+    bool all_at_most_once = true;
     size_t len = 0;
     unsigned short mid = 0;
     unsigned qos = pkt->header.bits.qos;
@@ -132,6 +133,7 @@ int publish_message(struct mqtt_packet *pkt,
             mqtt_ack(ack, mid);
             inflight_msg_init(&sc->session->i_acks[mid], sc, ack, len);
             sc->session->has_inflight = true;
+            all_at_most_once = false;
         }
 
         mqtt_pack(pkt, sc->wbuf + sc->towrite);
@@ -152,6 +154,9 @@ int publish_message(struct mqtt_packet *pkt,
                   pkt->publish.payloadlen);
     }
     iter_destroy(it);
+
+    if (all_at_most_once == true)
+        xfree(pkt);
 
 exit:
 

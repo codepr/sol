@@ -294,7 +294,6 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
     (void) data;
     (void) ctx;
     time_t now = time(NULL);
-    ssize_t sent;
     struct mqtt_packet *p = NULL;
     for (int i = 0; i < server.maxfd; ++i) {
         struct client *c = &server.clients[i];
@@ -305,38 +304,32 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
             // Messages
             if (c->session->i_msgs[i].in_use
                 && (now - c->session->i_msgs[i].seen) > 20) {
-                log_debug("Re-sending %s",
-                          c->session->i_msgs[i].client->client_id);
+                log_debug("Re-sending message to %s", c->client_id);
                 p = c->session->i_msgs[i].packet;
+                p->header.bits.qos = c->session->i_msgs[i].qos;
                 // Set DUP flag to 1
                 mqtt_set_dup(p);
                 // Serialize the packet and send it out again
-                unsigned char pub[c->session->i_msgs[i].size];
-                mqtt_pack(p, pub);
-                if ((sent = send_data(&c->session->i_msgs[i].client->conn,
-                                      pub, c->session->i_msgs[i].size)) < 0)
-                    log_error("Error re-sending %s", strerror(errno));
-
+                mqtt_pack(p, c->wbuf + c->towrite);
+                c->towrite += c->session->i_msgs[i].size;
+                enqueue_event_write(ctx, c);
                 // Update information stats
                 info.messages_sent++;
-                info.bytes_sent += sent;
             }
             // ACKs
             if (c->session->i_acks[i].in_use
                 && (now - c->session->i_acks[i].seen) > 20) {
+                log_debug("Re-sending ack to %s", c->client_id);
                 p = c->session->i_acks[i].packet;
+                p->header.bits.qos = c->session->i_acks[i].qos;
                 // Set DUP flag to 1
                 mqtt_set_dup(p);
                 // Serialize the packet and send it out again
-                unsigned char pub[c->session->i_acks[i].size];
-                mqtt_pack(p, pub);
-                if ((sent = send_data(&c->session->i_acks[i].client->conn,
-                                      pub, c->session->i_acks[i].size)) < 0)
-                    log_error("Error re-sending %s", strerror(errno));
-
+                mqtt_pack(p, c->wbuf + c->towrite);
+                c->towrite += c->session->i_acks[i].size;
+                enqueue_event_write(ctx, c);
                 // Update information stats
                 info.messages_sent++;
-                info.bytes_sent += sent;
             }
         }
     }
