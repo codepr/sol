@@ -19,7 +19,8 @@ there's probably some corner cases, not deeply investigated yet.
 - Support for QoS messages 0, 1 and 2
 - Retained messages per topic
 - Periodic stats publishing
-- Support multiple topics subscriptions through wildcard (#)
+- Support multiple topics subscriptions through wildcard (#) and (+) for single
+  level wildcard e.g. foo/+/bar/#
 - Authentication through username and password
 - SSL/TLS connections, configuration accepts minimum protocols to be used
 - Logging on disk
@@ -31,7 +32,6 @@ there's probably some corner cases, not deeply investigated yet.
 
 - Session present check and handling, already started
 - Last will & Testament, already started
-- Wildcards (+) on subscriptions
 - Persistence on disk for inflight messages on disconnected clients
 - Check on max memory used
 
