@@ -741,6 +741,7 @@ static void process_message(struct ev_ctx *ctx, struct client *c) {
             break;
         default:
             c->status = WAITING_HEADER;
+            mqtt_packet_destroy(&io.data, io.data.header.bits.type);
             break;
     }
 }
@@ -785,6 +786,17 @@ void enqueue_event_write(struct ev_ctx *ctx, struct client *c) {
     ev_fire_event(ctx, c->conn.fd, EV_WRITE, write_callback, c);
 }
 
+static int wildcard_destructor(struct list_node *node) {
+    if (!node)
+        return -1;
+    struct subscription *s = node->data;
+    DECREF(s->subscriber, struct subscriber);
+    xfree((char *) s->topic);
+    xfree(s);
+    xfree(node);
+    return 0;
+}
+
 int start_server(const char *addr, const char *port) {
 
     /* Initialize global Sol instance */
@@ -793,6 +805,7 @@ int start_server(const char *addr, const char *port) {
     server.clients = xcalloc(BASE_CLIENTS_NUM, sizeof(struct client));
     server.authentications = hashtable_new(auth_destructor);
     server.sessions = hashtable_new(session_destructor);
+    server.wildcards = list_new(wildcard_destructor);
 
     if (conf->allow_anonymous == false)
         config_read_passwd_file(conf->password_file, server.authentications);
@@ -820,6 +833,7 @@ int start_server(const char *addr, const char *port) {
 
     close(sfd);
     hashtable_destroy(server.authentications);
+    list_destroy(server.wildcards, 1);
     // free client resources
     for (int i = 0; i < server.maxfd; ++i)
         client_destructor(&server.clients[i]);

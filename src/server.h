@@ -126,6 +126,7 @@ struct server {
     Trie topics;
     HashTable *sessions;
     HashTable *authentications;
+    List *wildcards;
     SSL_CTX *ssl_ctx;
 };
 
@@ -156,6 +157,11 @@ struct subscriber {
     struct client *client;
     unsigned char qos;
     struct ref refcount;
+};
+
+struct subscription {
+    const char *topic;
+    struct subscriber *subscriber;
 };
 
 enum client_status {

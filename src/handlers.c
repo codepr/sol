@@ -164,6 +164,12 @@ exit:
     return count;
 }
 
+/* Check if a topic match a wildcard subscription. for now just # works */
+static inline int match_subscription(const char *topic, const char *wildcard) {
+    size_t len = strlen(wildcard) - 1;
+    return strncmp(topic, wildcard, len);
+}
+
 /*
  * Command handlers
  */
@@ -367,6 +373,14 @@ static int disconnect_handler(struct io_event *e) {
     return -ERRCLIENTDC;
 }
 
+static inline void add_wildcard(const char *topic, struct subscriber *s) {
+    struct subscription *subscription = xmalloc(sizeof(*subscription));
+    subscription->subscriber = s;
+    subscription->topic = xstrdup(topic);
+    INCREF(s, struct subscriber);
+    server.wildcards = list_push(server.wildcards, subscription);
+}
+
 static void recursive_sub(struct trie_node *node, void *arg) {
     if (!node || !node->data)
         return;
@@ -421,8 +435,10 @@ static int subscribe_handler(struct io_event *e) {
         // we increment reference for the subscriptions session
         INCREF(sub, struct subscriber);
         list_push(e->client->session->subscriptions, t);
-        if (wildcard == true)
+        if (wildcard == true) {
             trie_prefix_map(server.topics.root, topic, recursive_sub, sub);
+            add_wildcard(topic, sub);
+        }
 
         // Retained message? Publish it
         // TODO move to IO threadpool
@@ -510,6 +526,17 @@ static int publish_handler(struct io_event *e) {
      * create a new one with the name selected
      */
     struct topic *t = topic_get_or_create(&server, topic);
+
+    /* Check for # wildcards subscriptions */
+    struct iterator it;
+    iter_init(&it, server.wildcards, list_iter_next);
+    struct iterator *pit = &it;
+    FOREACH (pit) {
+        struct subscription *s = pit->ptr;
+        if (match_subscription(topic, s->topic) == 0)
+            topic_add_subscriber(t, s->subscriber->client, s->subscriber->qos);
+    }
+
     struct mqtt_packet *pkt = mqtt_packet_alloc(e->data.header.byte);
     // TODO must perform a deep copy here
     pkt->publish = e->data.publish;
