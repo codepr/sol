@@ -165,9 +165,43 @@ exit:
 }
 
 /* Check if a topic match a wildcard subscription. for now just # works */
-static inline int match_subscription(const char *topic, const char *wildcard) {
-    size_t len = strlen(wildcard) - 1;
-    return strncmp(topic, wildcard, len);
+static inline int match_subscription(const char *topic,
+                                     const char *wtopic, bool end_wildcard) {
+    size_t len = strlen(wtopic);
+    int i = 0, j = 0;
+    bool found = false;
+    char *ptopic = (char *) topic;
+    /*
+     * Cycle through the wildcard topic, char by char, seeking for '+' char and
+     * at the same time assuring that every char is equal in the topic as well,
+     * we don't want to accept different topics
+     */
+    while (wtopic[i]) {
+        j = 0;
+        for (; i < len; ++i) {
+            if (wtopic[i] == '+') {
+                found = true;
+                break;
+            } else if (wtopic[i] != ptopic[j]) {
+                return -1;
+            }
+            j++;
+        }
+        /*
+         * Get a pointer to the next '/', called two times because we want to
+         * skip the first occurence, like foo/bar/baz, cause at this point we'
+         * re already at /bar/baz and we don't need a pointer to /bar/baz
+         * again
+         */
+        ptopic = index(ptopic, '/');
+        ptopic = index(ptopic + 1, '/');
+        i++;
+    }
+    if (!found && end_wildcard == true)
+        return 0;
+    if (ptopic[1] != '\0' && end_wildcard == false)
+        return -1;
+    return 0;
 }
 
 /*
@@ -373,10 +407,12 @@ static int disconnect_handler(struct io_event *e) {
     return -ERRCLIENTDC;
 }
 
-static inline void add_wildcard(const char *topic, struct subscriber *s) {
+static inline void add_wildcard(const char *topic, struct subscriber *s,
+                                bool wildcard) {
     struct subscription *subscription = xmalloc(sizeof(*subscription));
     subscription->subscriber = s;
     subscription->topic = xstrdup(topic);
+    subscription->end_wildcard = wildcard;
     INCREF(s, struct subscriber);
     server.wildcards = list_push(server.wildcards, subscription);
 }
@@ -435,9 +471,9 @@ static int subscribe_handler(struct io_event *e) {
         // we increment reference for the subscriptions session
         INCREF(sub, struct subscriber);
         list_push(e->client->session->subscriptions, t);
-        if (wildcard == true) {
+        if (wildcard == true || index(topic, '+')) {
             trie_prefix_map(server.topics.root, topic, recursive_sub, sub);
-            add_wildcard(topic, sub);
+            add_wildcard(topic, sub, wildcard);
         }
 
         // Retained message? Publish it
@@ -509,17 +545,16 @@ static int publish_handler(struct io_event *e) {
     info.messages_recv++;
 
     char topic[p->topiclen + 2];
-    strncpy(topic, (const char *) p->topic, p->topiclen);
     unsigned char qos = hdr->bits.qos;
 
     /*
      * For convenience we assure that all topics ends with a '/', indicating a
      * hierarchical level
      */
-    if (topic[p->topiclen] != '/') {
-        topic[p->topiclen] = '/';
-        topic[p->topiclen + 1] = '\0';
-    }
+    if (p->topic[p->topiclen - 1] != '/')
+        snprintf(topic, p->topiclen + 2, "%s/", (const char *) p->topic);
+    else
+        snprintf(topic, p->topiclen + 1, "%s", (const char *) p->topic);
 
     /*
      * Retrieve the topic from the global map, if it wasn't created before,
@@ -533,7 +568,7 @@ static int publish_handler(struct io_event *e) {
     struct iterator *pit = &it;
     FOREACH (pit) {
         struct subscription *s = pit->ptr;
-        int matched = match_subscription(topic, s->topic);
+        int matched = match_subscription(topic, s->topic, s->end_wildcard);
         if (matched == 0 && !subscribed_to_topic(t, s->subscriber->client))
             topic_add_subscriber(t, s->subscriber->client, s->subscriber->qos);
     }

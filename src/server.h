@@ -160,6 +160,7 @@ struct subscriber {
 };
 
 struct subscription {
+    bool end_wildcard;
     const char *topic;
     struct subscriber *subscriber;
 };
