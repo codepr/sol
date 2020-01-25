@@ -211,6 +211,8 @@ void inflight_msg_init(struct inflight_msg *, struct client *,
 
 void inflight_msg_clear(struct inflight_msg *);
 
+bool subscribed_to_topic(const struct topic *, const struct client *);
+
 struct subscriber *topic_add_subscriber(struct topic *,
                                         struct client *, unsigned);
 

@@ -533,7 +533,8 @@ static int publish_handler(struct io_event *e) {
     struct iterator *pit = &it;
     FOREACH (pit) {
         struct subscription *s = pit->ptr;
-        if (match_subscription(topic, s->topic) == 0)
+        int matched = match_subscription(topic, s->topic);
+        if (matched == 0 && !subscribed_to_topic(t, s->subscriber->client))
             topic_add_subscriber(t, s->subscriber->client, s->subscriber->qos);
     }
 

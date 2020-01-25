@@ -946,6 +946,10 @@ struct client_session *client_session_alloc(void) {
     return session;
 }
 
+bool subscribed_to_topic(const struct topic *t, const struct client *c) {
+    return hashtable_exists(t->subscribers, c->client_id);
+}
+
 struct subscriber *topic_add_subscriber(struct topic *t,
                                         struct client *c, unsigned qos) {
     struct subscriber *sub = xmalloc(sizeof(*sub));
