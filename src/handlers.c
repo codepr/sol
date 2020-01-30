@@ -257,39 +257,16 @@ static int connect_handler(struct io_event *e) {
      * Check for client ID, if not present generate a random ID, otherwise add
      * the client to the sessions map if not already present
      */
-    if (!c->payload.client_id[0]) {
+    if (!c->payload.client_id[0])
         generate_random_id((char *) c->payload.client_id);
-    } else {
-        // First we check if a session is present
-        if (c->bits.clean_session == false) {
-            cc->session = hashtable_get(server.sessions, c->payload.client_id);
-            if (cc->session) {
-                /*
-                 * If there's already some subscriptions and pending messages,
-                 * empty the queue
-                 */
-                if (list_size(cc->session->outgoing_msgs) > 0) {
-                    size_t len = 0;
-                    struct iterator *it =
-                        iter_new(cc->session->outgoing_msgs, list_iter_next);
-                    FOREACH (it) {
-                        len = mqtt_size(it->ptr, NULL);
-                        mqtt_pack(it->ptr, cc->wbuf + cc->towrite);
-                        cc->towrite += len;
-                    }
-                    enqueue_event_write(e->ctx, cc);
-                }
-            }
-        } else {
-            // Clean session true, we have to clean old session, if any
-            hashtable_del(server.sessions, c->payload.client_id);
-        }
-    }
 
-    if (server.clients[e->client->conn.fd].online == true &&
-        strncmp(server.clients[e->client->conn.fd].client_id,
-                (const char *) c->payload.client_id, MQTT_CLIENT_ID_LEN) == 1) {
+    /*
+     * Add the new connected client to the global map, if it is already
+     * connected, kick him out accordingly to the MQTT v3.1.1 specs.
+     */
+    strncpy(cc->client_id, (char *) c->payload.client_id, MQTT_CLIENT_ID_LEN);
 
+    if (cc->connected == true) {
         // Already connected client, 2 CONNECT packet should be interpreted as
         // a violation of the protocol, causing disconnection of the client
 
@@ -298,30 +275,51 @@ static int connect_handler(struct io_event *e) {
         goto clientdc;
     }
 
+    // First we check if a session is present
+    cc->session = hashtable_get(server.sessions, c->payload.client_id);
+    if (cc->session) {
+        if (c->bits.clean_session == false) {
+            /*
+             * If there's already some subscriptions and pending messages,
+             * empty the queue
+             */
+            if (list_size(cc->session->outgoing_msgs) > 0) {
+                size_t len = 0;
+                struct iterator *it =
+                    iter_new(cc->session->outgoing_msgs, list_iter_next);
+                FOREACH (it) {
+                    len = mqtt_size(it->ptr, NULL);
+                    mqtt_pack(it->ptr, cc->wbuf + cc->towrite);
+                    cc->towrite += len;
+                }
+                enqueue_event_write(e->ctx, cc);
+            }
+        } else {
+            // Clean session true, we have to clean old session, if any
+            hashtable_del(server.sessions, c->payload.client_id);
+        }
+    }
+
+    cc->connected = true;
+
     log_info("New client connected as %s (c%i, k%u)",
              c->payload.client_id,
              c->bits.clean_session,
              c->payload.keepalive);
 
     /*
-     * Add the new connected client to the global map, if it is already
-     * connected, kick him out accordingly to the MQTT v3.1.1 specs.
-     */
-    strncpy(e->client->client_id, (char *) c->payload.client_id, MQTT_CLIENT_ID_LEN);
-
-    /*
      * If no session was found or the client is a new connecting client or an
      * anonymous one, we create a session here
      */
     if (c->bits.clean_session == true || !cc->session) {
-        cc->session = client_session_alloc();
+        cc->session = client_session_alloc(cc->client_id);
         INCREF(cc->session, struct client_session);
         hashtable_put(server.sessions, cc->client_id, cc->session);
     }
 
     // Add LWT topic and message if present
     if (c->bits.will) {
-        e->client->has_lwt = true;
+        cc->has_lwt = true;
         const char *will_topic = (const char *) c->payload.will_topic;
         const char *will_message = (const char *) c->payload.will_message;
         // TODO check for will_topic != NULL
@@ -332,7 +330,7 @@ static int connect_handler(struct io_event *e) {
         size_t msg_len = strlen(will_message);
         size_t tpc_len = strlen(will_topic);
 
-        e->client->session->lwt_msg = (struct mqtt_packet) {
+        cc->session->lwt_msg = (struct mqtt_packet) {
             .header = (union mqtt_header) { .byte = PUBLISH_B },
             .publish = (struct mqtt_publish) {
                 .pkt_id = 0,  // placeholder
@@ -343,24 +341,24 @@ static int connect_handler(struct io_event *e) {
             }
         };
 
-        e->client->session->lwt_msg.header.bits.qos = c->bits.will_qos;
+        cc->session->lwt_msg.header.bits.qos = c->bits.will_qos;
         // We must store the retained message in the topic
         if (c->bits.will_retain == 1) {
-            size_t publen = mqtt_size(&e->client->session->lwt_msg, NULL);
+            size_t publen = mqtt_size(&cc->session->lwt_msg, NULL);
             bstring payload = bstring_empty(publen);
-            mqtt_pack(&e->client->session->lwt_msg, payload);
+            mqtt_pack(&cc->session->lwt_msg, payload);
             // We got a ready-to-be sent bytestring in the retained message
             // field
             t->retained_msg = payload;
         }
         log_info("Will message specified (%lu bytes)",
-                 e->client->session->lwt_msg.publish.payloadlen);
-        log_info("\t%s", e->client->session->lwt_msg.publish.payload);
+                 cc->session->lwt_msg.publish.payloadlen);
+        log_info("\t%s", cc->session->lwt_msg.publish.payload);
     }
 
     // TODO check for session already present
 
-    e->client->clean_session = c->bits.clean_session;
+    cc->clean_session = c->bits.clean_session;
 
     set_payload_connack(cc, MQTT_CONNECTION_ACCEPTED);
 
@@ -497,7 +495,7 @@ static int subscribe_handler(struct io_event *e) {
 
     log_debug("Sending SUBACK to %s", c->client_id);
 
-    mqtt_packet_destroy(&pkt, SUBACK);
+    mqtt_packet_destroy(&pkt);
 
     return REPLY;
 }
@@ -521,7 +519,7 @@ static int unsubscribe_handler(struct io_event *e) {
 
     log_debug("Sending UNSUBACK to %s", c->client_id);
 
-    mqtt_packet_destroy(&e->data, UNSUBACK);
+    mqtt_packet_destroy(&e->data);
 
     return REPLY;
 }

@@ -349,7 +349,7 @@ static int client_destructor(struct client *client) {
     close_connection(&client->conn);
 
     if (client->has_lwt)
-        mqtt_packet_destroy(&client->session->lwt_msg, PUBLISH);
+        mqtt_packet_destroy(&client->session->lwt_msg);
 
     if (client->clean_session == true)
         hashtable_del(server.sessions, client->client_id);
@@ -730,7 +730,7 @@ static void process_message(struct ev_ctx *ctx, struct client *c) {
              */
             enqueue_event_write(ctx, c);
             /* Free resource, ACKs will be free'd closing the server */
-            mqtt_packet_destroy(&io.data, io.data.header.bits.type);
+            mqtt_packet_destroy(&io.data);
             break;
         case -ERRCLIENTDC:
             ev_del_fd(ctx, c->conn.fd);
@@ -741,7 +741,7 @@ static void process_message(struct ev_ctx *ctx, struct client *c) {
             break;
         default:
             c->status = WAITING_HEADER;
-            mqtt_packet_destroy(&io.data, io.data.header.bits.type);
+            mqtt_packet_destroy(&io.data);
             break;
     }
 }
@@ -929,20 +929,21 @@ static void session_free(const struct ref *refcount) {
     xfree(session);
 }
 
-void session_init(struct client_session *session) {
+void session_init(struct client_session *session, char *session_id) {
     session->has_inflight = false;
     session->next_free_mid = 1;
     session->subscriptions = list_new(NULL);
     session->outgoing_msgs = list_new(NULL);
+    snprintf(session->session_id, MQTT_CLIENT_ID_LEN, "%s", session_id);
     session->i_acks = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
     session->i_msgs = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
     session->in_i_acks = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
     session->refcount = (struct ref) { session_free, 0 };
 }
 
-struct client_session *client_session_alloc(void) {
+struct client_session *client_session_alloc(char *session_id) {
     struct client_session *session = xmalloc(sizeof(*session));
-    session_init(session);
+    session_init(session, session_id);
     return session;
 }
 

@@ -496,9 +496,9 @@ void mqtt_packet_publish(struct mqtt_packet *pkt, unsigned short pkt_id,
     };
 }
 
-void mqtt_packet_destroy(struct mqtt_packet *pkt, unsigned type) {
+void mqtt_packet_destroy(struct mqtt_packet *pkt) {
 
-    switch (type) {
+    switch (pkt->header.bits.type) {
         case CONNECT:
             if (pkt->connect.bits.username == 1)
                 xfree(pkt->connect.payload.username);

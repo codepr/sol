@@ -239,7 +239,7 @@ void mqtt_publish(struct mqtt_packet *, unsigned short, size_t,
  * Release the memory allocated through helpers function calls based on the
  * opcode of the MQTT packet passed
  */
-void mqtt_packet_destroy(struct mqtt_packet *, unsigned);
+void mqtt_packet_destroy(struct mqtt_packet *);
 
 void mqtt_set_dup(struct mqtt_packet *);
 

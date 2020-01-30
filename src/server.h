@@ -177,9 +177,6 @@ enum client_status {
  * or a subscriber, it can be used to track sessions too.
  */
 struct client {
-    bool online;  // just a boolean will be fine for now
-    bool has_lwt;
-    bool clean_session;
     int rc;
     int status;
     int rpos;
@@ -192,14 +189,19 @@ struct client {
     char client_id[MQTT_CLIENT_ID_LEN];
     struct connection conn;
     struct client_session *session;
+    bool online;  // just a boolean will be fine for now
+    bool has_lwt;
+    bool clean_session;
+    bool connected;
     unsigned long last_seen;
 };
 
 struct client_session {
-    bool has_inflight;
     int next_free_mid;
     List *subscriptions;
     List *outgoing_msgs;
+    bool has_inflight;
+    char session_id[MQTT_CLIENT_ID_LEN];
     struct mqtt_packet lwt_msg;
     struct inflight_msg *i_acks;
     struct inflight_msg *i_msgs;
@@ -233,7 +235,7 @@ struct topic *topic_get_or_create(struct server *, const char *);
 
 unsigned next_free_mid(struct client *);
 
-void session_init(struct client_session *);
+void session_init(struct client_session *, char *);
 
 int start_server(const char *, const char *);
 
@@ -241,6 +243,6 @@ void enqueue_event_write(struct ev_ctx *, struct client *);
 
 void daemonize(void);
 
-struct client_session *client_session_alloc(void);
+struct client_session *client_session_alloc(char *);
 
 #endif
