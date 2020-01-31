@@ -76,39 +76,28 @@ int publish_message(struct mqtt_packet *pkt,
     size_t len = 0;
     unsigned short mid = 0;
     unsigned char qos = pkt->header.bits.qos;
-    int count = hashtable_size(t->subscribers);
+    int count = HASH_COUNT(t->subscribers);
 
-    if (count == 0)
+    if (count == 0) {
+        INCREF(pkt, struct mqtt_packet);
         goto exit;
+    }
 
-    struct iterator *it = iter_new(t->subscribers, hashtable_iter_next);
     unsigned char type;
 
     // first run check
-    FOREACH (it) {
-        struct subscriber *sub = it->ptr;
-        struct client *sc = sub->client;
-        /*
-         * If offline, we must enqueue messages in the inflight queue
-         * of the client, they will be sent out only in case of a
-         * clean_session == false connection
-         */
-        // TODO check for side-effects
-        if (sc->online == false) {
-            if (sc->clean_session == false) {
-                INCREF(pkt, struct mqtt_packet);
-                list_push(sc->session->outgoing_msgs, pkt);
-            }
-            continue;
-        }
+    struct subscriber *sub, *tmp;
+    HASH_ITER(hh, t->subscribers, sub, tmp) {
+        struct client_session *s = sub->session;
+        struct client *sc = NULL;
+        HASH_FIND_STR(server.clients_map, s->session_id, sc);
         /*
          * Update QoS according to subscriber's one, following MQTT
          * rules: The min between the original QoS and the subscriber
          * QoS
          */
-        pkt->header.bits.qos = qos >= sub->qos ? sub->qos : qos;
+        pkt->header.bits.qos = qos >= sub->granted_qos ? sub->granted_qos : qos;
         len = mqtt_size(pkt, NULL); // override len, no ID set in QoS 0
-
         /*
          * if QoS 0
          *
@@ -123,14 +112,30 @@ int publish_message(struct mqtt_packet *pkt,
          * message, proceed with the publish towards online subscriber.
          */
         if (pkt->header.bits.qos > AT_MOST_ONCE) {
-            mid = next_free_mid(sc);
+            mid = next_free_mid(s);
+            type = sub->granted_qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
             pkt->publish.pkt_id = mid;
             INCREF(pkt, struct mqtt_packet);
-            inflight_msg_init(&sc->session->i_msgs[mid], sc, pkt, len);
-            type = sub->qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
             struct mqtt_packet *ack = mqtt_packet_alloc(type);
             INCREF(ack, struct mqtt_packet);
             mqtt_ack(ack, mid);
+            /*
+             * If offline, we must enqueue messages in the inflight queue
+             * of the client, they will be sent out only in case of a
+             * clean_session == false connection
+             */
+            if (!sc || sc->online == false) {
+                if (s->clean_session == false) {
+                    list_push(s->outgoing_msgs, pkt);
+                    all_at_most_once = false;
+                    INCREF(pkt, struct mqtt_packet);
+                    inflight_msg_init(&s->i_msgs[mid], sc, pkt, len);
+                    inflight_msg_init(&s->i_acks[mid], sc, ack, len);
+                    s->has_inflight = true;
+                }
+                continue;
+            }
+            inflight_msg_init(&sc->session->i_msgs[mid], sc, pkt, len);
             inflight_msg_init(&sc->session->i_acks[mid], sc, ack, len);
             sc->session->has_inflight = true;
             all_at_most_once = false;
@@ -153,7 +158,7 @@ int publish_message(struct mqtt_packet *pkt,
                   pkt->publish.topic,
                   pkt->publish.payloadlen);
     }
-    iter_destroy(it);
+    /* iter_destroy(it); */
 
     // add return code
     if (all_at_most_once == true)
@@ -221,12 +226,42 @@ static void set_payload_connack(struct client *c, unsigned char rc) {
     };
     mqtt_pack(&response, c->wbuf + c->towrite);
     c->towrite += MQTT_ACK_LEN;
+
+    if (c->clean_session == false) {
+        /* cc->session = hashtable_get(server.sessions, cc->client_id); */
+        log_info("Resuming session for %s", c->client_id);
+        /*
+         * If there's already some subscriptions and pending messages,
+         * empty the queue
+         */
+        if (list_size(c->session->outgoing_msgs) > 0) {
+            size_t len = 0;
+            struct iterator iter;
+            iter_init(&iter, c->session->outgoing_msgs, list_iter_next);
+            struct iterator *it = &iter;
+            FOREACH (it) {
+                len = mqtt_size(it->ptr, NULL);
+                mqtt_pack(it->ptr, c->wbuf + c->towrite);
+                c->towrite += len;
+            }
+        }
+    }
 }
 
 static int connect_handler(struct io_event *e) {
 
     struct mqtt_connect *c = &e->data.connect;
     struct client *cc = e->client;
+
+    if (cc->connected == true) {
+        /*
+         * Already connected client, 2 CONNECT packet should be interpreted as
+         * a violation of the protocol, causing disconnection of the client
+         */
+        log_info("Received double CONNECT from %s, disconnecting client",
+                 c->payload.client_id);
+        goto clientdc;
+    }
 
     /*
      * If allow_anonymous is false we need to check for an existing
@@ -259,46 +294,17 @@ static int connect_handler(struct io_event *e) {
      */
     if (!c->payload.client_id[0])
         generate_random_id((char *) c->payload.client_id);
-
     /*
      * Add the new connected client to the global map, if it is already
      * connected, kick him out accordingly to the MQTT v3.1.1 specs.
      */
-    strncpy(cc->client_id, (char *) c->payload.client_id, MQTT_CLIENT_ID_LEN);
-
-    if (cc->connected == true) {
-        // Already connected client, 2 CONNECT packet should be interpreted as
-        // a violation of the protocol, causing disconnection of the client
-
-        log_info("Received double CONNECT from %s, disconnecting client",
-                 c->payload.client_id);
-        goto clientdc;
-    }
+    snprintf(cc->client_id, MQTT_CLIENT_ID_LEN, "%s", c->payload.client_id);
 
     // First we check if a session is present
-    cc->session = hashtable_get(server.sessions, c->payload.client_id);
-    if (cc->session) {
-        if (c->bits.clean_session == false) {
-            /*
-             * If there's already some subscriptions and pending messages,
-             * empty the queue
-             */
-            if (list_size(cc->session->outgoing_msgs) > 0) {
-                size_t len = 0;
-                struct iterator *it =
-                    iter_new(cc->session->outgoing_msgs, list_iter_next);
-                FOREACH (it) {
-                    len = mqtt_size(it->ptr, NULL);
-                    mqtt_pack(it->ptr, cc->wbuf + cc->towrite);
-                    cc->towrite += len;
-                }
-                enqueue_event_write(e->ctx, cc);
-            }
-        } else {
-            // Clean session true, we have to clean old session, if any
-            hashtable_del(server.sessions, c->payload.client_id);
-        }
-    }
+    HASH_FIND_STR(server.sessions, cc->client_id, cc->session);
+    if (cc->session && c->bits.clean_session == true)
+        // Clean session true, we have to clean old session, if any
+        HASH_DEL(server.sessions, cc->session);
 
     cc->connected = true;
 
@@ -314,8 +320,13 @@ static int connect_handler(struct io_event *e) {
     if (c->bits.clean_session == true || !cc->session) {
         cc->session = client_session_alloc(cc->client_id);
         INCREF(cc->session, struct client_session);
-        hashtable_put(server.sessions, cc->client_id, cc->session);
+        HASH_ADD_STR(server.sessions, session_id, cc->session);
     }
+
+    cc->session->clean_session = c->bits.clean_session;
+
+    // Let's track client on the global map to be used on publish
+    HASH_ADD_STR(server.clients_map, client_id, cc);
 
     // Add LWT topic and message if present
     if (c->bits.will) {
@@ -422,9 +433,10 @@ static void recursive_sub(struct trie_node *node, void *arg) {
     struct subscriber *s = arg;
     INCREF(s, struct subscriber);
     log_debug("Adding subscriber %s to topic %s",
-              s->client->client_id, t->name);
-    hashtable_put(t->subscribers, s->client->client_id, s);
-    list_push(s->client->session->subscriptions, t);
+              s->session->session_id, t->name);
+    /* hashtable_put(t->subscribers, s->client->client_id, s); */
+    HASH_ADD(hh, t->subscribers, id, MQTT_CLIENT_ID_LEN, s);
+    list_push(s->session->subscriptions, t);
 }
 
 static int subscribe_handler(struct io_event *e) {
@@ -449,7 +461,7 @@ static int subscribe_handler(struct io_event *e) {
          * the global map
          */
         char topic[s->tuples[i].topic_len + 2];
-        strncpy(topic, (const char *) s->tuples[i].topic, s->tuples[i].topic_len + 1);
+        snprintf(topic, s->tuples[i].topic_len + 1, "%s", s->tuples[i].topic);
 
         log_debug("\t%s (QoS %i)", topic, s->tuples[i].qos);
         /* Recursive subscribe to all children topics if the topic ends with "/#" */
@@ -464,14 +476,18 @@ static int subscribe_handler(struct io_event *e) {
 
         struct topic *t = topic_get_or_create(&server, topic);
         // Clean session true for now
-        struct subscriber *sub =
-            topic_add_subscriber(t, e->client, s->tuples[i].qos);
-        // we increment reference for the subscriptions session
-        INCREF(sub, struct subscriber);
-        list_push(e->client->session->subscriptions, t);
-        if (wildcard == true || index(topic, '+')) {
-            trie_prefix_map(server.topics.root, topic, recursive_sub, sub);
-            add_wildcard(topic, sub, wildcard);
+        struct subscriber *tmp;
+        HASH_FIND(hh, t->subscribers, c->client_id, MQTT_CLIENT_ID_LEN, tmp);
+        if (c->clean_session == true || !tmp) {
+            struct subscriber *sub =
+                topic_add_subscriber(t, e->client->session, s->tuples[i].qos);
+            // we increment reference for the subscriptions session
+            INCREF(sub, struct subscriber);
+            list_push(e->client->session->subscriptions, t);
+            if (wildcard == true || index(topic, '+')) {
+                trie_prefix_map(server.topics.root, topic, recursive_sub, sub);
+                add_wildcard(topic, sub, wildcard);
+            }
         }
 
         // Retained message? Publish it
@@ -561,14 +577,17 @@ static int publish_handler(struct io_event *e) {
     struct topic *t = topic_get_or_create(&server, topic);
 
     /* Check for # wildcards subscriptions */
-    struct iterator it;
-    iter_init(&it, server.wildcards, list_iter_next);
-    struct iterator *pit = &it;
-    FOREACH (pit) {
-        struct subscription *s = pit->ptr;
-        int matched = match_subscription(topic, s->topic, s->end_wildcard);
-        if (matched == 0 && !subscribed_to_topic(t, s->subscriber->client))
-            topic_add_subscriber(t, s->subscriber->client, s->subscriber->qos);
+    if (list_size(server.wildcards) > 0) {
+        struct iterator it;
+        iter_init(&it, server.wildcards, list_iter_next);
+        struct iterator *pit = &it;
+        FOREACH (pit) {
+            struct subscription *s = pit->ptr;
+            int matched = match_subscription(topic, s->topic, s->end_wildcard);
+            if (matched == 0 && !subscribed_to_topic(t, s->subscriber->session))
+                topic_add_subscriber(t, s->subscriber->session,
+                                     s->subscriber->granted_qos);
+        }
     }
 
     struct mqtt_packet *pkt = mqtt_packet_alloc(e->data.header.byte);
@@ -582,7 +601,7 @@ static int publish_handler(struct io_event *e) {
     }
 
     if (publish_message(pkt, t, e->ctx) == 0)
-        xfree(pkt);
+        DECREF(pkt, struct mqtt_packet);
 
     // We have to answer to the publisher
     if (qos == AT_MOST_ONCE)

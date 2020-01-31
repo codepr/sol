@@ -37,6 +37,7 @@
 #include "trie.h"
 #include "network.h"
 #include "hashtable.h"
+#include "uthash.h"
 
 /*
  * Epoll default settings for concurrent events monitored and timeout, -1
@@ -122,9 +123,11 @@ extern struct sol_info info;
  */
 struct server {
     int maxfd;
-    struct client *clients;
     Trie topics;
-    HashTable *sessions;
+    // struct client *clients;
+    struct memorypool *pool;
+    struct client *clients_map;
+    struct client_session *sessions;
     HashTable *authentications;
     List *wildcards;
     SSL_CTX *ssl_ctx;
@@ -150,13 +153,16 @@ struct inflight_msg {
 struct topic {
     const char *name;
     bstring retained_msg;
-    HashTable *subscribers;
+    struct subscriber *subscribers;
+    // HashTable *subscribers;
 };
 
 struct subscriber {
-    struct client *client;
-    unsigned char qos;
+    struct client_session *session;
+    unsigned char granted_qos;
+    char id[MQTT_CLIENT_ID_LEN];
     struct ref refcount;
+    UT_hash_handle hh;
 };
 
 struct subscription {
@@ -177,6 +183,7 @@ enum client_status {
  * or a subscriber, it can be used to track sessions too.
  */
 struct client {
+    int poolnr;
     int rc;
     int status;
     int rpos;
@@ -189,11 +196,12 @@ struct client {
     char client_id[MQTT_CLIENT_ID_LEN];
     struct connection conn;
     struct client_session *session;
+    unsigned long last_seen;
     bool online;  // just a boolean will be fine for now
+    bool connected;
     bool has_lwt;
     bool clean_session;
-    bool connected;
-    unsigned long last_seen;
+    UT_hash_handle hh;
 };
 
 struct client_session {
@@ -201,12 +209,14 @@ struct client_session {
     List *subscriptions;
     List *outgoing_msgs;
     bool has_inflight;
+    bool clean_session;
     char session_id[MQTT_CLIENT_ID_LEN];
     struct mqtt_packet lwt_msg;
     struct inflight_msg *i_acks;
     struct inflight_msg *i_msgs;
     struct inflight_msg *in_i_acks;
     struct ref refcount;
+    UT_hash_handle hh;
 };
 
 void inflight_msg_init(struct inflight_msg *, struct client *,
@@ -214,10 +224,10 @@ void inflight_msg_init(struct inflight_msg *, struct client *,
 
 void inflight_msg_clear(struct inflight_msg *);
 
-bool subscribed_to_topic(const struct topic *, const struct client *);
+bool subscribed_to_topic(const struct topic *, const struct client_session *);
 
 struct subscriber *topic_add_subscriber(struct topic *,
-                                        struct client *, unsigned);
+                                        struct client_session *, unsigned char);
 
 void topic_del_subscriber(struct topic *, struct client *);
 
@@ -233,7 +243,7 @@ struct topic *topic_get(const struct server *, const char *);
 /* Get or create a new topic if it doesn't exists */
 struct topic *topic_get_or_create(struct server *, const char *);
 
-unsigned next_free_mid(struct client *);
+unsigned next_free_mid(struct client_session *);
 
 void session_init(struct client_session *, char *);
 
@@ -244,5 +254,7 @@ void enqueue_event_write(struct ev_ctx *, struct client *);
 void daemonize(void);
 
 struct client_session *client_session_alloc(char *);
+
+struct client *get_client(struct server *);
 
 #endif

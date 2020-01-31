@@ -47,7 +47,7 @@ struct connection {
     int fd;
     SSL *ssl;
     SSL_CTX *ctx;
-    char ip[INET_ADDRSTRLEN + 1];
+    char ip[INET_ADDRSTRLEN + 6];
     int (*accept) (struct connection *, int);
     ssize_t (*send) (struct connection *, const unsigned char *, size_t);
     ssize_t (*recv) (struct connection *, unsigned char *, size_t);

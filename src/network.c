@@ -199,17 +199,14 @@ int make_listen(const char *host, const char *port, int s_family) {
  * Accept a connection and set it NON_BLOCKING and CLOEXEC, optionally also set
  * TCP_NODELAY disabling Nagle's algorithm
  */
-static int accept_conn(int serversock, char *ip) {
+static int accept_conn(int sfd, char *ip) {
 
     int clientsock;
     struct sockaddr_in addr;
     socklen_t addrlen = sizeof(addr);
 
-    if ((clientsock = accept(serversock,
-                             (struct sockaddr *) &addr, &addrlen)) < 0) {
-
-        if (errno != EWOULDBLOCK && errno != EAGAIN)
-            perror("accept");
+    if ((clientsock = accept(sfd, (struct sockaddr *) &addr, &addrlen)) < 0) {
+        if (errno != EWOULDBLOCK && errno != EAGAIN) perror("accept");
         return -1;
     }
 
@@ -217,19 +214,16 @@ static int accept_conn(int serversock, char *ip) {
     (void) set_cloexec(clientsock);
 
     // Set TCP_NODELAY only for TCP sockets
-    if (conf->socket_family == INET)
-        (void) set_tcp_nodelay(clientsock);
+    if (conf->socket_family == INET) (void) set_tcp_nodelay(clientsock);
 
-    char ip_buff[INET_ADDRSTRLEN + 1];
-    if (inet_ntop(AF_INET, &addr.sin_addr,
-                  ip_buff, sizeof(ip_buff)) == NULL) {
-        if (close(clientsock) < 0)
-            perror("close");
+    char ip_buff[INET_ADDRSTRLEN];
+    if (inet_ntop(AF_INET, &addr.sin_addr, ip_buff, sizeof(ip_buff)) == NULL) {
+        if (close(clientsock) < 0) perror("close");
         return -1;
     }
 
     if (ip)
-        strncpy(ip, ip_buff, INET_ADDRSTRLEN + 1);
+        snprintf(ip, INET_ADDRSTRLEN+6, "%s:%i", ip_buff, ntohs(addr.sin_port));
 
     return clientsock;
 }

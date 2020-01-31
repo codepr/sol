@@ -587,6 +587,7 @@ size_t mqtt_size(const struct mqtt_packet *pkt, size_t *len) {
 
 static void mqtt_packet_free(const struct ref *refcount) {
     struct mqtt_packet *pkt = container_of(refcount, struct mqtt_packet, refcount);
+    mqtt_packet_destroy(pkt);
     xfree(pkt);
 }
 
