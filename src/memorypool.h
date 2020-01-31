@@ -49,6 +49,5 @@ struct memorypool *memorypool_new(size_t, size_t);
 void memorypool_destroy(struct memorypool *);
 void *memorypool_alloc(struct memorypool *);
 void memorypool_free(struct memorypool *, void *);
-bool memorypool_is_full(const struct memorypool *);
 
 #endif

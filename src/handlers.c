@@ -86,8 +86,8 @@ int publish_message(struct mqtt_packet *pkt,
     unsigned char type;
 
     // first run check
-    struct subscriber *sub, *tmp;
-    HASH_ITER(hh, t->subscribers, sub, tmp) {
+    struct subscriber *sub, *dummy;
+    HASH_ITER(hh, t->subscribers, sub, dummy) {
         struct client_session *s = sub->session;
         struct client *sc = NULL;
         HASH_FIND_STR(server.clients_map, s->session_id, sc);
@@ -158,7 +158,6 @@ int publish_message(struct mqtt_packet *pkt,
                   pkt->publish.topic,
                   pkt->publish.payloadlen);
     }
-    /* iter_destroy(it); */
 
     // add return code
     if (all_at_most_once == true)
@@ -431,7 +430,6 @@ static void recursive_sub(struct trie_node *node, void *arg) {
     INCREF(s, struct subscriber);
     log_debug("Adding subscriber %s to topic %s",
               s->session->session_id, t->name);
-    /* hashtable_put(t->subscribers, s->client->client_id, s); */
     HASH_ADD(hh, t->subscribers, id, MQTT_CLIENT_ID_LEN, s);
     list_push(s->session->subscriptions, t);
 }

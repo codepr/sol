@@ -47,20 +47,21 @@ struct memorypool *memorypool_new(size_t blocks_nr, size_t blocksize) {
     /*
      * We pre-assign the position of each free block in the free pointer, this
      * way we know every block position before allocating new memory, we'll
-     * call it the header of each block:
+     * call it the header of each block, where we store the offset in memory
+     * to reach the next free slot:
      *
      *       ____________
-     *     _| 0x1ad45f02 |
+     *     _| 0x1ad45f02 | (0+blocksize)
      *    | |------------|
      *    | |     .      |
      *    | |     .      |
      *    |_|------------|
-     *     _| 0x2ff43da1 |
+     *     _| 0x2ff43da1 | (1+blocksize)
      *    | |------------|
      *    | |     .      |
      *    | |     .      |
      *    |_|------------|
-     *      | 0x98fff34a |
+     *      | 0x98fff34a | (n+blocksize)
      *      |------------|
      *      |     .      |
      *
@@ -92,7 +93,8 @@ void *memorypool_alloc(struct memorypool *pool) {
      * update the next free block address on the free pointer. The address is
      * already stored in the "header" of the block.
      */
-    pool->free = (intptr_t *)((char *) pool->memory + (*((intptr_t *) pool->free)) * pool->blocksize);
+    pool->free = (intptr_t *)((char *) pool->memory +
+                              (*((intptr_t *) pool->free)) * pool->blocksize);
     pool->block_used++;
     return ptr;
 }
@@ -108,10 +110,6 @@ void memorypool_free(struct memorypool *pool, void *ptr) {
         memorypool_resize(pool);
     pool->free = ptr;
     pool->block_used--;
-}
-
-bool memorypool_is_full(const struct memorypool *pool) {
-    return pool->block_used == pool->blocks_nr - 2;
 }
 
 static void memorypool_resize(struct memorypool *pool) {
