@@ -396,7 +396,7 @@ void config_print(void) {
     }
 }
 
-bool config_read_passwd_file(const char *path, struct authentication *auth_map) {
+bool config_read_passwd_file(const char *path, struct authentication **auth_map) {
 
     assert(path);
 
@@ -432,7 +432,7 @@ bool config_read_passwd_file(const char *path, struct authentication *auth_map) 
         struct authentication *auth = xmalloc(sizeof(*auth));
         auth->username = xstrdup(username);
         auth->salt = xstrdup(password);
-        HASH_ADD_STR(auth_map, username, auth);
+        HASH_ADD_STR(*auth_map, username, auth);
     }
 
     return true;

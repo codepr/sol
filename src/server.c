@@ -348,15 +348,18 @@ static void client_deactivate(struct client *client) {
     client->connected = false;
 
     if (client->clean_session == true) {
-        struct iterator iter;
-        iter_init(&iter, client->session->subscriptions, list_iter_next);
-        struct iterator *it = &iter;
-        FOREACH(it) {
-            topic_del_subscriber(it->ptr, client);
+        if (client->session) {
+            struct iterator iter;
+            iter_init(&iter, client->session->subscriptions, list_iter_next);
+            struct iterator *it = &iter;
+            FOREACH(it) {
+                topic_del_subscriber(it->ptr, client);
+            }
+            HASH_DEL(server.sessions, client->session);
+            DECREF(client->session, struct client_session);
         }
-        HASH_DEL(server.sessions, client->session);
-        DECREF(client->session, struct client_session);
-        HASH_DEL(server.clients_map, client);
+        if (client->connected == true)
+            HASH_DEL(server.clients_map, client);
         memorypool_free(server.pool, client);
     }
     client->client_id[0] = '\0';
@@ -371,20 +374,6 @@ static void client_deactivate(struct client *client) {
         xfree(auth);                            \
     }                                           \
 } while (0);
-
-/*
- * Cleanup function to be passed in as destructor to the Hashtable for
- * authentication entries
- */
-/* static int auth_destructor(struct hashtable_entry *entry) { */
-/*  */
-/*     if (!entry) */
-/*         return -1; */
-/*     xfree((void *) entry->key); */
-/*     xfree(entry->val); */
-/*  */
-/*     return 0; */
-/* } */
 
 /*
  * Parse packet header, it is required at least the Fixed Header of each
@@ -695,7 +684,7 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
             // Clean resources
             ev_del_fd(ctx, c->conn.fd);
             // Remove from subscriptions for now
-            if (list_size(c->session->subscriptions) > 0) {
+            if (c->session && list_size(c->session->subscriptions) > 0) {
                 struct list *subs = c->session->subscriptions;
                 struct iterator *it = iter_new(subs, list_iter_next);
                 FOREACH (it) {
@@ -809,7 +798,7 @@ int start_server(const char *addr, const char *port) {
     server.wildcards = list_new(wildcard_destructor);
 
     if (conf->allow_anonymous == false)
-        config_read_passwd_file(conf->password_file, server.authentications);
+        config_read_passwd_file(conf->password_file, &server.authentications);
 
     /* Generate stats topics */
     for (int i = 0; i < SYS_TOPICS; i++)

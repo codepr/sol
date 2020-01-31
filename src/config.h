@@ -136,7 +136,7 @@ struct authentication {
 void config_set_default(void);
 void config_print(void);
 int config_load(const char *);
-bool config_read_passwd_file(const char *, struct authentication *);
+bool config_read_passwd_file(const char *, struct authentication **);
 
 char *time_to_string(size_t);
 char *memory_to_string(size_t);
