@@ -32,7 +32,6 @@
 #include "../src/util.h"
 #include "../src/trie.h"
 #include "../src/list.h"
-#include "../src/hashtable.h"
 #include "../src/iterator.h"
 
 /*
@@ -279,104 +278,6 @@ static char *test_trie_prefix_count(void) {
 }
 
 /*
- * Tests the creation of a hashtable
- */
-static char *test_hashtable_new(void) {
-    HashTable *m = hashtable_new(NULL);
-    ASSERT("[! hashtable_new]: hashtable not created", m != NULL);
-    hashtable_destroy(m);
-    printf(" [hashtable::hashtable_new]: OK\n");
-    return 0;
-}
-
-/*
- * Tests the release of a hashtable
- */
-static char *test_hashtable_destroy(void) {
-    HashTable *m = hashtable_new(NULL);
-    hashtable_destroy(m);
-    printf(" [hashtable::hashtable_destroy]: OK\n");
-    return 0;
-}
-
-/*
- * Tests the insertion function of the hashtable
- */
-static char *test_hashtable_put(void) {
-    HashTable *m = hashtable_new(NULL);
-    char *key = "hello";
-    char *val = "world";
-    int status = hashtable_put(m, key, val);
-    ASSERT("[! hashtable_put]: hashtable size = 0", hashtable_size(m) == 1);
-    ASSERT("[! hashtable_put]: hashtable_put didn't work as expected",
-           status == HASHTABLE_OK);
-    char *val1 = "WORLD";
-    hashtable_put(m, xstrdup(key), xstrdup(val1));
-    void *ret = hashtable_get(m, key);
-    ASSERT("[! hashtable_put]: hashtable_put didn't update the value",
-           strcmp(val1, ret) == 0);
-    hashtable_destroy(m);
-    printf(" [hashtable::hashtable_put]: OK\n");
-    return 0;
-}
-
-/*
- * Tests lookup function of the hashtable
- */
-static char *test_hashtable_get(void) {
-    HashTable *m = hashtable_new(NULL);
-    char *key = "hello";
-    char *val = "world";
-    hashtable_put(m, xstrdup(key), xstrdup(val));
-    char *ret = (char *) hashtable_get(m, key);
-    ASSERT("[! hashtable_get]: hashtable_get didn't work as expected",
-           strcmp(ret, val) == 0);
-    hashtable_destroy(m);
-    printf(" [hashtable::hashtable_get]: OK\n");
-    return 0;
-}
-
-/*
- * Tests the deletion function of the hashtable
- */
-static char *test_hashtable_del(void) {
-    HashTable *m = hashtable_new(NULL);
-    char *key = "hello";
-    char *val = "world";
-    hashtable_put(m, xstrdup(key), xstrdup(val));
-    int status = hashtable_del(m, key);
-    ASSERT("[! hashtbale_del]: hashtable size = 1", hashtable_size(m) == 0);
-    ASSERT("[! hashtbale_del]: hashtbale_del didn't work as expected",
-           status == HASHTABLE_OK);
-    hashtable_destroy(m);
-    printf(" [hashtable::hashtable_del]: OK\n");
-    return 0;
-}
-
-/*
- * Tests the hashtable iterator function of the hashtable
- */
-static char *test_hashtable_iterator(void) {
-    HashTable *m = hashtable_new(NULL);
-    char *key = "hello";
-    char *val = "world";
-    hashtable_put(m, xstrdup(key), xstrdup(val));
-    char *keytwo = "foobar";
-    char *valtwo = "worldfoo";
-    hashtable_put(m, xstrdup(keytwo), xstrdup(valtwo));
-    struct iterator *it = iter_new(m, hashtable_iter_next);
-    ASSERT("[! hashtable_iterator]: hashtable_iterator didn't work as expected",
-           strcmp(it->ptr, val) == 0);
-    it = iter_next(it);
-    ASSERT("[! hashtable_iterator]: hashtable_iterator didn't work as expected",
-           strcmp(it->ptr, valtwo) == 0);
-    hashtable_destroy(m);
-    iter_destroy(it);
-    printf(" [hashtable::hashtable_iterator]: OK\n");
-    return 0;
-}
-
-/*
  * All datastructure tests
  */
 char *structures_test() {
@@ -394,12 +295,6 @@ char *structures_test() {
     RUN_TEST(test_trie_delete);
     RUN_TEST(test_trie_prefix_delete);
     RUN_TEST(test_trie_prefix_count);
-    RUN_TEST(test_hashtable_new);
-    RUN_TEST(test_hashtable_destroy);
-    RUN_TEST(test_hashtable_put);
-    RUN_TEST(test_hashtable_get);
-    RUN_TEST(test_hashtable_del);
-    RUN_TEST(test_hashtable_iterator);
 
     return 0;
 }

@@ -41,9 +41,9 @@
 #include "util.h"
 #include "pack.h"
 #include "config.h"
+#include "sol_internal.h"
 #include "server.h"
 #include "handlers.h"
-#include "hashtable.h"
 #include "memorypool.h"
 #include "ref.h"
 #include "ev.h"
@@ -105,8 +105,6 @@ struct server server;
 
 static void client_deactivate(struct client *);
 
-/* static int client_destructor(struct client *); */
-
 // CALLBACKS for the eventloop
 static void accept_callback(struct ev_ctx *, void *);
 
@@ -127,7 +125,7 @@ static void publish_stats(struct ev_ctx *, void *);
  * Periodic routine to check for incomplete transactions on QoS > 0 to be
  * concluded
  */
-/* static void inflight_msg_check(struct ev_ctx *, void *); */
+static void inflight_msg_check(struct ev_ctx *, void *);
 
 static void client_init(struct client *);
 
@@ -293,53 +291,50 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
  * unserialized, this way it's possible to set the DUP flag easily at the cost
  * of additional packing before re-sending it out
  */
-/* static void inflight_msg_check(struct ev_ctx *ctx, void *data) { */
-/*     (void) data; */
-/*     (void) ctx; */
-/*     time_t now = time(NULL); */
-/*     struct mqtt_packet *p = NULL; */
-/*     struct iterator iter; */
-/*     iter_init(&iter, server.clients, hashtable_iter_next); */
-/*     struct iterator *it = &iter; */
-/*     FOREACH (it) { */
-/*         struct client *c = it->ptr; */
-/*         if (!c || !c->online || !c->session || !c->session->has_inflight) */
-/*             continue; */
-/*         for (int i = 1; i < MAX_INFLIGHT_MSGS; ++i) { */
-/*             // TODO remove 20 hardcoded value */
-/*             // Messages */
-/*             if (c->session->i_msgs[i].in_use */
-/*                 && (now - c->session->i_msgs[i].seen) > 20) { */
-/*                 log_debug("Re-sending message to %s", c->client_id); */
-/*                 p = c->session->i_msgs[i].packet; */
-/*                 p->header.bits.qos = c->session->i_msgs[i].qos; */
-/*                 // Set DUP flag to 1 */
-/*                 mqtt_set_dup(p); */
-/*                 // Serialize the packet and send it out again */
-/*                 mqtt_pack(p, c->wbuf + c->towrite); */
-/*                 c->towrite += c->session->i_msgs[i].size; */
-/*                 enqueue_event_write(ctx, c); */
-/*                 // Update information stats */
-/*                 info.messages_sent++; */
-/*             } */
-/*             // ACKs */
-/*             if (c->session->i_acks[i].in_use */
-/*                 && (now - c->session->i_acks[i].seen) > 20) { */
-/*                 log_debug("Re-sending ack to %s", c->client_id); */
-/*                 p = c->session->i_acks[i].packet; */
-/*                 p->header.bits.qos = c->session->i_acks[i].qos; */
-/*                 // Set DUP flag to 1 */
-/*                 mqtt_set_dup(p); */
-/*                 // Serialize the packet and send it out again */
-/*                 mqtt_pack(p, c->wbuf + c->towrite); */
-/*                 c->towrite += c->session->i_acks[i].size; */
-/*                 enqueue_event_write(ctx, c); */
-/*                 // Update information stats */
-/*                 info.messages_sent++; */
-/*             } */
-/*         } */
-/*     } */
-/* } */
+static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
+    (void) data;
+    (void) ctx;
+    time_t now = time(NULL);
+    struct mqtt_packet *p = NULL;
+    struct client *c, *tmp;
+    HASH_ITER(hh, server.clients_map, c, tmp) {
+        if (!c || !c->online || !c->session || !c->session->has_inflight)
+            continue;
+        for (int i = 1; i < MAX_INFLIGHT_MSGS; ++i) {
+            // TODO remove 20 hardcoded value
+            // Messages
+            if (c->session->i_msgs[i].in_use
+                && (now - c->session->i_msgs[i].seen) > 20) {
+                log_debug("Re-sending message to %s", c->client_id);
+                p = c->session->i_msgs[i].packet;
+                p->header.bits.qos = c->session->i_msgs[i].qos;
+                // Set DUP flag to 1
+                mqtt_set_dup(p);
+                // Serialize the packet and send it out again
+                mqtt_pack(p, c->wbuf + c->towrite);
+                c->towrite += c->session->i_msgs[i].size;
+                enqueue_event_write(ctx, c);
+                // Update information stats
+                info.messages_sent++;
+            }
+            // ACKs
+            if (c->session->i_acks[i].in_use
+                && (now - c->session->i_acks[i].seen) > 20) {
+                log_debug("Re-sending ack to %s", c->client_id);
+                p = c->session->i_acks[i].packet;
+                p->header.bits.qos = c->session->i_acks[i].qos;
+                // Set DUP flag to 1
+                mqtt_set_dup(p);
+                // Serialize the packet and send it out again
+                mqtt_pack(p, c->wbuf + c->towrite);
+                c->towrite += c->session->i_acks[i].size;
+                enqueue_event_write(ctx, c);
+                // Update information stats
+                info.messages_sent++;
+            }
+        }
+    }
+}
 
 static void client_deactivate(struct client *client) {
 
@@ -366,50 +361,30 @@ static void client_deactivate(struct client *client) {
     }
     client->client_id[0] = '\0';
 }
-/*
- * Cleanup function to be passed in as destructor to the Hashtable for
- * connecting clients
- */
-/* static int client_destructor(struct client *client) { */
-/*  */
-/*     if (client->online == true) close_connection(&client->conn); */
-/*     if (client->has_lwt) mqtt_packet_destroy(&client->session->lwt_msg); */
-/*     client->online = false; */
-/*     client->connected = false; */
-/*     xfree(client->rbuf); */
-/*     xfree(client->wbuf); */
-/*     client->rbuf = NULL; */
-/*     client->wbuf = NULL; */
-/*  */
-/*     if (client->clean_session == false && client->session) { */
-/*         struct iterator iter; */
-/*         iter_init(&iter, client->session->subscriptions, list_iter_next); */
-/*         struct iterator *it = &iter; */
-/*         FOREACH(it) { */
-/*             topic_del_subscriber(it->ptr, client); */
-/*         } */
-/*         HASH_DEL(server.sessions, client->session); */
-/*         DECREF(client->session, struct client_session); */
-/*     } */
-/*  */
-/*     #<{(| xfree(client); |)}># */
-/*  */
-/*     return 0; */
-/* } */
+
+#define AUTH_DESTROY(auth_map) do {             \
+    struct authentication *auth, *dummy;        \
+    HASH_ITER(hh, (auth_map), auth, dummy) {    \
+        HASH_DEL((auth_map), auth);             \
+        xfree(auth->username);                  \
+        xfree(auth->salt);                      \
+        xfree(auth);                            \
+    }                                           \
+} while (0);
 
 /*
  * Cleanup function to be passed in as destructor to the Hashtable for
  * authentication entries
  */
-static int auth_destructor(struct hashtable_entry *entry) {
-
-    if (!entry)
-        return -1;
-    xfree((void *) entry->key);
-    xfree(entry->val);
-
-    return 0;
-}
+/* static int auth_destructor(struct hashtable_entry *entry) { */
+/*  */
+/*     if (!entry) */
+/*         return -1; */
+/*     xfree((void *) entry->key); */
+/*     xfree(entry->val); */
+/*  */
+/*     return 0; */
+/* } */
 
 /*
  * Parse packet header, it is required at least the Fixed Header of each
@@ -627,7 +602,6 @@ static void write_callback(struct ev_ctx *ctx, void *arg) {
                      client->client_id, client->conn.ip,
                      solerr(client->rc), err);
             ev_del_fd(ctx, client->conn.fd);
-            /* HASH_DEL(server.clients, client); */
             client_deactivate(client);
             // Update stats
             info.nclients--;
@@ -731,7 +705,6 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
                 }
                 iter_destroy(it);
             }
-            /* HASH_DEL(server.clients, c); */
             client_deactivate(c);
             info.nclients--;
             info.nconnections--;
@@ -767,7 +740,6 @@ static void process_message(struct ev_ctx *ctx, struct client *c) {
             break;
         case -ERRCLIENTDC:
             ev_del_fd(ctx, c->conn.fd);
-            /* HASH_DEL(server.clients, io.client); */
             client_deactivate(io.client);
             // Update stats
             info.nclients--;
@@ -803,18 +775,11 @@ static void eventloop_start(void *args) {
     ev_register_event(&ctx, sfd, EV_READ, accept_callback, &sfd);
     // Register periodic tasks
     ev_register_cron(&ctx, publish_stats, NULL, conf->stats_pub_interval, 0);
-    /* ev_register_cron(&ctx, inflight_msg_check, NULL, 0, 9e8); */
+    ev_register_cron(&ctx, inflight_msg_check, NULL, 0, 9e8);
     // Start the loop, blocking call
     ev_run(&ctx);
     ev_destroy(&ctx);
 }
-
-/* static int session_destructor(struct hashtable_entry *entry) { */
-/*     if (!entry) */
-/*         return -HASHTABLE_ERR; */
-/*     DECREF(entry->val, struct client_session); */
-/*     return HASHTABLE_OK; */
-/* } */
 
 /* Fire a write callback to reply after a client request */
 void enqueue_event_write(struct ev_ctx *ctx, struct client *c) {
@@ -837,12 +802,10 @@ int start_server(const char *addr, const char *port) {
     /* Initialize global Sol instance */
     trie_init(&server.topics, NULL);
     server.maxfd = BASE_CLIENTS_NUM - 1;
-    server.authentications = hashtable_new(auth_destructor);
-    /* server.clients = xcalloc(1024, sizeof(struct client)); */
-    server.pool = memorypool_new(1024*128, sizeof(struct client));
+    server.authentications = NULL;
+    server.pool = memorypool_new(BASE_CLIENTS_NUM, sizeof(struct client));
     server.clients_map = NULL;
     server.sessions = NULL;
-    /* server.sessions = hashtable_new(session_destructor); */
     server.wildcards = list_new(wildcard_destructor);
 
     if (conf->allow_anonymous == false)
@@ -870,14 +833,7 @@ int start_server(const char *addr, const char *port) {
     eventloop_start(&sfd);
 
     close(sfd);
-    hashtable_destroy(server.authentications);
-    /* for (int i = 0; i < 1024; ++i) */
-    /*     client_destructor(&server.clients[i]); */
-    /* struct client *c, *tmp; */
-    /* HASH_ITER(hh, server.clients, c, tmp) { */
-    /*     HASH_DEL(server.clients, c); */
-    /*     client_destructor(c); */
-    /* } */
+    AUTH_DESTROY(server.authentications);
     list_destroy(server.wildcards, 1);
 
     /* Destroy SSL context, if any present */
@@ -940,18 +896,9 @@ static void subscriber_free(const struct ref *r) {
     xfree(sub);
 }
 
-/* static int subscriber_destroy(struct hashtable_entry *entry) { */
-/*     if (!entry) */
-/*         return -HASHTABLE_ERR; */
-/*     // free value field */
-/*     if (entry->val) DECREF(entry->val, struct subscriber); */
-/*     return HASHTABLE_OK; */
-/* } */
-
 static void topic_init(struct topic *t, const char *name) {
     t->name = name;
     t->subscribers = NULL;
-    /* t->subscribers = hashtable_new(subscriber_destroy); */
     t->retained_msg = NULL;
 }
 
@@ -993,10 +940,10 @@ struct client_session *client_session_alloc(char *session_id) {
     return session;
 }
 
-bool subscribed_to_topic(const struct topic *t, const struct client_session *s) {
-    struct subscriber *sub = NULL;
-    HASH_FIND_STR(t->subscribers, s->session_id, sub);
-    return sub != NULL;
+bool is_subscribed(const struct topic *t, const struct client_session *s) {
+    struct subscriber *dummy = NULL;
+    HASH_FIND_STR(t->subscribers, s->session_id, dummy);
+    return dummy != NULL;
 }
 
 struct subscriber *topic_add_subscriber(struct topic *t,

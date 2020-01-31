@@ -32,8 +32,8 @@
 #include "util.h"
 #include "config.h"
 #include "server.h"
+#include "sol_internal.h"
 #include "handlers.h"
-#include "hashtable.h"
 
 /* Prototype for a command handler */
 typedef int handler(struct io_event *);
@@ -228,7 +228,6 @@ static void set_payload_connack(struct client *c, unsigned char rc) {
     c->towrite += MQTT_ACK_LEN;
 
     if (c->clean_session == false) {
-        /* cc->session = hashtable_get(server.sessions, cc->client_id); */
         log_info("Resuming session for %s", c->client_id);
         /*
          * If there's already some subscriptions and pending messages,
@@ -271,12 +270,10 @@ static int connect_handler(struct io_event *e) {
         if (c->bits.username == 0 || c->bits.password == 0)
             goto bad_auth;
         else {
-            void *salt =
-                hashtable_get(server.authentications, c->payload.username);
-            if (!salt)
-                goto bad_auth;
-
-            if (check_passwd((char *) c->payload.password, salt) == false)
+            struct authentication *auth = NULL;
+            HASH_FIND_STR(server.authentications,
+                          (char *) c->payload.username, auth);
+            if (!auth || !check_passwd((char *) c->payload.password, auth->salt))
                 goto bad_auth;
         }
     }
@@ -584,7 +581,7 @@ static int publish_handler(struct io_event *e) {
         FOREACH (pit) {
             struct subscription *s = pit->ptr;
             int matched = match_subscription(topic, s->topic, s->end_wildcard);
-            if (matched == 0 && !subscribed_to_topic(t, s->subscriber->session))
+            if (matched == 0 && !is_subscribed(t, s->subscriber->session))
                 topic_add_subscriber(t, s->subscriber->session,
                                      s->subscriber->granted_qos);
         }

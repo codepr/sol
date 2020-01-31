@@ -30,7 +30,7 @@
 
 #include <stdio.h>
 #include <stdbool.h>
-#include "hashtable.h"
+#include "uthash.h"
 
 // Eventloop backend check
 #ifdef __linux__
@@ -127,10 +127,16 @@ struct config {
 
 extern struct config *conf;
 
+struct authentication {
+    char *username;
+    char *salt;
+    UT_hash_handle hh;
+};
+
 void config_set_default(void);
 void config_print(void);
 int config_load(const char *);
-bool config_read_passwd_file(const char *, HashTable *);
+bool config_read_passwd_file(const char *, struct authentication *);
 
 char *time_to_string(size_t);
 char *memory_to_string(size_t);

@@ -396,7 +396,7 @@ void config_print(void) {
     }
 }
 
-bool config_read_passwd_file(const char *path, HashTable *auth) {
+bool config_read_passwd_file(const char *path, struct authentication *auth_map) {
 
     assert(path);
 
@@ -429,7 +429,10 @@ bool config_read_passwd_file(const char *path, HashTable *auth) {
         while (*puname != '\n')
             password[i++] = *puname++;
 
-        hashtable_put(auth, xstrdup(username), xstrdup(password));
+        struct authentication *auth = xmalloc(sizeof(*auth));
+        auth->username = xstrdup(username);
+        auth->salt = xstrdup(password);
+        HASH_ADD_STR(auth_map, username, auth);
     }
 
     return true;
