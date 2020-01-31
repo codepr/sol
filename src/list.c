@@ -55,31 +55,22 @@ List *list_new(int (*destructor)(struct list_node *)) {
  * Destroy a list, releasing all allocated memory
  */
 void list_destroy(List *l, int deep) {
-
-    if (!l)
-        return;
-
+    if (!l) return;
     struct list_node *h = l->head;
     struct list_node *tmp;
-
     // free all nodes
     while (l->len--) {
-
         tmp = h->next;
-
-        if (l->destructor)
+        if (l->destructor) {
             l->destructor(h);
-        else {
+        } else {
             if (h) {
-                if (h->data && deep == 1)
-                    xfree(h->data);
+                if (h->data && deep == 1) xfree(h->data);
                 xfree(h);
             }
         }
-
         h = tmp;
     }
-
     // free List structure pointer
     xfree(l);
 }

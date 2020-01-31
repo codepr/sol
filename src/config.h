@@ -133,6 +133,17 @@ struct authentication {
     UT_hash_handle hh;
 };
 
+#define AUTH_DESTROY(auth_map) do {             \
+    struct authentication *auth, *dummy;        \
+    HASH_ITER(hh, (auth_map), auth, dummy) {    \
+        HASH_DEL((auth_map), auth);             \
+        xfree(auth->username);                  \
+        xfree(auth->salt);                      \
+        xfree(auth);                            \
+    }                                           \
+} while (0);
+
+
 void config_set_default(void);
 void config_print(void);
 int config_load(const char *);

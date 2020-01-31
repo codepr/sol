@@ -25,27 +25,17 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <time.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
 #include <string.h>
-#include <pthread.h>
-#include <arpa/inet.h>
-#include <sys/epoll.h>
-#include <sys/socket.h>
-#include <sys/eventfd.h>
-#include <openssl/err.h>
 #include "network.h"
-#include "mqtt.h"
 #include "util.h"
-#include "pack.h"
 #include "config.h"
 #include "sol_internal.h"
 #include "server.h"
 #include "handlers.h"
 #include "memorypool.h"
-#include "ref.h"
 #include "ev.h"
 
 /* Seconds in a Sol, easter egg */
@@ -174,6 +164,8 @@ static const char *solerr(int rc) {
             return "Packet sent exceeds max size accepted";
         case -ERREAGAIN:
             return "Socket FD EAGAIN";
+        case -ERRNOMEM:
+            return "Out of memory";
         case MQTT_UNACCEPTABLE_PROTOCOL_VERSION:
             return "[MQTT] Unknown protocol version";
         case MQTT_IDENTIFIER_REJECTED:
@@ -364,16 +356,6 @@ static void client_deactivate(struct client *client) {
     }
     client->client_id[0] = '\0';
 }
-
-#define AUTH_DESTROY(auth_map) do {             \
-    struct authentication *auth, *dummy;        \
-    HASH_ITER(hh, (auth_map), auth, dummy) {    \
-        HASH_DEL((auth_map), auth);             \
-        xfree(auth->username);                  \
-        xfree(auth->salt);                      \
-        xfree(auth);                            \
-    }                                           \
-} while (0);
 
 /*
  * Parse packet header, it is required at least the Fixed Header of each
@@ -734,6 +716,9 @@ static void process_message(struct ev_ctx *ctx, struct client *c) {
             info.nclients--;
             info.nconnections--;
             break;
+        case -ERRNOMEM:
+            log_error(solerr(c->rc));
+            break;
         default:
             c->status = WAITING_HEADER;
             if (io.data.header.bits.type != PUBLISH)
@@ -742,6 +727,10 @@ static void process_message(struct ev_ctx *ctx, struct client *c) {
     }
 }
 
+/*
+ * Eventloop stop callback, will be triggered by an EV_CLOSEFD event and stop
+ * the running loop, unblocking the call.
+ */
 static void stop_handler(struct ev_ctx *ctx, void *arg) {
     (void) arg;
     ev_stop(ctx);
@@ -876,6 +865,7 @@ static void client_init(struct client *client) {
 
 static struct topic *topic_new(const char *name) {
     struct topic *t = xmalloc(sizeof(*t));
+    if (!t) return NULL;
     topic_init(t, name);
     return t;
 }
@@ -924,6 +914,7 @@ void session_init(struct client_session *session, char *session_id) {
 
 struct client_session *client_session_alloc(char *session_id) {
     struct client_session *session = xmalloc(sizeof(*session));
+    if (!session) return NULL;
     session_init(session, session_id);
     snprintf(session->session_id, MQTT_CLIENT_ID_LEN, "%s", session_id);
     return session;
@@ -939,6 +930,7 @@ struct subscriber *topic_add_subscriber(struct topic *t,
                                         struct client_session *s,
                                         unsigned char qos) {
     struct subscriber *sub = xmalloc(sizeof(*sub));
+    if (!sub) return NULL;
     memset(sub, 0x00, sizeof(*sub));
     sub->session = s;
     sub->granted_qos = qos;

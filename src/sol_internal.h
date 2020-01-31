@@ -46,6 +46,7 @@
 #define ERRPACKETERR        2
 #define ERRMAXREQSIZE       3
 #define ERREAGAIN           4
+#define ERRNOMEM            5
 
 /*
  * Return code of handler functions, signaling if there's data payload to be
