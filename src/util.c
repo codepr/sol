@@ -302,13 +302,13 @@ size_t xmalloc_size(void *ptr) {
  */
 char *xstrdup(const char *s) {
 
-    char *ds = xmalloc(strlen(s) + 1);
+    size_t len = strlen(s);
+    char *ds = xmalloc(len + 1);
 
     if (!ds)
         return NULL;
 
-    // TODO: Bugged, change to snprintf
-    strcpy(ds, s);
+    snprintf(ds, len + 1, "%s", s);
 
     return ds;
 }

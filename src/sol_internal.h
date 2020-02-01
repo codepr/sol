@@ -148,6 +148,8 @@ void inflight_msg_init(struct inflight_msg *, struct client *,
                        struct mqtt_packet *, size_t);
 void inflight_msg_clear(struct inflight_msg *);
 bool is_subscribed(const struct topic *, const struct client_session *);
+struct subscriber *subscriber_new(struct topic *,
+                                  struct client_session *, unsigned char);
 struct subscriber *topic_add_subscriber(struct topic *,
                                         struct client_session *, unsigned char);
 void topic_del_subscriber(struct topic *, struct client *);

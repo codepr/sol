@@ -95,6 +95,8 @@ struct server server;
 
 static void client_deactivate(struct client *);
 
+static int wildcard_destructor(struct list_node *);
+
 // CALLBACKS for the eventloop
 static void accept_callback(struct ev_ctx *, void *);
 
@@ -290,7 +292,7 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
     struct mqtt_packet *p = NULL;
     struct client *c, *tmp;
     HASH_ITER(hh, server.clients_map, c, tmp) {
-        if (!c || !c->online || !c->session || !c->session->has_inflight)
+        if (!c || !c->connected || !c->session || !c->session->has_inflight)
             continue;
         for (int i = 1; i < MAX_INFLIGHT_MSGS; ++i) {
             // TODO remove 20 hardcoded value
@@ -328,6 +330,12 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
     }
 }
 
+static int subscription_cmp(const void *ptr_s1, const void *ptr_s2) {
+    struct subscription *s1 = ((struct list_node *) ptr_s1)->data;
+    const char *id = ptr_s2;
+    return STREQ(s1->subscriber->id, id, MQTT_CLIENT_ID_LEN);
+}
+
 static void client_deactivate(struct client *client) {
 
     if (client->online == false) return;
@@ -337,16 +345,12 @@ static void client_deactivate(struct client *client) {
     close_connection(&client->conn);
 
     client->online = false;
-    client->connected = false;
 
     if (client->clean_session == true) {
         if (client->session) {
-            struct iterator iter;
-            iter_init(&iter, client->session->subscriptions, list_iter_next);
-            struct iterator *it = &iter;
-            FOREACH(it) {
-                topic_del_subscriber(it->ptr, client);
-            }
+            list_foreach(item, client->session->subscriptions)
+                topic_del_subscriber(item->data, client);
+            list_remove(server.wildcards, client->client_id, subscription_cmp);
             HASH_DEL(server.sessions, client->session);
             DECREF(client->session, struct client_session);
         }
@@ -354,6 +358,7 @@ static void client_deactivate(struct client *client) {
             HASH_DEL(server.clients_map, client);
         memorypool_free(server.pool, client);
     }
+    client->connected = false;
     client->client_id[0] = '\0';
 }
 
@@ -924,6 +929,18 @@ bool is_subscribed(const struct topic *t, const struct client_session *s) {
     struct subscriber *dummy = NULL;
     HASH_FIND_STR(t->subscribers, s->session_id, dummy);
     return dummy != NULL;
+}
+
+struct subscriber *subscriber_new(struct topic *t,
+                                  struct client_session * s,
+                                  unsigned char qos) {
+    struct subscriber *sub = xmalloc(sizeof(*sub));
+    if (!sub) return NULL;
+    sub->session = s;
+    sub->granted_qos = qos;
+    sub->refcount = (struct ref) { .count = 0, .free = subscriber_free };
+    memcpy(sub->id, s->session_id, MQTT_CLIENT_ID_LEN);
+    return sub;
 }
 
 struct subscriber *topic_add_subscriber(struct topic *t,

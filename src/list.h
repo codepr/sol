@@ -46,7 +46,7 @@ typedef struct list {
  * Compare function, accept two void * arguments, generally referring a node
  * and his subsequent
  */
-typedef int (*compare_func)(void *, void *);
+typedef int (*compare_func)(const void *, const void *);
 
 /* Create an empty list */
 List *list_new(int (*destructor)(struct list_node*));
@@ -73,18 +73,37 @@ List *list_push(List *, void *);
 List *list_push_back(List *, void *);
 
 /*
- * Remove a node from the list based on a compare function that must be
- * previously defined and passed in as a function pointer, accept two void
- * *args, which generally means a node and his subsequent
- */
-void list_remove(List *, struct list_node *, compare_func);
-
-/*
  * Remove a single node from the list, the first one satisfy compare_func
  * criteria, without de-allocating it
  */
 struct list_node *list_remove_node(List *, void *, compare_func);
 
 void list_iter_next(struct iterator *);
+
+#define list_foreach(ptr, list_ptr) \
+    for (struct list_node *(ptr) = (list_ptr)->head; (ptr); (ptr) = (ptr)->next)
+
+/*
+ * Remove a node from the list based on a compare function that must be
+ * previously defined and passed in as a function pointer, accept two void
+ * *args, which generally means a node and his subsequent
+ */
+#define list_remove(list, ptr, cmp) do {              \
+    struct list_node *prev = NULL, *tmp = NULL;             \
+    struct list_node *curr = (list)->head;                  \
+    while (curr != NULL) {                                  \
+        if ((cmp)(curr, (ptr))) {                           \
+            tmp = curr;                                     \
+            if (prev == NULL) (list)->head = curr->next;    \
+            else prev->next = curr->next;                   \
+            curr = curr->next;                              \
+            if ((list)->destructor)                         \
+                (list)->destructor(tmp);                    \
+            (list)->len--;                                  \
+        } else {                                            \
+            curr = curr->next;                              \
+        }                                                   \
+    }                                                       \
+} while (0);
 
 #endif

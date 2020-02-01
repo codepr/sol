@@ -28,10 +28,6 @@
 #include "list.h"
 #include "util.h"
 
-static struct list_node *list_node_remove(struct list_node *,
-                                          struct list_node *,
-                                          compare_func, int *);
-
 /*
  * Create a list, initializing all fields
  */
@@ -168,43 +164,6 @@ List *list_push_back(List *l, void *val) {
     l->len++;
 
     return l;
-}
-
-void list_remove(List *l, struct list_node *node, compare_func cmp) {
-
-    if (!l || !node)
-        return;
-
-    int counter = 0;
-
-    l->head = list_node_remove(l->head, node, cmp, &counter);
-
-    l->len -= counter;
-
-}
-
-static struct list_node *list_node_remove(struct list_node *head,
-                                          struct list_node *node,
-                                          compare_func cmp, int *counter) {
-
-    if (!head)
-        return NULL;
-
-    if (cmp(head, node) == 0) {
-
-        struct list_node *tmp_next = head->next;
-        xfree(head);
-        head = NULL;
-
-        // Update remove counter
-        (*counter)++;
-
-        return tmp_next;
-    }
-
-    head->next = list_node_remove(head->next, node, cmp, counter);
-
-    return head;
 }
 
 static struct list_node *list_remove_single_node(struct list_node *head,

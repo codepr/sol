@@ -83,7 +83,7 @@ static char *test_list_push_back(void) {
 }
 
 
-static int compare_str(void *arg1, void *arg2) {
+static int compare_str(const void *arg1, const void *arg2) {
 
     const char *tn1 = ((struct list_node *) arg1)->data;
     const char *tn2 = arg2;

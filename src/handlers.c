@@ -180,7 +180,10 @@ static inline int match_subscription(const char *topic,
      * at the same time assuring that every char is equal in the topic as well,
      * we don't want to accept different topics
      */
-    while (wtopic[i]) {
+    printf("wtopic %s\n", wtopic);
+    printf("len %li\n", len);
+    printf("%c\n", wtopic[len-1]);
+    while (i < len && wtopic[i]) {
         j = 0;
         for (; i < len; ++i) {
             if (wtopic[i] == '+') {
@@ -200,6 +203,8 @@ static inline int match_subscription(const char *topic,
         ptopic = index(ptopic, '/');
         ptopic = index(ptopic + 1, '/');
         i++;
+        printf("%i\n", i);
+        /* printf("%c\n", wtopic[i]); */
     }
     if (!found && end_wildcard == true)
         return 0;
@@ -400,14 +405,11 @@ static int disconnect_handler(struct io_event *e) {
     // Remove from subscriptions if clean_session == true
     if (e->client->clean_session == true
         && list_size(e->client->session->subscriptions)) {
-        struct iterator *it =
-            iter_new(e->client->session->subscriptions, list_iter_next);
-        FOREACH (it) {
+        list_foreach(item, e->client->session->subscriptions) {
             log_debug("Removing %s from topic %s",
-                      e->client->client_id, ((struct topic *) it->ptr)->name);
-            topic_del_subscriber(it->ptr, e->client);
+                      e->client->client_id, ((struct topic *) item->data)->name);
+            topic_del_subscriber(item->data, e->client);
         }
-        iter_destroy(it);
     }
     return -ERRCLIENTDC;
 }
@@ -471,18 +473,22 @@ static int subscribe_handler(struct io_event *e) {
 
         struct topic *t = topic_get_or_create(&server, topic);
         // Clean session true for now
-        struct subscriber *tmp;
-        HASH_FIND(hh, t->subscribers, c->client_id, MQTT_CLIENT_ID_LEN, tmp);
-        if (c->clean_session == true || !tmp) {
-            struct subscriber *sub =
-                topic_add_subscriber(t, e->client->session, s->tuples[i].qos);
-            // we increment reference for the subscriptions session
-            INCREF(sub, struct subscriber);
-            list_push(e->client->session->subscriptions, t);
-            if (wildcard == true || index(topic, '+')) {
-                trie_prefix_map(server.topics.root, topic, recursive_sub, sub);
-                add_wildcard(topic, sub, wildcard);
+        if (!index(topic, '+')) {
+            struct subscriber *tmp;
+            HASH_FIND(hh, t->subscribers, c->client_id, MQTT_CLIENT_ID_LEN, tmp);
+            if (c->clean_session == true || !tmp) {
+                struct subscriber *sub =
+                    topic_add_subscriber(t, e->client->session, s->tuples[i].qos);
+                // we increment reference for the subscriptions session
+                INCREF(sub, struct subscriber);
+                list_push(e->client->session->subscriptions, t);
+                if (wildcard == true)
+                    trie_prefix_map(server.topics.root, topic, recursive_sub, sub);
             }
+        } else {
+            struct subscriber *sub =
+                subscriber_new(t, e->client->session, s->tuples[i].qos);
+            add_wildcard(topic, sub, wildcard);
         }
 
         // Retained message? Publish it
@@ -573,15 +579,14 @@ static int publish_handler(struct io_event *e) {
 
     /* Check for # wildcards subscriptions */
     if (list_size(server.wildcards) > 0) {
-        struct iterator it;
-        iter_init(&it, server.wildcards, list_iter_next);
-        struct iterator *pit = &it;
-        FOREACH (pit) {
-            struct subscription *s = pit->ptr;
+        list_foreach(item, server.wildcards) {
+            struct subscription *s = item->data;
             int matched = match_subscription(topic, s->topic, s->end_wildcard);
-            if (matched == 0 && !is_subscribed(t, s->subscriber->session))
+            if (matched == 0 && !is_subscribed(t, s->subscriber->session)) {
                 topic_add_subscriber(t, s->subscriber->session,
                                      s->subscriber->granted_qos);
+                list_push(s->subscriber->session->subscriptions, t);
+            }
         }
     }
 
