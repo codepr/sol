@@ -127,10 +127,15 @@ struct config {
 
 extern struct config *conf;
 
+/*
+ * Authentication structure to represent a login composed by username and salt.
+ * It's an hashable structure, for more info check
+ * https://troydhanson.github.io/uthash/userguide.html
+ */
 struct authentication {
     char *username;
     char *salt;
-    UT_hash_handle hh;
+    UT_hash_handle hh; /* UTHASH handle, needed to use UTHASH macros */
 };
 
 #define AUTH_DESTROY(auth_map) do {             \
@@ -143,12 +148,10 @@ struct authentication {
     }                                           \
 } while (0);
 
-
 void config_set_default(void);
 void config_print(void);
 int config_load(const char *);
 bool config_read_passwd_file(const char *, struct authentication **);
-
 char *time_to_string(size_t);
 char *memory_to_string(size_t);
 
