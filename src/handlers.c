@@ -212,9 +212,8 @@ static inline int match_subscription(const char *topic,
  * Command handlers
  */
 
-static void set_payload_connack(struct client *c, unsigned char rc) {
-    unsigned char session_present = 0;
-    unsigned char connect_flags = 0 | (session_present & 0x1) << 0;
+static void set_connack(struct client *c, unsigned char rc, unsigned sp) {
+    unsigned char connect_flags = 0 | (sp & 0x1) << 0;
 
     struct mqtt_packet response = {
         .header = { .byte = CONNACK_B },
@@ -226,7 +225,7 @@ static void set_payload_connack(struct client *c, unsigned char rc) {
     mqtt_pack(&response, c->wbuf + c->towrite);
     c->towrite += MQTT_ACK_LEN;
 
-    if (c->clean_session == false) {
+    if (c->clean_session == false && sp == 1) {
         log_info("Resuming session for %s", c->client_id);
         /*
          * If there's already some subscriptions and pending messages,
@@ -234,20 +233,19 @@ static void set_payload_connack(struct client *c, unsigned char rc) {
          */
         if (list_size(c->session->outgoing_msgs) > 0) {
             size_t len = 0;
-            struct iterator iter;
-            iter_init(&iter, c->session->outgoing_msgs, list_iter_next);
-            struct iterator *it = &iter;
-            FOREACH (it) {
-                len = mqtt_size(it->ptr, NULL);
-                mqtt_pack(it->ptr, c->wbuf + c->towrite);
+            list_foreach(item, c->session->outgoing_msgs) {
+                len = mqtt_size(item->data, NULL);
+                mqtt_pack(item->data, c->wbuf + c->towrite);
                 c->towrite += len;
             }
+            list_clear(c->session->outgoing_msgs, 0);
         }
     }
 }
 
 static int connect_handler(struct io_event *e) {
 
+    unsigned session_present = 0;
     struct mqtt_connect *c = &e->data.connect;
     struct client *cc = e->client;
 
@@ -301,6 +299,8 @@ static int connect_handler(struct io_event *e) {
     if (cc->session && c->bits.clean_session == true)
         // Clean session true, we have to clean old session, if any
         HASH_DEL(server.sessions, cc->session);
+    else if (cc->session)
+        session_present = 1;
 
     cc->connected = true;
 
@@ -367,10 +367,10 @@ static int connect_handler(struct io_event *e) {
 
     cc->clean_session = c->bits.clean_session;
 
-    set_payload_connack(cc, MQTT_CONNECTION_ACCEPTED);
+    set_connack(cc, MQTT_CONNECTION_ACCEPTED, session_present);
 
-    log_debug("Sending CONNACK to %s r=%u",
-              c->payload.client_id, MQTT_CONNECTION_ACCEPTED);
+    log_debug("Sending CONNACK to %s (%u, %u)",
+              cc->client_id, session_present, MQTT_CONNECTION_ACCEPTED);
 
     return REPLY;
 
@@ -379,16 +379,16 @@ clientdc:
     return -ERRCLIENTDC;
 
 bad_auth:
-    log_debug("Sending CONNACK to %s rc=%u",
-              c->payload.client_id, MQTT_BAD_USERNAME_OR_PASSWORD);  // TODO check for session
-    set_payload_connack(cc, MQTT_BAD_USERNAME_OR_PASSWORD);
+    log_debug("Sending CONNACK to %s (%u, %u)",
+              cc->client_id, session_present, MQTT_BAD_USERNAME_OR_PASSWORD);
+    set_connack(cc, MQTT_BAD_USERNAME_OR_PASSWORD, session_present);
 
     return MQTT_BAD_USERNAME_OR_PASSWORD;
 
 not_authorized:
-    log_debug("Sending CONNACK to %s rc=%u",
-              c->payload.client_id, MQTT_NOT_AUTHORIZED); // TODO check for session
-    set_payload_connack(cc, MQTT_NOT_AUTHORIZED);
+    log_debug("Sending CONNACK to %s (%u, %u)",
+              cc->client_id, session_present, MQTT_NOT_AUTHORIZED);
+    set_connack(cc, MQTT_NOT_AUTHORIZED, session_present);
 
     return MQTT_NOT_AUTHORIZED;
 }
@@ -469,14 +469,16 @@ static int subscribe_handler(struct io_event *e) {
             struct subscriber *tmp;
             HASH_FIND_STR(t->subscribers, c->client_id, tmp);
             if (c->clean_session == true || !tmp) {
-                struct subscriber *sub =
-                    topic_add_subscriber(t, e->client->session, s->tuples[i].qos);
-                // we increment reference for the subscriptions session
-                INCREF(sub, struct subscriber);
+                if (!tmp) {
+                    tmp = topic_add_subscriber(t, e->client->session,
+                                               s->tuples[i].qos);
+                    // we increment reference for the subscriptions session
+                    INCREF(tmp, struct subscriber);
+                }
                 list_push(e->client->session->subscriptions, t);
                 if (wildcard == true) {
-                    add_wildcard(topic, sub, wildcard);
-                    trie_prefix_map(server.topics.root, topic, recursive_sub, sub);
+                    add_wildcard(topic, tmp, wildcard);
+                    trie_prefix_map(server.topics.root, topic, recursive_sub, tmp);
                 }
             }
         } else {
