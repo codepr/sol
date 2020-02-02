@@ -173,7 +173,7 @@ exit:
  * well
  */
 static inline int match_subscription(const char *topic,
-                                     const char *wtopic, bool end_wildcard) {
+                                     const char *wtopic, bool multilevel) {
     size_t len = strlen(wtopic);
     int i = 0, j = 0;
     bool found = false;
@@ -200,13 +200,16 @@ static inline int match_subscription(const char *topic,
          * re already at /bar/baz and we don't need a pointer to /bar/baz
          * again
          */
+        if (ptopic[0] == '/')
+            ptopic++;
         ptopic = index(ptopic, '/');
-        ptopic = index(ptopic + 1, '/');
+        if (ptopic[0] == '/')
+            ptopic = index(ptopic + 1, '/');
         i++;
     }
-    if (!found && end_wildcard == true)
+    if (!found && ptopic && multilevel == true)
         return 0;
-    if (ptopic[1] != '\0' && end_wildcard == false)
+    if (ptopic && (ptopic[0] == '/' || ptopic[1] != '\0') && multilevel == false)
         return -1;
     return 0;
 }
@@ -406,7 +409,7 @@ static inline void add_wildcard(const char *topic, struct subscriber *s,
     struct subscription *subscription = xmalloc(sizeof(*subscription));
     subscription->subscriber = s;
     subscription->topic = xstrdup(topic);
-    subscription->end_wildcard = wildcard;
+    subscription->multilevel = wildcard;
     INCREF(s, struct subscriber);
     server.wildcards = list_push(server.wildcards, subscription);
 }
@@ -467,7 +470,12 @@ static int subscribe_handler(struct io_event *e) {
         }
 
         struct topic *t = topic_get_or_create(&server, topic);
-        // Clean session true for now
+        /*
+         * Let's explore two possible scenarios:
+         * 1. Normal topic (no single level wildcard '+') which can end with
+         *    multilevel wildcard '#'
+         * 2. A topic contaning one or more single level wildcard '+'
+         */
         if (!index(topic, '+')) {
             struct subscriber *tmp;
             HASH_FIND_STR(t->subscribers, c->client_id, tmp);
@@ -485,6 +493,11 @@ static int subscribe_handler(struct io_event *e) {
                 }
             }
         } else {
+            /*
+             * Here we encountered at least 1 single level wildcard '+', we add
+             * the topic to the wildcards list as we can't know at this point
+             * which topic it will match
+             */
             struct subscriber *sub =
                 subscriber_new(t, e->client->session, s->tuples[i].qos);
             add_wildcard(topic, sub, wildcard);
@@ -580,7 +593,7 @@ static int publish_handler(struct io_event *e) {
     if (list_size(server.wildcards) > 0) {
         list_foreach(item, server.wildcards) {
             struct subscription *s = item->data;
-            int matched = match_subscription(topic, s->topic, s->end_wildcard);
+            int matched = match_subscription(topic, s->topic, s->multilevel);
             if (matched == 0 && !is_subscribed(t, s->subscriber->session)) {
                 /*
                  * We need to make a copy of the subscriber cause UTHASH needs

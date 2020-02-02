@@ -74,7 +74,7 @@ struct subscriber {
 };
 
 struct subscription {
-    bool end_wildcard;
+    bool multilevel;
     const char *topic;
     struct subscriber *subscriber;
 };
