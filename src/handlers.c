@@ -180,9 +180,6 @@ static inline int match_subscription(const char *topic,
      * at the same time assuring that every char is equal in the topic as well,
      * we don't want to accept different topics
      */
-    printf("wtopic %s\n", wtopic);
-    printf("len %li\n", len);
-    printf("%c\n", wtopic[len-1]);
     while (i < len && wtopic[i]) {
         j = 0;
         for (; i < len; ++i) {
@@ -203,8 +200,6 @@ static inline int match_subscription(const char *topic,
         ptopic = index(ptopic, '/');
         ptopic = index(ptopic + 1, '/');
         i++;
-        printf("%i\n", i);
-        /* printf("%c\n", wtopic[i]); */
     }
     if (!found && end_wildcard == true)
         return 0;
@@ -399,18 +394,7 @@ not_authorized:
 }
 
 static int disconnect_handler(struct io_event *e) {
-
     log_debug("Received DISCONNECT from %s", e->client->client_id);
-
-    // Remove from subscriptions if clean_session == true
-    if (e->client->clean_session == true
-        && list_size(e->client->session->subscriptions)) {
-        list_foreach(item, e->client->session->subscriptions) {
-            log_debug("Removing %s from topic %s",
-                      e->client->client_id, ((struct topic *) item->data)->name);
-            topic_del_subscriber(item->data, e->client);
-        }
-    }
     return -ERRCLIENTDC;
 }
 
@@ -428,11 +412,19 @@ static void recursive_sub(struct trie_node *node, void *arg) {
     if (!node || !node->data)
         return;
     struct topic *t = node->data;
-    struct subscriber *s = arg;
-    INCREF(s, struct subscriber);
+    /*
+     * We need to make a copy of the subscriber cause UTHASH needs a proper
+     * handle to work correctly, otherwise we'll end up freeing the same
+     * refernce on disconnect and break the table
+     */
+    struct subscriber *s = subscriber_clone(arg), *tmp;
+    HASH_FIND_STR(t->subscribers, s->id, tmp);
+    if (!tmp) {
+        INCREF(s, struct subscriber);
+        HASH_ADD_STR(t->subscribers, id, s);
+    }
     log_debug("Adding subscriber %s to topic %s",
               s->session->session_id, t->name);
-    HASH_ADD(hh, t->subscribers, id, MQTT_CLIENT_ID_LEN, s);
     list_push(s->session->subscriptions, t);
 }
 
@@ -475,15 +467,17 @@ static int subscribe_handler(struct io_event *e) {
         // Clean session true for now
         if (!index(topic, '+')) {
             struct subscriber *tmp;
-            HASH_FIND(hh, t->subscribers, c->client_id, MQTT_CLIENT_ID_LEN, tmp);
+            HASH_FIND_STR(t->subscribers, c->client_id, tmp);
             if (c->clean_session == true || !tmp) {
                 struct subscriber *sub =
                     topic_add_subscriber(t, e->client->session, s->tuples[i].qos);
                 // we increment reference for the subscriptions session
                 INCREF(sub, struct subscriber);
                 list_push(e->client->session->subscriptions, t);
-                if (wildcard == true)
+                if (wildcard == true) {
+                    add_wildcard(topic, sub, wildcard);
                     trie_prefix_map(server.topics.root, topic, recursive_sub, sub);
+                }
             }
         } else {
             struct subscriber *sub =
@@ -583,8 +577,14 @@ static int publish_handler(struct io_event *e) {
             struct subscription *s = item->data;
             int matched = match_subscription(topic, s->topic, s->end_wildcard);
             if (matched == 0 && !is_subscribed(t, s->subscriber->session)) {
-                topic_add_subscriber(t, s->subscriber->session,
-                                     s->subscriber->granted_qos);
+                /*
+                 * We need to make a copy of the subscriber cause UTHASH needs
+                 * a proper handle to work correctly, otherwise we'll end up
+                 * freeing the same refernce on disconnect and break the table
+                 */
+                struct subscriber *copy = subscriber_clone(s->subscriber);
+                INCREF(copy, struct subscriber);
+                HASH_ADD_STR(t->subscribers, id, copy);
                 list_push(s->subscriber->session->subscriptions, t);
             }
         }

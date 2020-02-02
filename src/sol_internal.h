@@ -69,8 +69,8 @@ struct subscriber {
     struct client_session *session;
     unsigned char granted_qos;
     char id[MQTT_CLIENT_ID_LEN];
-    struct ref refcount;
     UT_hash_handle hh;
+    struct ref refcount;
 };
 
 struct subscription {
@@ -138,8 +138,8 @@ struct client_session {
     struct inflight_msg *i_acks;
     struct inflight_msg *i_msgs;
     struct inflight_msg *in_i_acks;
-    struct ref refcount;
     UT_hash_handle hh;
+    struct ref refcount;
 };
 
 struct server;
@@ -150,6 +150,7 @@ void inflight_msg_clear(struct inflight_msg *);
 bool is_subscribed(const struct topic *, const struct client_session *);
 struct subscriber *subscriber_new(struct topic *,
                                   struct client_session *, unsigned char);
+struct subscriber *subscriber_clone(const struct subscriber *);
 struct subscriber *topic_add_subscriber(struct topic *,
                                         struct client_session *, unsigned char);
 void topic_del_subscriber(struct topic *, struct client *);

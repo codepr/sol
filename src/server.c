@@ -348,9 +348,10 @@ static void client_deactivate(struct client *client) {
 
     if (client->clean_session == true) {
         if (client->session) {
-            list_foreach(item, client->session->subscriptions)
-                topic_del_subscriber(item->data, client);
             list_remove(server.wildcards, client->client_id, subscription_cmp);
+            list_foreach(item, client->session->subscriptions) {
+                topic_del_subscriber(item->data, client);
+            }
             HASH_DEL(server.sessions, client->session);
             DECREF(client->session, struct client_session);
         }
@@ -943,17 +944,28 @@ struct subscriber *subscriber_new(struct topic *t,
     return sub;
 }
 
+struct subscriber *subscriber_clone(const struct subscriber *s) {
+    struct subscriber *sub = xmalloc(sizeof(*sub));
+    if (!sub) return NULL;
+    sub->session = s->session;
+    sub->granted_qos = s->granted_qos;
+    sub->refcount = (struct ref) { .count = 0, .free = subscriber_free };
+    memcpy(sub->id, s->id, MQTT_CLIENT_ID_LEN);
+    return sub;
+}
+
 struct subscriber *topic_add_subscriber(struct topic *t,
                                         struct client_session *s,
                                         unsigned char qos) {
-    struct subscriber *sub = xmalloc(sizeof(*sub));
+    struct subscriber *sub = xmalloc(sizeof(*sub)), *tmp;
     if (!sub) return NULL;
-    memset(sub, 0x00, sizeof(*sub));
     sub->session = s;
     sub->granted_qos = qos;
     sub->refcount = (struct ref) { .count = 0, .free = subscriber_free };
     memcpy(sub->id, s->session_id, MQTT_CLIENT_ID_LEN);
-    HASH_ADD_STR(t->subscribers, id, sub);
+    HASH_FIND_STR(t->subscribers, sub->id, tmp);
+    if (!tmp)
+        HASH_ADD_STR(t->subscribers, id, sub);
     return sub;
 }
 
