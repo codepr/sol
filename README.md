@@ -18,6 +18,7 @@ there's probably some corner cases, not deeply investigated yet.
 - Configuration file on disk
 - Support for QoS messages 0, 1 and 2
 - Retained messages per topic
+- Session present check and handling
 - Periodic stats publishing
 - Support multiple topics subscriptions through wildcard (#) and (+) for single
   level wildcard e.g. foo/+/bar/#
@@ -30,7 +31,6 @@ there's probably some corner cases, not deeply investigated yet.
 
 ### To be implemented
 
-- Session present check and handling, already started
 - Last will & Testament, already started
 - Persistence on disk for inflight messages on disconnected clients
 - Check on max memory used

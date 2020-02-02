@@ -168,7 +168,10 @@ exit:
     return count;
 }
 
-/* Check if a topic match a wildcard subscription. for now just # works */
+/*
+ * Check if a topic match a wildcard subscription. It works with + and # as
+ * well
+ */
 static inline int match_subscription(const char *topic,
                                      const char *wtopic, bool end_wildcard) {
     size_t len = strlen(wtopic);
@@ -186,7 +189,7 @@ static inline int match_subscription(const char *topic,
             if (wtopic[i] == '+') {
                 found = true;
                 break;
-            } else if (wtopic[i] != ptopic[j]) {
+            } else if (!ptopic || (wtopic[i] != ptopic[j])) {
                 return -1;
             }
             j++;
@@ -488,7 +491,7 @@ static int subscribe_handler(struct io_event *e) {
         }
 
         // Retained message? Publish it
-        // TODO move to IO threadpool
+        // TODO move after SUBACK response
         if (t->retained_msg) {
             size_t len = bstring_len(t->retained_msg);
             memcpy(c->wbuf + c->towrite, t->retained_msg, len);
