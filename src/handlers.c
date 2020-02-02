@@ -135,6 +135,11 @@ int publish_message(struct mqtt_packet *pkt,
                 }
                 continue;
             }
+            /*
+             * The subscriber client is marked as online, so we proceed to
+             * set the inflight messages according to the QoS level required
+             * and write back the payload
+             */
             inflight_msg_init(&sc->session->i_msgs[mid], sc, pkt, len);
             inflight_msg_init(&sc->session->i_acks[mid], sc, ack, len);
             sc->session->has_inflight = true;
@@ -231,12 +236,18 @@ static void set_connack(struct client *c, unsigned char rc, unsigned sp) {
     mqtt_pack(&response, c->wbuf + c->towrite);
     c->towrite += MQTT_ACK_LEN;
 
+    /*
+     * If a session was present and the connected client have disabled the
+     * clean session flag, we have to take care of the outgoing messages
+     * pending, strictly after the CONNACK encoding
+     */
     if (c->clean_session == false && sp == 1) {
         log_info("Resuming session for %s", c->client_id);
         /*
          * If there's already some subscriptions and pending messages,
          * empty the queue
          */
+        // TODO check for write buffer size exceed
         if (list_size(c->session->outgoing_msgs) > 0) {
             size_t len = 0;
             list_foreach(item, c->session->outgoing_msgs) {
@@ -244,6 +255,7 @@ static void set_connack(struct client *c, unsigned char rc, unsigned sp) {
                 mqtt_pack(item->data, c->wbuf + c->towrite);
                 c->towrite += len;
             }
+            // We want to clean up the queue after the payload set
             list_clear(c->session->outgoing_msgs, 0);
         }
     }

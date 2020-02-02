@@ -146,7 +146,8 @@ enum client_status {
  * Wrapper structure around a connected client, each client can be a publisher
  * or a subscriber, it can be used to track sessions too.
  * As of now, no allocations will be fired, jsut a big pool of memory at the
- * start of the application will serve us a client pool.
+ * start of the application will serve us a client pool, read and write buffers
+ * are initialized lazily.
  *
  * It's an hashable struct which will be tracked during the execution of the
  * application, see https://troydhanson.github.io/uthash/userguide.html.

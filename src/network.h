@@ -41,7 +41,20 @@
 
 /*
  * Connection abstraction struct, provide a transparent interface for
- * connection handling
+ * connection handling, taking care of communication layer, being it encrypted
+ * or plain, by setting the right callbacks to be used.
+ *
+ * The 4 main operations reflected by those callbacks are the ones that can be
+ * performed on every FD:
+ *
+ * - accept
+ * - read
+ * - write
+ * - close
+ *
+ * According to the type of connection we need, each one of these actions will
+ * be set with the right function needed. Maintain even the address:port of the
+ * connecting client.
  */
 struct connection {
     int fd;

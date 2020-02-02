@@ -785,7 +785,6 @@ int start_server(const char *addr, const char *port) {
 
     /* Initialize global Sol instance */
     trie_init(&server.topics, NULL);
-    server.maxfd = BASE_CLIENTS_NUM - 1;
     server.authentications = NULL;
     server.pool = memorypool_new(BASE_CLIENTS_NUM, sizeof(struct client));
     server.clients_map = NULL;
