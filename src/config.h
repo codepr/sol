@@ -65,7 +65,6 @@
 #define VERSION                     "0.16.2"
 #define DEFAULT_SOCKET_FAMILY       INET
 #define DEFAULT_LOG_LEVEL           DEBUG
-#define DEFAULT_LOG_PATH            "/tmp/sol.log"
 #define DEFAULT_CONF_PATH           "/etc/sol/sol.conf"
 #define DEFAULT_HOSTNAME            "127.0.0.1"
 #define DEFAULT_PORT                "1883"

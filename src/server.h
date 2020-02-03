@@ -57,7 +57,6 @@
  * passed back to the IO epoll loop to be written back to the requesting client
  */
 struct io_event {
-    struct ev_ctx *ctx;
     struct client *client;
     struct mqtt_packet data;
 };
@@ -119,7 +118,7 @@ struct server {
 extern struct server server;
 
 int start_server(const char *, const char *);
-void enqueue_event_write(struct ev_ctx *, struct client *);
+void enqueue_event_write(const struct client *);
 void daemonize(void);
 
 #endif

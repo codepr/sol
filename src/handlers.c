@@ -69,8 +69,7 @@ static handler *handlers[15] = {
     disconnect_handler
 };
 
-int publish_message(struct mqtt_packet *pkt,
-                    const struct topic *t, struct ev_ctx *ctx) {
+int publish_message(struct mqtt_packet *pkt, const struct topic *t) {
 
     bool all_at_most_once = true;
     size_t len = 0;
@@ -150,7 +149,7 @@ int publish_message(struct mqtt_packet *pkt,
         sc->towrite += len;
 
         // Schedule a write for the current subscriber on the next event cycle
-        enqueue_event_write(ctx, sc);
+        enqueue_event_write(sc);
 
         info.messages_sent++;
 
@@ -630,7 +629,7 @@ static int publish_handler(struct io_event *e) {
         mqtt_pack(&e->data, t->retained_msg);
     }
 
-    if (publish_message(pkt, t, e->ctx) == 0)
+    if (publish_message(pkt, t) == 0)
         DECREF(pkt, struct mqtt_packet);
 
     // We have to answer to the publisher

@@ -325,7 +325,7 @@ void config_set_default(void) {
     config.version = VERSION;
     config.socket_family = DEFAULT_SOCKET_FAMILY;
     config.loglevel = DEFAULT_LOG_LEVEL;
-    strcpy(config.logpath, DEFAULT_LOG_PATH);
+    memset(config.logpath, 0x00, 0xFFF);
     strcpy(config.hostname, DEFAULT_HOSTNAME);
     strcpy(config.port, DEFAULT_PORT);
     config.run = eventfd(0, EFD_NONBLOCK);
@@ -387,7 +387,8 @@ void config_print(void) {
         log_info("\tMax request size: %s", human_rsize);
         log_info("Logging:");
         log_info("\tlevel: %s", llevel);
-        log_info("\tlogpath: %s", config.logpath);
+        if (config.logpath[0])
+            log_info("\tlogpath: %s", config.logpath);
         const char *human_memory = memory_to_string(config.max_memory);
         log_info("Max memory: %s", human_memory);
         log_info("Event loop backend: %s", EVENTLOOP_BACKEND);

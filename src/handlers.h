@@ -30,10 +30,9 @@
 
 struct topic;
 struct mqtt_packet;
-struct ev_ctx;
 struct io_event;
 
-int publish_message(struct mqtt_packet *, const struct topic *, struct ev_ctx *);
+int publish_message(struct mqtt_packet *, const struct topic *);
 
 int handle_command(unsigned, struct io_event *);
 

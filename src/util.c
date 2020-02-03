@@ -44,7 +44,7 @@ static size_t memory = 0;
 static FILE *fh = NULL;
 
 void sol_log_init(const char *file) {
-    assert(file);
+    if (!file) return;
     fh = fopen(file, "a+");
     if (!fh)
         printf("%lu * WARNING: Unable to open file %s\n",

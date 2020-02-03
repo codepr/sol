@@ -226,7 +226,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
         }
     };
 
-    publish_message(&p, topic_get(&server, (char *) p.publish.topic), ctx);
+    publish_message(&p, topic_get(&server, (char *) p.publish.topic));
 
     // $SOL/broker/uptime/sol
     p.publish.topiclen = sys_topics[3].len;
@@ -234,7 +234,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     p.publish.payloadlen = strlen(sutime);
     p.publish.payload = (unsigned char *) &sutime;
 
-    publish_message(&p, topic_get(&server, (char *) p.publish.topic), ctx);
+    publish_message(&p, topic_get(&server, (char *) p.publish.topic));
 
     // $SOL/broker/clients/connected
     p.publish.topiclen = sys_topics[4].len;
@@ -242,7 +242,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     p.publish.payloadlen = strlen(cclients);
     p.publish.payload = (unsigned char *) &cclients;
 
-    publish_message(&p, topic_get(&server, (char *) p.publish.topic), ctx);
+    publish_message(&p, topic_get(&server, (char *) p.publish.topic));
 
     // $SOL/broker/bytes/sent
     p.publish.topiclen = sys_topics[6].len;
@@ -250,7 +250,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     p.publish.payloadlen = strlen(bsent);
     p.publish.payload = (unsigned char *) &bsent;
 
-    publish_message(&p, topic_get(&server, (char *) p.publish.topic), ctx);
+    publish_message(&p, topic_get(&server, (char *) p.publish.topic));
 
     // $SOL/broker/messages/sent
     p.publish.topiclen = sys_topics[8].len;
@@ -258,7 +258,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     p.publish.payloadlen = strlen(msent);
     p.publish.payload = (unsigned char *) &msent;
 
-    publish_message(&p, topic_get(&server, (char *) p.publish.topic), ctx);
+    publish_message(&p, topic_get(&server, (char *) p.publish.topic));
 
     // $SOL/broker/messages/received
     p.publish.topiclen = sys_topics[9].len;
@@ -266,7 +266,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     p.publish.payloadlen = strlen(mrecv);
     p.publish.payload = (unsigned char *) &mrecv;
 
-    publish_message(&p, topic_get(&server, (char *) p.publish.topic), ctx);
+    publish_message(&p, topic_get(&server, (char *) p.publish.topic));
 
     // $SOL/broker/memory/used
     p.publish.topiclen = sys_topics[10].len;
@@ -274,7 +274,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     p.publish.payloadlen = strlen(mem);
     p.publish.payload = (unsigned char *) &mem;
 
-    publish_message(&p, topic_get(&server, (char *) p.publish.topic), ctx);
+    publish_message(&p, topic_get(&server, (char *) p.publish.topic));
 }
 
 /*
@@ -307,7 +307,7 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
                 // Serialize the packet and send it out again
                 mqtt_pack(p, c->wbuf + c->towrite);
                 c->towrite += c->session->i_msgs[i].size;
-                enqueue_event_write(ctx, c);
+                enqueue_event_write(c);
                 // Update information stats
                 info.messages_sent++;
             }
@@ -322,7 +322,7 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
                 // Serialize the packet and send it out again
                 mqtt_pack(p, c->wbuf + c->towrite);
                 c->towrite += c->session->i_acks[i].size;
-                enqueue_event_write(ctx, c);
+                enqueue_event_write(c);
                 // Update information stats
                 info.messages_sent++;
             }
@@ -572,7 +572,7 @@ static void write_callback(struct ev_ctx *ctx, void *arg) {
             ev_fire_event(ctx, client->conn.fd, EV_READ, read_callback, client);
             break;
         case -ERREAGAIN:
-            enqueue_event_write(ctx, client);
+            enqueue_event_write(client);
             break;
         default:
             log_info("Closing connection with %s (%s): %s %i",
@@ -618,6 +618,7 @@ static void accept_callback(struct ev_ctx *ctx, void *data) {
         struct client *c = memorypool_alloc(server.pool);
         c->conn = conn;
         client_init(c);
+        c->ctx = ctx;
 
         /* Add it to the epoll loop */
         ev_register_event(ctx, fd, EV_READ, read_callback, c);
@@ -667,7 +668,7 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
             if (c->has_lwt == true) {
                 char *tname = (char *) c->session->lwt_msg.publish.topic;
                 struct topic *t = topic_get(&server, tname);
-                publish_message(&c->session->lwt_msg, t, ctx);
+                publish_message(&c->session->lwt_msg, t);
             }
             // Clean resources
             ev_del_fd(ctx, c->conn.fd);
@@ -693,7 +694,7 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
 }
 
 static void process_message(struct ev_ctx *ctx, struct client *c) {
-    struct io_event io = { .client = c, .ctx = ctx };
+    struct io_event io = { .client = c };
     /*
      * Unpack received bytes into a mqtt_packet structure and execute the
      * correct handler based on the type of the operation.
@@ -710,7 +711,7 @@ static void process_message(struct ev_ctx *ctx, struct client *c) {
              * worker thread routine. Just send out all bytes stored in the
              * reply buffer to the reply file descriptor.
              */
-            enqueue_event_write(ctx, c);
+            enqueue_event_write(c);
             /* Free resource, ACKs will be free'd closing the server */
             if (io.data.header.bits.type != PUBLISH)
                 mqtt_packet_destroy(&io.data);
@@ -766,8 +767,8 @@ static void eventloop_start(void *args) {
 }
 
 /* Fire a write callback to reply after a client request */
-void enqueue_event_write(struct ev_ctx *ctx, struct client *c) {
-    ev_fire_event(ctx, c->conn.fd, EV_WRITE, write_callback, c);
+void enqueue_event_write(const struct client *c) {
+    ev_fire_event(c->ctx, c->conn.fd, EV_WRITE, write_callback, (void *) c);
 }
 
 static int wildcard_destructor(struct list_node *node) {

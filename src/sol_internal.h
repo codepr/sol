@@ -153,6 +153,7 @@ enum client_status {
  * application, see https://troydhanson.github.io/uthash/userguide.html.
  */
 struct client {
+    struct ev_ctx *ctx; /* An event context refrence mostly used to fire write events */
     int rc;  /* Return code of the message just handled */
     int status; /* Current status of the client (state machine) */
     int rpos; /* The nr of bytes to skip after a complete packet has been read.
