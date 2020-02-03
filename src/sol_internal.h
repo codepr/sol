@@ -196,8 +196,8 @@ struct client {
  */
 struct client_session {
     int next_free_mid; /* The next 'free' message ID */
-    List *subscriptions; /* All the clients subscriptions */
-    List *outgoing_msgs; /* Outgoing messages during disconnection time */
+    List *subscriptions; /* All the clients subscriptions, stored as topic structs */
+    List *outgoing_msgs; /* Outgoing messages during disconnection time, stored as mqtt_packet pointers */
     bool has_inflight; /* Just a flag stating the presence of inflight messages */
     bool clean_session; /* Clean session flag */
     char session_id[MQTT_CLIENT_ID_LEN]; /* The client_id the session refers to */

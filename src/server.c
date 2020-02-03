@@ -93,6 +93,8 @@ struct server server;
  * suffer high contentions by the threads and thus being really fast.
  */
 
+static void client_init(struct client *);
+
 static void client_deactivate(struct client *);
 
 static int wildcard_destructor(struct list_node *);
@@ -118,8 +120,6 @@ static void publish_stats(struct ev_ctx *, void *);
  * concluded
  */
 static void inflight_msg_check(struct ev_ctx *, void *);
-
-static void client_init(struct client *);
 
 static struct topic *topic_new(const char *);
 
@@ -182,6 +182,12 @@ static const char *solerr(int rc) {
             return "Unknown error";
     }
 }
+
+/*
+ * ====================================================
+ *  Cron tasks, to be repeated at fixed time intervals
+ * ====================================================
+ */
 
 /*
  * Publish statistics periodic task, it will be called once every N config
@@ -330,12 +336,54 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
     }
 }
 
+/*
+ * ======================================================
+ *  Private functions and callbacks for server behaviour
+ * ======================================================
+ */
+
+/*
+ * All clients are pre-allocated at the start of the server, but their buffers
+ * (read and write) are not, they're lazily allocated with this function, meant
+ * to be called on the accept callback
+ */
+static void client_init(struct client *client) {
+    client->online = true;
+    client->connected = false;
+    client->clean_session = true;
+    client->client_id[0] = '\0';
+    client->status = WAITING_HEADER;
+    client->rc = 0;
+    client->rpos = 0;
+    client->read = 0;
+    client->toread = 0;
+    if (!client->rbuf)
+        client->rbuf = xcalloc(conf->max_request_size, sizeof(unsigned char));
+    client->wrote = 0;
+    client->towrite = 0;
+    if (!client->wbuf)
+        client->wbuf = xcalloc(conf->max_request_size, sizeof(unsigned char));
+    client->last_seen = time(NULL);
+    client->has_lwt = false;
+    client->session = NULL;
+}
+
+/*
+ * Auxiliary compare function to be passed in as comparator to a list_remove
+ * call
+ */
 static int subscription_cmp(const void *ptr_s1, const void *ptr_s2) {
     struct subscription *s1 = ((struct list_node *) ptr_s1)->data;
     const char *id = ptr_s2;
     return STREQ(s1->subscriber->id, id, MQTT_CLIENT_ID_LEN);
 }
 
+/*
+ * As we really don't want to completely de-allocate a client in favor of
+ * making it reusable by another connection we simply deactivate it according
+ * to its state (e.g. if it's a clean_session connected client or not) and we
+ * allow the clients memory pool to reclaim it
+ */
 static void client_deactivate(struct client *client) {
 
     if (client->online == false) return;
@@ -496,7 +544,11 @@ exit:
     return 0;
 }
 
-/* Handle incoming requests, after being accepted or after a reply */
+/*
+ * Handle incoming requests, after being accepted or after a reply, under the
+ * hood it calls recv_packet and return an error code according to the outcome
+ * of the operation
+ */
 static inline int read_data(struct client *c) {
 
     /*
@@ -552,6 +604,12 @@ static inline int write_data(struct client *c) {
     c->towrite = c->wrote = 0;
     return 0;
 }
+
+/*
+ * ===========
+ *  Callbacks
+ * ===========
+ */
 
 /*
  * Callback dedicated to client replies, try to send as much data as possible
@@ -631,6 +689,11 @@ static void accept_callback(struct ev_ctx *ctx, void *data) {
     }
 }
 
+/*
+ * Reading packet callback, it's the main function that will be called every
+ * time a connected client has some data to be read, notified by the eventloop
+ * context.
+ */
 static void read_callback(struct ev_ctx *ctx, void *data) {
     struct client *c = data;
     if (c->status == SENDING_DATA)
@@ -693,6 +756,15 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
     }
 }
 
+/*
+ * This function is called only if the client has sent a full stream of bytes
+ * consisting of a complete packet as expected by the MQTT protocol and by the
+ * declared length of the packet.
+ * It uses eventloop APIs to react accordingly to the packet type received,
+ * validating it before proceed to call handlers. Depending on the handler
+ * called and its outcome, it'll enqueue an event to write a reply or just
+ * reset the client state to allow reading some more packets.
+ */
 static void process_message(struct ev_ctx *ctx, struct client *c) {
     struct io_event io = { .client = c };
     /*
@@ -766,11 +838,21 @@ static void eventloop_start(void *args) {
     ev_destroy(&ctx);
 }
 
+/*
+ * ===================
+ *  Main APIs exposed
+ * ===================
+ */
+
 /* Fire a write callback to reply after a client request */
 void enqueue_event_write(const struct client *c) {
     ev_fire_event(c->ctx, c->conn.fd, EV_WRITE, write_callback, (void *) c);
 }
 
+/*
+ * Auxiliary function, destructor to be passed in to init a list structure,
+ * this one is used to correctly destroy struct subscription items
+ */
 static int wildcard_destructor(struct list_node *node) {
     if (!node)
         return -1;
@@ -782,6 +864,10 @@ static int wildcard_destructor(struct list_node *node) {
     return 0;
 }
 
+/*
+ * Main entry point for the server, to be called with an address and a port
+ * to start listening
+ */
 int start_server(const char *addr, const char *port) {
 
     /* Initialize global Sol instance */
@@ -831,6 +917,9 @@ int start_server(const char *addr, const char *port) {
     return 0;
 }
 
+/*
+ * Make the entire process a daemon
+ */
 void daemonize(void) {
 
     int fd;
@@ -848,26 +937,11 @@ void daemonize(void) {
     }
 }
 
-static void client_init(struct client *client) {
-    client->online = true;
-    client->connected = false;
-    client->clean_session = true;
-    client->client_id[0] = '\0';
-    client->status = WAITING_HEADER;
-    client->rc = 0;
-    client->rpos = 0;
-    client->read = 0;
-    client->toread = 0;
-    if (!client->rbuf)
-        client->rbuf = xcalloc(conf->max_request_size, sizeof(unsigned char));
-    client->wrote = 0;
-    client->towrite = 0;
-    if (!client->wbuf)
-        client->wbuf = xcalloc(conf->max_request_size, sizeof(unsigned char));
-    client->last_seen = time(NULL);
-    client->has_lwt = false;
-    client->session = NULL;
-}
+/*
+ * =================================
+ *  Internal module implementations
+ * =================================
+ */
 
 static struct topic *topic_new(const char *name) {
     struct topic *t = xmalloc(sizeof(*t));
