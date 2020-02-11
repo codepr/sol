@@ -49,5 +49,5 @@ static inline void ref_dec(const struct ref *ref) {
         ref->free(ref);
 }
 
-#define INCREF(ptr, type) do { ref_inc(&((type *) ptr)->refcount); } while (0);
-#define DECREF(ptr, type) do { ref_dec(&((type *) ptr)->refcount); } while (0);
+#define INCREF(ptr, type) ref_inc(&((type *) ptr)->refcount);
+#define DECREF(ptr, type) ref_dec(&((type *) ptr)->refcount);

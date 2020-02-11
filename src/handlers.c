@@ -130,7 +130,7 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t) {
                     INCREF(pkt, struct mqtt_packet);
                     inflight_msg_init(&s->i_msgs[mid], sc, pkt, len);
                     inflight_msg_init(&s->i_acks[mid], sc, ack, len);
-                    s->has_inflight = true;
+                    ++s->inflights;
                 }
                 continue;
             }
@@ -141,7 +141,7 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t) {
              */
             inflight_msg_init(&sc->session->i_msgs[mid], sc, pkt, len);
             inflight_msg_init(&sc->session->i_acks[mid], sc, ack, len);
-            sc->session->has_inflight = true;
+            ++sc->session->inflights;
             all_at_most_once = false;
         }
 
@@ -194,7 +194,7 @@ static inline int match_subscription(const char *topic,
                 found = true;
                 break;
             } else if (!ptopic || (wtopic[i] != ptopic[j])) {
-                return -1;
+                return -SOL_ERR;
             }
             j++;
         }
@@ -212,10 +212,10 @@ static inline int match_subscription(const char *topic,
         i++;
     }
     if (!found && ptopic && multilevel == true)
-        return 0;
+        return SOL_OK;
     if (ptopic && (ptopic[0] == '/' || ptopic[1] != '\0') && multilevel == false)
-        return -1;
-    return 0;
+        return -SOL_ERR;
+    return SOL_OK;
 }
 
 /*
@@ -371,7 +371,7 @@ static int connect_handler(struct io_event *e) {
             size_t publen = mqtt_size(&cc->session->lwt_msg, NULL);
             bstring payload = bstring_empty(publen);
             mqtt_pack(&cc->session->lwt_msg, payload);
-            // We got a ready-to-be sent bytestring in the retained message
+            // We got a ready-to-be-sent bytestring in the retained message
             // field
             t->retained_msg = payload;
         }
@@ -605,7 +605,7 @@ static int publish_handler(struct io_event *e) {
         list_foreach(item, server.wildcards) {
             struct subscription *s = item->data;
             int matched = match_subscription(topic, s->topic, s->multilevel);
-            if (matched == 0 && !is_subscribed(t, s->subscriber->session)) {
+            if (matched == SOL_OK && !is_subscribed(t, s->subscriber->session)) {
                 /*
                  * We need to make a copy of the subscriber cause UTHASH needs
                  * a proper handle to work correctly, otherwise we'll end up
@@ -645,7 +645,7 @@ static int publish_handler(struct io_event *e) {
         INCREF(ack, struct mqtt_packet);
         mqtt_ack(ack, orig_mid);
         inflight_msg_init(&c->session->in_i_acks[orig_mid], c, ack, publen);
-        c->session->has_inflight = true;
+        ++c->session->inflights;
     }
 
     log_debug("Sending %s to %s (m%u)",
@@ -674,7 +674,7 @@ static int puback_handler(struct io_event *e) {
     inflight_msg_clear(&c->session->i_msgs[pkt_id]);
     c->session->i_acks[pkt_id].in_use = 0;
     inflight_msg_clear(&c->session->i_acks[pkt_id]);
-    c->session->has_inflight = false;
+    --c->session->inflights;
     return NOREPLY;
 }
 
@@ -697,7 +697,7 @@ static int pubrel_handler(struct io_event *e) {
     mqtt_pack_mono(c->wbuf + c->towrite, PUBCOMP, pkt_id);
     c->towrite += MQTT_ACK_LEN;
     c->session->in_i_acks[pkt_id].in_use = 0;
-    c->session->has_inflight = false;
+    --c->session->inflights;
     inflight_msg_clear(&c->session->in_i_acks[pkt_id]);
     log_debug("Sending PUBCOMP to %s (m%u)", c->client_id, pkt_id);
     return REPLY;
@@ -711,7 +711,7 @@ static int pubcomp_handler(struct io_event *e) {
     c->session->i_msgs[pkt_id].in_use = 0;
     inflight_msg_clear(&c->session->i_msgs[pkt_id]);
     inflight_msg_clear(&c->session->i_acks[pkt_id]);
-    c->session->has_inflight = false;
+    --c->session->inflights;
     return NOREPLY;
 }
 

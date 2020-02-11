@@ -298,7 +298,7 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
     struct mqtt_packet *p = NULL;
     struct client *c, *tmp;
     HASH_ITER(hh, server.clients_map, c, tmp) {
-        if (!c || !c->connected || !c->session || !c->session->has_inflight)
+        if (!c || !c->connected || !c->session || !has_inflight(c->session))
             continue;
         for (int i = 1; i < MAX_INFLIGHT_MSGS; ++i) {
             // TODO remove 20 hardcoded value
@@ -541,7 +541,7 @@ static ssize_t recv_packet(struct client *c) {
 
 exit:
 
-    return 0;
+    return SOL_OK;
 }
 
 /*
@@ -576,7 +576,7 @@ static inline int read_data(struct client *c) {
 
     info.bytes_recv += c->read;
 
-    return 0;
+    return SOL_OK;
 
     // Disconnect packet received
 
@@ -602,7 +602,7 @@ static inline int write_data(struct client *c) {
     info.bytes_sent += c->towrite;
     // Reset client written bytes track fields
     c->towrite = c->wrote = 0;
-    return 0;
+    return SOL_OK;
 }
 
 /*
@@ -620,7 +620,7 @@ static void write_callback(struct ev_ctx *ctx, void *arg) {
     struct client *client = arg;
     int err = write_data(client);
     switch (err) {
-        case 0: // OK
+        case SOL_OK: // OK
             /*
              * Rearm descriptor making it ready to receive input,
              * read_callback will be the callback to be used; also reset the
@@ -647,8 +647,8 @@ static void write_callback(struct ev_ctx *ctx, void *arg) {
 
 /*
  * Handle incoming connections, create a a fresh new struct client structure
- * and link it to the fd, ready to be set in EPOLLIN event, then pass the
- * connection to the IO EPOLL loop, waited by the IO thread pool.
+ * and link it to the fd, ready to be set in EV_READ event, then schedule a
+ * call to the read_callback to handle incoming streams of bytes
  */
 static void accept_callback(struct ev_ctx *ctx, void *data) {
     int serverfd = *((int *) data);
@@ -705,7 +705,7 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
      */
     int rc = read_data(c);
     switch (rc) {
-        case 0:
+        case SOL_OK:
             /*
              * All is ok, raise an event to the worker poll EPOLL and
              * link it with the IO event containing the decode payload
@@ -737,14 +737,11 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
             ev_del_fd(ctx, c->conn.fd);
             // Remove from subscriptions for now
             if (c->session && list_size(c->session->subscriptions) > 0) {
-                struct list *subs = c->session->subscriptions;
-                struct iterator *it = iter_new(subs, list_iter_next);
-                FOREACH (it) {
+                list_foreach(item, c->session->subscriptions) {
                     log_debug("Deleting %s from topic %s",
-                              c->client_id, ((struct topic *) it->ptr)->name);
-                    topic_del_subscriber(it->ptr, c);
+                              c->client_id, ((struct topic *) item->data)->name);
+                    topic_del_subscriber(item->data, c);
                 }
-                iter_destroy(it);
             }
             client_deactivate(c);
             info.nclients--;
@@ -832,7 +829,7 @@ static void eventloop_start(void *args) {
     ev_register_event(&ctx, sfd, EV_READ, accept_callback, &sfd);
     // Register periodic tasks
     ev_register_cron(&ctx, publish_stats, NULL, conf->stats_pub_interval, 0);
-    ev_register_cron(&ctx, inflight_msg_check, NULL, 0, 9e8);
+    ev_register_cron(&ctx, inflight_msg_check, NULL, 1, 0);
     // Start the loop, blocking call
     ev_run(&ctx);
     ev_destroy(&ctx);
@@ -855,13 +852,13 @@ void enqueue_event_write(const struct client *c) {
  */
 static int wildcard_destructor(struct list_node *node) {
     if (!node)
-        return -1;
+        return -SOL_ERR;
     struct subscription *s = node->data;
     DECREF(s->subscriber, struct subscriber);
     xfree((char *) s->topic);
     xfree(s);
     xfree(node);
-    return 0;
+    return SOL_OK;
 }
 
 /*
@@ -914,7 +911,7 @@ int start_server(const char *addr, const char *port) {
 
     log_info("Sol v%s exiting", VERSION);
 
-    return 0;
+    return SOL_OK;
 }
 
 /*
@@ -966,13 +963,15 @@ static void session_free(const struct ref *refcount) {
         container_of(refcount, struct client_session, refcount);
     list_destroy(session->subscriptions, 0);
     list_destroy(session->outgoing_msgs, 0);
-    for (int i = 0; i < MAX_INFLIGHT_MSGS; ++i) {
-        if (session->i_acks[i].in_use)
-            DECREF(session->i_acks[i].packet, struct mqtt_packet);
-        if (session->in_i_acks[i].in_use)
-            DECREF(session->in_i_acks[i].packet, struct mqtt_packet);
-        if (session->i_msgs[i].in_use)
-            DECREF(session->i_msgs[i].packet, struct mqtt_packet);
+    if (has_inflight(session)) {
+        for (int i = 0; i < MAX_INFLIGHT_MSGS; ++i) {
+            if (session->i_acks[i].in_use)
+                DECREF(session->i_acks[i].packet, struct mqtt_packet);
+            if (session->in_i_acks[i].in_use)
+                DECREF(session->in_i_acks[i].packet, struct mqtt_packet);
+            if (session->i_msgs[i].in_use)
+                DECREF(session->i_msgs[i].packet, struct mqtt_packet);
+        }
     }
     xfree(session->i_acks);
     xfree(session->i_msgs);
@@ -981,7 +980,7 @@ static void session_free(const struct ref *refcount) {
 }
 
 void session_init(struct client_session *session, char *session_id) {
-    session->has_inflight = false;
+    session->inflights = 0;
     session->next_free_mid = 1;
     session->subscriptions = list_new(NULL);
     session->outgoing_msgs = list_new(NULL);
@@ -990,6 +989,10 @@ void session_init(struct client_session *session, char *session_id) {
     session->i_msgs = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
     session->in_i_acks = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
     session->refcount = (struct ref) { session_free, 0 };
+}
+
+bool has_inflight(const struct client_session *session) {
+    return session->inflights > 0;
 }
 
 struct client_session *client_session_alloc(char *session_id) {

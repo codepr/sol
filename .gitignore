@@ -29,3 +29,6 @@ prof_output
 sol
 sol_test
 test
+compile_commands.json
+certs/
+perf.txt

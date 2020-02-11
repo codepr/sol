@@ -34,6 +34,10 @@
 #include "uthash.h"
 #include "network.h"
 
+/* Generic return codes without a defined purpose */
+#define SOL_OK              0
+#define SOL_ERR             1
+
 /*
  * Error codes for packet reception, signaling respectively
  * - client disconnection
@@ -198,7 +202,7 @@ struct client_session {
     int next_free_mid; /* The next 'free' message ID */
     List *subscriptions; /* All the clients subscriptions, stored as topic structs */
     List *outgoing_msgs; /* Outgoing messages during disconnection time, stored as mqtt_packet pointers */
-    bool has_inflight; /* Just a flag stating the presence of inflight messages */
+    int inflights; /* Just a counter stating the presence of inflight messages */
     bool clean_session; /* Clean session flag */
     char session_id[MQTT_CLIENT_ID_LEN]; /* The client_id the session refers to */
     struct mqtt_packet lwt_msg; /* A possibly NULL LWT message, will be set on connection */
@@ -230,4 +234,5 @@ struct topic *topic_get(const struct server *, const char *);
 struct topic *topic_get_or_create(struct server *, const char *);
 unsigned next_free_mid(struct client_session *);
 void session_init(struct client_session *, char *);
+bool has_inflight(const struct client_session *);
 struct client_session *client_session_alloc(char *);
