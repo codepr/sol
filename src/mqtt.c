@@ -156,6 +156,64 @@ size_t mqtt_decode_length(unsigned char *buf, unsigned *pos) {
  * Meant to be called through a dispatch table, with command opcode as index
  */
 
+/*
+ * MQTT Connect packet unpack function, it's the first mandatory packet that
+ * a new client must send after the socket connection went ok. As described in
+ * the MQTT v3.1.1 specs the packet has the following form:
+ *
+ * |   Bit      |  7  |  6  |  5  |  4  |  3  |  2  |  1  |   0    |
+ * |------------|-----------------------|--------------------------|<-- Fixed Header
+ * | Byte 1     |      MQTT type 3      | dup |    QoS    | retain |
+ * |------------|--------------------------------------------------|
+ * | Byte 2     |                                                  |
+ * |   .        |               Remaining Length                   |
+ * |   .        |                                                  |
+ * | Byte 5     |                                                  |
+ * |------------|--------------------------------------------------|<-- Variable Header
+ * | Byte 6     |             Protocol name len MSB                |
+ * | Byte 7     |             Protocol name len LSB                |  [UINT16]
+ * |------------|--------------------------------------------------|
+ * | Byte 8     |                                                  |
+ * |   .        |                'M' 'Q' 'T' 'T'                   |  4 bytes on v3.1.1
+ * | Byte 12    |                                                  |
+ * |------------|--------------------------------------------------|
+ * | Byte 13    |                 Protocol level                   |  In v3.1.1 is '4'
+ * |------------|--------------------------------------------------|
+ * |            |                 Connect flags                    |
+ * | Byte 14    |--------------------------------------------------|
+ * |            |  U  |  P  |  WR |     WQ    |  WF |  CS |    R   |
+ * |------------|--------------------------------------------------|
+ * | Byte 15    |                 Keepalive MSB                    |  [UINT16]
+ * | Byte 17    |                 Keepalive LSB                    |
+ * |------------|--------------------------------------------------|<-- Payload
+ * | Byte 18    |             Client ID length MSB                 |  [UINT16]
+ * | Byte 19    |             Client ID length LSB                 |
+ * |------------|--------------------------------------------------|
+ * | Byte 20    |                                                  |
+ * |   .        |                  Client ID                       |
+ * | Byte N     |                                                  |
+ * |------------|--------------------------------------------------|
+ * | Byte N+1   |              Username length MSB                 |
+ * | Byte N+2   |              Username length LSB                 |
+ * |------------|--------------------------------------------------|
+ * | Byte N+3   |                                                  |
+ * |   .        |                  Username                        |
+ * | Byte N+M   |                                                  |
+ * |------------|--------------------------------------------------|
+ * | Byte N+M+1 |              Password length MSB                 |
+ * | Byte N+M+2 |              Password length LSB                 |
+ * |------------|--------------------------------------------------|
+ * | Byte N+M+3 |                                                  |
+ * |   .        |                  Password                        |
+ * | Byte N+M+K |                                                  |
+ *
+ * All that the function do is just read bytes sequentially according to their
+ * storing type, strings are treated as arrays of unsigned char.
+ * The example assume that the remaining length uses all the dedicated bytes
+ * but in reality it can be even just one byte length; the function starts to
+ * unpack from the Variable Header position to the end of the packet as stated
+ * by the total length expected.
+ */
 static int unpack_mqtt_connect(unsigned char *buf,
                                struct mqtt_packet *pkt, size_t len) {
 
@@ -213,6 +271,40 @@ static int unpack_mqtt_connect(unsigned char *buf,
     return MQTT_OK;
 }
 
+/*
+ * MQTT Publish packet unpack function, as described in the MQTT v3.1.1 specs
+ * the packet has the following form:
+ *
+ * |   Bit    |  7  |  6  |  5  |  4  |  3  |  2  |  1  |   0    |
+ * |----------|-----------------------|--------------------------|<-- Fixed Header
+ * | Byte 1   |      MQTT type 3      | dup |    QoS    | retain |
+ * |----------|--------------------------------------------------|
+ * | Byte 2   |                                                  |
+ * |   .      |               Remaining Length                   |
+ * |   .      |                                                  |
+ * | Byte 5   |                                                  |
+ * |----------|--------------------------------------------------|<-- Variable Header
+ * | Byte 6   |                Topic len MSB                     |
+ * | Byte 7   |                Topic len LSB                     |  [UINT16]
+ * |----------|--------------------------------------------------|
+ * | Byte 8   |                                                  |
+ * |   .      |                Topic name                        |
+ * | Byte N   |                                                  |
+ * |----------|--------------------------------------------------|
+ * | Byte N+1 |            Packet Identifier MSB                 |  [UINT16]
+ * | Byte N+2 |            Packet Identifier LSB                 |
+ * |----------|--------------------------------------------------|<-- Payload
+ * | Byte N+3 |                                                  |
+ * |   .      |                   Payload                        |
+ * | Byte N+M |                                                  |
+ *
+ * All that the function do is just read bytes sequentially according to their
+ * storing type, strings are treated as arrays of unsigned char.
+ * The example assume that the remaining length uses all the dedicated bytes
+ * but in reality it can be even just one byte length; the function starts to
+ * unpack from the Variable Header position to the end of the packet as stated
+ * by the total length expected.
+ */
 static int unpack_mqtt_publish(unsigned char *buf,
                                struct mqtt_packet *pkt, size_t len) {
     /* Read topic length and topic of the soon-to-be-published message */
@@ -256,7 +348,7 @@ static int unpack_mqtt_subscribe(unsigned char *buf,
     len -= sizeof(uint16_t);
 
     /*
-     * Read in a loop all remaning bytes specified by len of the Fixed Header.
+     * Read in a loop all remaining bytes specified by len of the Fixed Header.
      * From now on the payload consists of 3-tuples formed by:
      *  - topic length
      *  - topic filter (string)
@@ -302,7 +394,7 @@ static int unpack_mqtt_unsubscribe(unsigned char *buf,
     len -= sizeof(uint16_t);
 
     /*
-     * Read in a loop all remaning bytes specified by len of the Fixed Header.
+     * Read in a loop all remaining bytes specified by len of the Fixed Header.
      * From now on the payload consists of 2-tuples formed by:
      *  - topic length
      *  - topic filter (string)
@@ -572,16 +664,16 @@ size_t mqtt_size(const struct mqtt_packet *pkt, size_t *len) {
             size = MQTT_ACK_LEN;
             break;
     }
-    int remaninglen_offset = 0;
+    int remaininglen_offset = 0;
     if ((size - 1) > 0x200000)      // 3 bytes <= 128 * 128 * 128
-        remaninglen_offset = 3;
+        remaininglen_offset = 3;
     else if ((size - 1) > 0x4000)   // 2 bytes <= 128 * 128
-        remaninglen_offset = 2;
+        remaininglen_offset = 2;
     else if ((size - 1) > 0x80)     // 1 byte  <= 128
-        remaninglen_offset = 1;
-    size += remaninglen_offset;
+        remaininglen_offset = 1;
+    size += remaininglen_offset;
     if (len)
-        *len = size - MQTT_HEADER_LEN - remaninglen_offset;
+        *len = size - MQTT_HEADER_LEN - remaininglen_offset;
     return size;
 }
 

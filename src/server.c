@@ -496,7 +496,7 @@ static ssize_t recv_packet(struct client *c) {
             return -ERREAGAIN;
 
         /*
-         * Read remaning length bytes which starts at byte 2 and can be long to
+         * Read remaining length bytes which starts at byte 2 and can be long to
          * 4 bytes based on the size stored, so byte 2-5 is dedicated to the
          * packet length.
          */
