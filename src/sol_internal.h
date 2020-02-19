@@ -34,6 +34,8 @@
 #include "uthash.h"
 #include "network.h"
 
+extern pthread_mutex_t mutex;
+
 /* Generic return codes without a defined purpose */
 #define SOL_OK              0
 #define SOL_ERR             1

@@ -38,6 +38,8 @@
 #include "memorypool.h"
 #include "ev.h"
 
+pthread_mutex_t mutex;
+
 /* Seconds in a Sol, easter egg */
 static const double SOL_SECONDS = 88775.24;
 
@@ -386,6 +388,7 @@ static int subscription_cmp(const void *ptr_s1, const void *ptr_s2) {
  */
 static void client_deactivate(struct client *client) {
 
+    pthread_mutex_lock(&mutex);
     if (client->online == false) return;
 
     client->rpos = client->toread = client->read = 0;
@@ -409,6 +412,7 @@ static void client_deactivate(struct client *client) {
     }
     client->connected = false;
     client->client_id[0] = '\0';
+    pthread_mutex_unlock(&mutex);
 }
 
 /*
@@ -725,6 +729,7 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
              * free resources allocated such as io_event structure and
              * paired payload
              */
+            pthread_mutex_lock(&mutex);
             log_error("Closing connection with %s (%s): %s",
                       c->client_id, c->conn.ip, solerr(rc));
             // Publish, if present, LWT message
@@ -743,6 +748,7 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
                     topic_del_subscriber(item->data, c);
                 }
             }
+            pthread_mutex_unlock(&mutex);
             client_deactivate(c);
             info.nclients--;
             info.nconnections--;
@@ -874,6 +880,7 @@ int start_server(const char *addr, const char *port) {
     server.clients_map = NULL;
     server.sessions = NULL;
     server.wildcards = list_new(wildcard_destructor);
+    pthread_mutex_init(&mutex, NULL);
 
     if (conf->allow_anonymous == false)
         config_read_passwd_file(conf->password_file, &server.authentications);
@@ -896,6 +903,9 @@ int start_server(const char *addr, const char *port) {
     log_info("Server start");
     info.start_time = time(NULL);
 
+    pthread_t thrs[2];
+    for (int i = 0; i < 2; ++i)
+        pthread_create(&thrs[i], NULL, (void * (*) (void *)) &eventloop_start, &sfd);
     // start eventloop, could be spread on multiple threads
     eventloop_start(&sfd);
 
@@ -908,6 +918,7 @@ int start_server(const char *addr, const char *port) {
         SSL_CTX_free(server.ssl_ctx);
         openssl_cleanup();
     }
+    pthread_mutex_destroy(&mutex);
 
     log_info("Sol v%s exiting", VERSION);
 

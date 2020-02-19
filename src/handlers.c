@@ -83,6 +83,7 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t) {
     size_t len = 0;
     unsigned short mid = 0;
     unsigned char qos = pkt->header.bits.qos;
+    pthread_mutex_lock(&mutex);
     int count = HASH_COUNT(t->subscribers);
 
     if (count == 0) {
@@ -159,6 +160,7 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t) {
         // Schedule a write for the current subscriber on the next event cycle
         enqueue_event_write(sc);
 
+        pthread_mutex_unlock(&mutex);
         info.messages_sent++;
 
         log_debug("Sending PUBLISH to %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
@@ -274,6 +276,7 @@ static int connect_handler(struct io_event *e) {
     struct mqtt_connect *c = &e->data.connect;
     struct client *cc = e->client;
 
+    pthread_mutex_lock(&mutex);
     if (cc->connected == true) {
         /*
          * Already connected client, 2 CONNECT packet should be interpreted as
@@ -394,6 +397,7 @@ static int connect_handler(struct io_event *e) {
 
     set_connack(cc, MQTT_CONNECTION_ACCEPTED, session_present);
 
+    pthread_mutex_unlock(&mutex);
     log_debug("Sending CONNACK to %s (%u, %u)",
               cc->client_id, session_present, MQTT_CONNECTION_ACCEPTED);
 
@@ -408,12 +412,14 @@ bad_auth:
               cc->client_id, session_present, MQTT_BAD_USERNAME_OR_PASSWORD);
     set_connack(cc, MQTT_BAD_USERNAME_OR_PASSWORD, session_present);
 
+    pthread_mutex_unlock(&mutex);
     return MQTT_BAD_USERNAME_OR_PASSWORD;
 
 not_authorized:
     log_debug("Sending CONNACK to %s (%u, %u)",
               cc->client_id, session_present, MQTT_NOT_AUTHORIZED);
     set_connack(cc, MQTT_NOT_AUTHORIZED, session_present);
+    pthread_mutex_unlock(&mutex);
 
     return MQTT_NOT_AUTHORIZED;
 }
@@ -495,6 +501,7 @@ static int subscribe_handler(struct io_event *e) {
          *    multilevel wildcard '#'
          * 2. A topic contaning one or more single level wildcard '+'
          */
+        pthread_mutex_lock(&mutex);
         if (!index(topic, '+')) {
             struct subscriber *tmp;
             HASH_FIND_STR(t->subscribers, c->client_id, tmp);
@@ -541,6 +548,7 @@ static int subscribe_handler(struct io_event *e) {
     mqtt_pack(&pkt, c->wbuf + c->towrite);
     c->towrite += len;
 
+    pthread_mutex_unlock(&mutex);
     log_debug("Sending SUBACK to %s", c->client_id);
 
     mqtt_packet_destroy(&pkt);
@@ -554,6 +562,7 @@ static int unsubscribe_handler(struct io_event *e) {
 
     log_debug("Received UNSUBSCRIBE from %s", c->client_id);
 
+    pthread_mutex_lock(&mutex);
     struct topic *t = NULL;
     for (int i = 0; i < e->data.unsubscribe.tuples_len; ++i) {
         t = topic_get(&server,
@@ -565,6 +574,7 @@ static int unsubscribe_handler(struct io_event *e) {
     mqtt_pack_mono(c->wbuf + c->towrite, UNSUBACK, e->data.unsubscribe.pkt_id);
     c->towrite += MQTT_ACK_LEN;
 
+    pthread_mutex_unlock(&mutex);
     log_debug("Sending UNSUBACK to %s", c->client_id);
 
     mqtt_packet_destroy(&e->data);
@@ -608,6 +618,7 @@ static int publish_handler(struct io_event *e) {
      */
     struct topic *t = topic_get_or_create(&server, topic);
 
+    pthread_mutex_lock(&mutex);
     /* Check for # wildcards subscriptions */
     if (list_size(server.wildcards) > 0) {
         list_foreach(item, server.wildcards) {
@@ -637,9 +648,11 @@ static int publish_handler(struct io_event *e) {
         mqtt_pack(&e->data, t->retained_msg);
     }
 
+    pthread_mutex_unlock(&mutex);
     if (publish_message(pkt, t) == 0)
         DECREF(pkt, struct mqtt_packet);
 
+    pthread_mutex_lock(&mutex);
     // We have to answer to the publisher
     if (qos == AT_MOST_ONCE)
         goto exit;
@@ -663,6 +676,7 @@ static int publish_handler(struct io_event *e) {
     mqtt_pack_mono(c->wbuf + c->towrite, ptype, orig_mid);
     c->towrite += MQTT_ACK_LEN;
 
+    pthread_mutex_unlock(&mutex);
     return REPLY;
 
 exit:

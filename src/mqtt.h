@@ -38,7 +38,7 @@
 
 #define MQTT_HEADER_LEN     2
 #define MQTT_ACK_LEN        4
-#define MQTT_CLIENT_ID_LEN  24  // including nul char
+#define MQTT_CLIENT_ID_LEN  64  // including nul char
 
 // Return codes for connect packet
 #define MQTT_CONNECTION_ACCEPTED           0x00
