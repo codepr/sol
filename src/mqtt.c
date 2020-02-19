@@ -648,6 +648,13 @@ int mqtt_pack_mono(unsigned char *buf, unsigned char op, unsigned short id) {
     return 4;  // u8=1 + u16=2 + 1 byte for remaining bytes field
 }
 
+/*
+ * Returns the size of a packet. Useful to pack functions to know the expected
+ * buffer size of the packet based on the opcode. Accept an optional pointer
+ * to get the len reserved for storing the remaining length of the full packet
+ * excluding the fixed header (1 byte) and the bytes needed to store the
+ * value itself (1 to 3 bytes).
+ */
 size_t mqtt_size(const struct mqtt_packet *pkt, size_t *len) {
     size_t size = 0LL;
     switch (pkt->header.bits.type) {
@@ -664,6 +671,12 @@ size_t mqtt_size(const struct mqtt_packet *pkt, size_t *len) {
             size = MQTT_ACK_LEN;
             break;
     }
+    /*
+     * Here we take into account the number of bytes needed to store the total
+     * amount of bytes size of the packet, excluding the encoding space to
+     * store the value itself and the fixed header, updating len pointer if
+     * not NULL.
+     */
     int remaininglen_offset = 0;
     if ((size - 1) > 0x200000)      // 3 bytes <= 128 * 128 * 128
         remaininglen_offset = 3;
@@ -683,6 +696,7 @@ static void mqtt_packet_free(const struct ref *refcount) {
     xfree(pkt);
 }
 
+/* Just a packet allocing with the reference counter set */
 struct mqtt_packet *mqtt_packet_alloc(unsigned char byte) {
     struct mqtt_packet *packet = xmalloc(sizeof(*packet));
     packet->header = (union mqtt_header) { .byte = byte };

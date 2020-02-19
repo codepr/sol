@@ -829,7 +829,7 @@ static void eventloop_start(void *args) {
     ev_register_event(&ctx, sfd, EV_READ, accept_callback, &sfd);
     // Register periodic tasks
     ev_register_cron(&ctx, publish_stats, NULL, conf->stats_pub_interval, 0);
-    ev_register_cron(&ctx, inflight_msg_check, NULL, 1, 0);
+    ev_register_cron(&ctx, inflight_msg_check, NULL, 20, 0);
     // Start the loop, blocking call
     ev_run(&ctx);
     ev_destroy(&ctx);
@@ -989,10 +989,6 @@ void session_init(struct client_session *session, char *session_id) {
     session->i_msgs = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
     session->in_i_acks = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
     session->refcount = (struct ref) { session_free, 0 };
-}
-
-bool has_inflight(const struct client_session *session) {
-    return session->inflights > 0;
 }
 
 struct client_session *client_session_alloc(char *session_id) {

@@ -69,6 +69,14 @@ static handler *handlers[15] = {
     disconnect_handler
 };
 
+/*
+ * One of the two exposed functions of the module, it's also needed on server
+ * module to publish periodic messages (e.g. $SOL stats). It's responsible
+ * of the normal publish but also taking care of disconnected clients, enqueuing
+ * packets and setting up inflight messages for QoS > 0.
+ * Returns the number of publish done or an error code in case of conditions
+ * that requires de-allocation of the pkt argument occurs.
+ */
 int publish_message(struct mqtt_packet *pkt, const struct topic *t) {
 
     bool all_at_most_once = true;
@@ -724,7 +732,10 @@ static int pingreq_handler(struct io_event *e) {
     return REPLY;
 }
 
-/* This is the only public API we expose from this module */
+/*
+ * This is the only public API we expose from this module beside
+ * publish_message. It just give access to handlers mapped by message type.
+ */
 int handle_command(unsigned type, struct io_event *event) {
     return handlers[type](event);
 }

@@ -234,5 +234,6 @@ struct topic *topic_get(const struct server *, const char *);
 struct topic *topic_get_or_create(struct server *, const char *);
 unsigned next_free_mid(struct client_session *);
 void session_init(struct client_session *, char *);
-bool has_inflight(const struct client_session *);
 struct client_session *client_session_alloc(char *);
+
+#define has_inflight(session) ((session)->inflights > 0)
