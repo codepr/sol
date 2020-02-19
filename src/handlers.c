@@ -160,7 +160,6 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t) {
         // Schedule a write for the current subscriber on the next event cycle
         enqueue_event_write(sc);
 
-        pthread_mutex_unlock(&mutex);
         info.messages_sent++;
 
         log_debug("Sending PUBLISH to %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
@@ -179,6 +178,7 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t) {
 
 exit:
 
+    pthread_mutex_unlock(&mutex);
     return count;
 }
 
@@ -612,13 +612,13 @@ static int publish_handler(struct io_event *e) {
     else
         snprintf(topic, p->topiclen + 1, "%s", (const char *) p->topic);
 
+    //pthread_mutex_lock(&mutex);
     /*
      * Retrieve the topic from the global map, if it wasn't created before,
      * create a new one with the name selected
      */
     struct topic *t = topic_get_or_create(&server, topic);
 
-    pthread_mutex_lock(&mutex);
     /* Check for # wildcards subscriptions */
     if (list_size(server.wildcards) > 0) {
         list_foreach(item, server.wildcards) {
@@ -648,7 +648,7 @@ static int publish_handler(struct io_event *e) {
         mqtt_pack(&e->data, t->retained_msg);
     }
 
-    pthread_mutex_unlock(&mutex);
+    //pthread_mutex_unlock(&mutex);
     if (publish_message(pkt, t) == 0)
         DECREF(pkt, struct mqtt_packet);
 
@@ -685,6 +685,7 @@ exit:
      * We're in the case of AT_MOST_ONCE QoS level, we don't need to sent out
      * any byte, it's a fire-and-forget.
      */
+    pthread_mutex_unlock(&mutex);
     return NOREPLY;
 }
 
