@@ -38,7 +38,10 @@
 // Stops epoll_wait loops by sending an event
 static void sigint_handler(int signum) {
     (void) signum;
-    eventfd_write(conf->run, 1);
+    for (int i = 0; i < THREADSNR + 1; ++i) {
+        eventfd_write(conf->run, 1);
+        usleep(1500);
+    }
 }
 
 static const char *flag_description[] = {

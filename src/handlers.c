@@ -276,7 +276,6 @@ static int connect_handler(struct io_event *e) {
     struct mqtt_connect *c = &e->data.connect;
     struct client *cc = e->client;
 
-    pthread_mutex_lock(&mutex);
     if (cc->connected == true) {
         /*
          * Already connected client, 2 CONNECT packet should be interpreted as
@@ -322,6 +321,7 @@ static int connect_handler(struct io_event *e) {
      */
     snprintf(cc->client_id, MQTT_CLIENT_ID_LEN, "%s", c->payload.client_id);
 
+    pthread_mutex_lock(&mutex);
     // First we check if a session is present
     HASH_FIND_STR(server.sessions, cc->client_id, cc->session);
     if (cc->session && c->bits.clean_session == true)
@@ -351,6 +351,7 @@ static int connect_handler(struct io_event *e) {
 
     // Let's track client on the global map to be used on publish
     HASH_ADD_STR(server.clients_map, client_id, cc);
+    pthread_mutex_unlock(&mutex);
 
     // Add LWT topic and message if present
     if (c->bits.will) {
@@ -397,7 +398,6 @@ static int connect_handler(struct io_event *e) {
 
     set_connack(cc, MQTT_CONNECTION_ACCEPTED, session_present);
 
-    pthread_mutex_unlock(&mutex);
     log_debug("Sending CONNACK to %s (%u, %u)",
               cc->client_id, session_present, MQTT_CONNECTION_ACCEPTED);
 
@@ -412,14 +412,12 @@ bad_auth:
               cc->client_id, session_present, MQTT_BAD_USERNAME_OR_PASSWORD);
     set_connack(cc, MQTT_BAD_USERNAME_OR_PASSWORD, session_present);
 
-    pthread_mutex_unlock(&mutex);
     return MQTT_BAD_USERNAME_OR_PASSWORD;
 
 not_authorized:
     log_debug("Sending CONNACK to %s (%u, %u)",
               cc->client_id, session_present, MQTT_NOT_AUTHORIZED);
     set_connack(cc, MQTT_NOT_AUTHORIZED, session_present);
-    pthread_mutex_unlock(&mutex);
 
     return MQTT_NOT_AUTHORIZED;
 }
@@ -528,6 +526,7 @@ static int subscribe_handler(struct io_event *e) {
                 subscriber_new(t, e->client->session, s->tuples[i].qos);
             add_wildcard(topic, sub, wildcard);
         }
+        pthread_mutex_unlock(&mutex);
 
         // Retained message? Publish it
         // TODO move after SUBACK response
@@ -548,7 +547,6 @@ static int subscribe_handler(struct io_event *e) {
     mqtt_pack(&pkt, c->wbuf + c->towrite);
     c->towrite += len;
 
-    pthread_mutex_unlock(&mutex);
     log_debug("Sending SUBACK to %s", c->client_id);
 
     mqtt_packet_destroy(&pkt);
@@ -570,11 +568,11 @@ static int unsubscribe_handler(struct io_event *e) {
         if (t)
             topic_del_subscriber(t, c);
     }
+    pthread_mutex_unlock(&mutex);
 
     mqtt_pack_mono(c->wbuf + c->towrite, UNSUBACK, e->data.unsubscribe.pkt_id);
     c->towrite += MQTT_ACK_LEN;
 
-    pthread_mutex_unlock(&mutex);
     log_debug("Sending UNSUBACK to %s", c->client_id);
 
     mqtt_packet_destroy(&e->data);
@@ -612,7 +610,7 @@ static int publish_handler(struct io_event *e) {
     else
         snprintf(topic, p->topiclen + 1, "%s", (const char *) p->topic);
 
-    //pthread_mutex_lock(&mutex);
+    pthread_mutex_lock(&mutex);
     /*
      * Retrieve the topic from the global map, if it wasn't created before,
      * create a new one with the name selected
@@ -637,6 +635,7 @@ static int publish_handler(struct io_event *e) {
             }
         }
     }
+    pthread_mutex_unlock(&mutex);
 
     struct mqtt_packet *pkt = mqtt_packet_alloc(e->data.header.byte);
     // TODO must perform a deep copy here
@@ -648,17 +647,16 @@ static int publish_handler(struct io_event *e) {
         mqtt_pack(&e->data, t->retained_msg);
     }
 
-    //pthread_mutex_unlock(&mutex);
     if (publish_message(pkt, t) == 0)
         DECREF(pkt, struct mqtt_packet);
 
-    pthread_mutex_lock(&mutex);
     // We have to answer to the publisher
     if (qos == AT_MOST_ONCE)
         goto exit;
 
     int ptype = PUBACK;
 
+    pthread_mutex_lock(&mutex);
     // TODO check for unwanted values
     if (qos == EXACTLY_ONCE) {
         ptype = PUBREC;
@@ -668,6 +666,7 @@ static int publish_handler(struct io_event *e) {
         inflight_msg_init(&c->session->in_i_acks[orig_mid], c, ack, publen);
         ++c->session->inflights;
     }
+    pthread_mutex_unlock(&mutex);
 
     log_debug("Sending %s to %s (m%u)",
               ptype == PUBACK ? "PUBACK" : "PUBREC", c->client_id, orig_mid);
@@ -676,7 +675,6 @@ static int publish_handler(struct io_event *e) {
     mqtt_pack_mono(c->wbuf + c->towrite, ptype, orig_mid);
     c->towrite += MQTT_ACK_LEN;
 
-    pthread_mutex_unlock(&mutex);
     return REPLY;
 
 exit:
@@ -685,7 +683,6 @@ exit:
      * We're in the case of AT_MOST_ONCE QoS level, we don't need to sent out
      * any byte, it's a fire-and-forget.
      */
-    pthread_mutex_unlock(&mutex);
     return NOREPLY;
 }
 
@@ -693,11 +690,13 @@ static int puback_handler(struct io_event *e) {
     struct client *c = e->client;
     unsigned pkt_id = e->data.ack.pkt_id;
     log_debug("Received PUBACK from %s (m%u)", c->client_id, pkt_id);
+    pthread_mutex_lock(&mutex);
     c->session->i_msgs[pkt_id].in_use = 0;
     inflight_msg_clear(&c->session->i_msgs[pkt_id]);
     c->session->i_acks[pkt_id].in_use = 0;
     inflight_msg_clear(&c->session->i_acks[pkt_id]);
     --c->session->inflights;
+    pthread_mutex_unlock(&mutex);
     return NOREPLY;
 }
 
@@ -719,9 +718,11 @@ static int pubrel_handler(struct io_event *e) {
     log_debug("Received PUBREL from %s (m%u)", c->client_id, pkt_id);
     mqtt_pack_mono(c->wbuf + c->towrite, PUBCOMP, pkt_id);
     c->towrite += MQTT_ACK_LEN;
+    pthread_mutex_lock(&mutex);
     c->session->in_i_acks[pkt_id].in_use = 0;
     --c->session->inflights;
     inflight_msg_clear(&c->session->in_i_acks[pkt_id]);
+    pthread_mutex_unlock(&mutex);
     log_debug("Sending PUBCOMP to %s (m%u)", c->client_id, pkt_id);
     return REPLY;
 }
@@ -730,11 +731,13 @@ static int pubcomp_handler(struct io_event *e) {
     struct client *c = e->client;
     unsigned pkt_id = e->data.ack.pkt_id;
     log_debug("Received PUBCOMP from %s (m%u)", c->client_id, pkt_id);
+    pthread_mutex_lock(&mutex);
     c->session->i_acks[pkt_id].in_use = 0;
     c->session->i_msgs[pkt_id].in_use = 0;
     inflight_msg_clear(&c->session->i_msgs[pkt_id]);
     inflight_msg_clear(&c->session->i_acks[pkt_id]);
     --c->session->inflights;
+    pthread_mutex_unlock(&mutex);
     return NOREPLY;
 }
 

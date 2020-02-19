@@ -40,6 +40,17 @@
 
 pthread_mutex_t mutex;
 
+/*
+ * Auxiliary structure to be used as init argument for eventloop, fd is the
+ * listening socket we want to share between multiple instances, cronjobs is
+ * just a flag to signal if we want to register cronjobs on that particular
+ * instance or not (to not repeat useless cron jobs on multiple threads)
+ */
+struct listen_payload {
+    int fd;
+    bool cronjobs;
+};
+
 /* Seconds in a Sol, easter egg */
 static const double SOL_SECONDS = 88775.24;
 
@@ -388,7 +399,6 @@ static int subscription_cmp(const void *ptr_s1, const void *ptr_s2) {
  */
 static void client_deactivate(struct client *client) {
 
-    pthread_mutex_lock(&mutex);
     if (client->online == false) return;
 
     client->rpos = client->toread = client->read = 0;
@@ -397,6 +407,7 @@ static void client_deactivate(struct client *client) {
 
     client->online = false;
 
+    pthread_mutex_lock(&mutex);
     if (client->clean_session == true) {
         if (client->session) {
             list_remove(server.wildcards, client->client_id, subscription_cmp);
@@ -410,9 +421,9 @@ static void client_deactivate(struct client *client) {
             HASH_DEL(server.clients_map, client);
         memorypool_free(server.pool, client);
     }
+    pthread_mutex_unlock(&mutex);
     client->connected = false;
     client->client_id[0] = '\0';
-    pthread_mutex_unlock(&mutex);
 }
 
 /*
@@ -677,7 +688,9 @@ static void accept_callback(struct ev_ctx *ctx, void *data) {
          * Create a client structure to handle his context
          * connection
          */
+        pthread_mutex_lock(&mutex);
         struct client *c = memorypool_alloc(server.pool);
+        pthread_mutex_unlock(&mutex);
         c->conn = conn;
         client_init(c);
         c->ctx = ctx;
@@ -729,7 +742,6 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
              * free resources allocated such as io_event structure and
              * paired payload
              */
-            pthread_mutex_lock(&mutex);
             log_error("Closing connection with %s (%s): %s",
                       c->client_id, c->conn.ip, solerr(rc));
             // Publish, if present, LWT message
@@ -748,7 +760,6 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
                     topic_del_subscriber(item->data, c);
                 }
             }
-            pthread_mutex_unlock(&mutex);
             client_deactivate(c);
             info.nclients--;
             info.nconnections--;
@@ -826,16 +837,19 @@ static void stop_handler(struct ev_ctx *ctx, void *arg) {
  * thread, ready to be delivered out.
  */
 static void eventloop_start(void *args) {
-    int sfd = *((int *) args);
+    struct listen_payload *loop_data = args;
     struct ev_ctx ctx;
+    int sfd = loop_data->fd;
     ev_init(&ctx, EVENTLOOP_MAX_EVENTS);
     // Register stop event
     ev_register_event(&ctx, conf->run, EV_CLOSEFD|EV_READ, stop_handler, NULL);
     // Register listening FD with accept callback
     ev_register_event(&ctx, sfd, EV_READ, accept_callback, &sfd);
     // Register periodic tasks
-    ev_register_cron(&ctx, publish_stats, NULL, conf->stats_pub_interval, 0);
-    ev_register_cron(&ctx, inflight_msg_check, NULL, 20, 0);
+    if (loop_data->cronjobs == true) {
+        ev_register_cron(&ctx, publish_stats, NULL, conf->stats_pub_interval, 0);
+        ev_register_cron(&ctx, inflight_msg_check, NULL, 2, 0);
+    }
     // Start the loop, blocking call
     ev_run(&ctx);
     ev_destroy(&ctx);
@@ -903,11 +917,23 @@ int start_server(const char *addr, const char *port) {
     log_info("Server start");
     info.start_time = time(NULL);
 
-    pthread_t thrs[2];
-    for (int i = 0; i < 2; ++i)
-        pthread_create(&thrs[i], NULL, (void * (*) (void *)) &eventloop_start, &sfd);
+    struct listen_payload loop_start = { sfd, false };
+
+#if THREADSNR > 0
+    pthread_t thrs[THREADSNR];
+    for (int i = 0; i < THREADSNR; ++i) {
+        pthread_create(&thrs[i], NULL, (void * (*) (void *)) &eventloop_start, &loop_start);
+        usleep(1500);
+    }
+#endif
+    loop_start.cronjobs = true;
     // start eventloop, could be spread on multiple threads
-    eventloop_start(&sfd);
+    eventloop_start(&loop_start);
+
+#if THREADSNR > 0
+    for (int i = 0; i < THREADSNR; ++i)
+        pthread_join(thrs[i], NULL);
+#endif
 
     close(sfd);
     AUTH_DESTROY(server.authentications);

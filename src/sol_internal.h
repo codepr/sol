@@ -34,8 +34,6 @@
 #include "uthash.h"
 #include "network.h"
 
-extern pthread_mutex_t mutex;
-
 /* Generic return codes without a defined purpose */
 #define SOL_OK              0
 #define SOL_ERR             1
@@ -214,6 +212,13 @@ struct client_session {
     UT_hash_handle hh; /* UTHASH handle, needed to use UTHASH macros */
     struct ref refcount; /* Reference counting struct, to share the struct easily */
 };
+
+/*
+ * Simple mutex for contexted critical areas, mainly used in the handlers
+ * module, in server the only useful use are when creating and deactivating
+ * clients
+ */
+extern pthread_mutex_t mutex;
 
 struct server;
 
