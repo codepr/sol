@@ -701,5 +701,6 @@ struct mqtt_packet *mqtt_packet_alloc(unsigned char byte) {
     struct mqtt_packet *packet = xmalloc(sizeof(*packet));
     packet->header = (union mqtt_header) { .byte = byte };
     packet->refcount = (struct ref) { mqtt_packet_free, 0 };
+    packet->refcount.count = ATOMIC_VAR_INIT(0);
     return packet;
 }

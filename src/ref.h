@@ -35,9 +35,11 @@
 
 #pragma once
 
+#include <stdatomic.h>
+
 struct ref {
     void (*free)(const struct ref *);
-    int count;
+    volatile atomic_int count;
 };
 
 static inline void ref_inc(const struct ref *ref) {

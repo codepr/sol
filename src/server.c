@@ -310,9 +310,11 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
     time_t now = time(NULL);
     struct mqtt_packet *p = NULL;
     struct client *c, *tmp;
+    pthread_mutex_lock(&mutex);
     HASH_ITER(hh, server.clients_map, c, tmp) {
         if (!c || !c->connected || !c->session || !has_inflight(c->session))
             continue;
+        pthread_mutex_lock(&c->mutex);
         for (int i = 1; i < MAX_INFLIGHT_MSGS; ++i) {
             // TODO remove 20 hardcoded value
             // Messages
@@ -346,7 +348,9 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
                 info.messages_sent++;
             }
         }
+        pthread_mutex_unlock(&c->mutex);
     }
+    pthread_mutex_unlock(&mutex);
 }
 
 /*
@@ -367,18 +371,19 @@ static void client_init(struct client *client) {
     client->client_id[0] = '\0';
     client->status = WAITING_HEADER;
     client->rc = 0;
-    client->rpos = 0;
-    client->read = 0;
-    client->toread = 0;
+    client->rpos = ATOMIC_VAR_INIT(0);
+    client->read = ATOMIC_VAR_INIT(0);
+    client->toread = ATOMIC_VAR_INIT(0);
     if (!client->rbuf)
         client->rbuf = xcalloc(conf->max_request_size, sizeof(unsigned char));
-    client->wrote = 0;
-    client->towrite = 0;
+    client->wrote = ATOMIC_VAR_INIT(0);
+    client->towrite = ATOMIC_VAR_INIT(0);
     if (!client->wbuf)
         client->wbuf = xcalloc(conf->max_request_size, sizeof(unsigned char));
     client->last_seen = time(NULL);
     client->has_lwt = false;
     client->session = NULL;
+    pthread_mutex_init(&client->mutex, NULL);
 }
 
 /*
@@ -399,6 +404,7 @@ static int subscription_cmp(const void *ptr_s1, const void *ptr_s2) {
  */
 static void client_deactivate(struct client *client) {
 
+    pthread_mutex_lock(&client->mutex);
     if (client->online == false) return;
 
     client->rpos = client->toread = client->read = 0;
@@ -424,6 +430,8 @@ static void client_deactivate(struct client *client) {
     pthread_mutex_unlock(&mutex);
     client->connected = false;
     client->client_id[0] = '\0';
+    pthread_mutex_unlock(&client->mutex);
+    pthread_mutex_destroy(&client->mutex);
 }
 
 /*
@@ -607,17 +615,27 @@ err:
  * meaning we cannot write anymore for the current cycle.
  */
 static inline int write_data(struct client *c) {
+    pthread_mutex_lock(&c->mutex);
     ssize_t wrote = send_data(&c->conn, c->wbuf+c->wrote, c->towrite-c->wrote);
     if (errno != EAGAIN && errno != EWOULDBLOCK && wrote < 0)
-        return -ERRCLIENTDC;
+        goto clientdc;
     c->wrote += wrote > 0 ? wrote : 0;
     if (c->wrote < c->towrite && errno == EAGAIN)
-        return -ERREAGAIN;
+        goto eagain;
     // Update information stats
     info.bytes_sent += c->towrite;
     // Reset client written bytes track fields
     c->towrite = c->wrote = 0;
+    pthread_mutex_unlock(&c->mutex);
     return SOL_OK;
+
+clientdc:
+    pthread_mutex_unlock(&c->mutex);
+    return -ERRCLIENTDC;
+
+eagain:
+    pthread_mutex_unlock(&c->mutex);
+    return -ERREAGAIN;
 }
 
 /*
@@ -744,6 +762,7 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
              */
             log_error("Closing connection with %s (%s): %s",
                       c->client_id, c->conn.ip, solerr(rc));
+            pthread_mutex_lock(&mutex);
             // Publish, if present, LWT message
             if (c->has_lwt == true) {
                 char *tname = (char *) c->session->lwt_msg.publish.topic;
@@ -760,6 +779,7 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
                     topic_del_subscriber(item->data, c);
                 }
             }
+            pthread_mutex_unlock(&mutex);
             client_deactivate(c);
             info.nclients--;
             info.nconnections--;
@@ -848,7 +868,7 @@ static void eventloop_start(void *args) {
     // Register periodic tasks
     if (loop_data->cronjobs == true) {
         ev_register_cron(&ctx, publish_stats, NULL, conf->stats_pub_interval, 0);
-        ev_register_cron(&ctx, inflight_msg_check, NULL, 2, 0);
+        ev_register_cron(&ctx, inflight_msg_check, NULL, 1, 0);
     }
     // Start the loop, blocking call
     ev_run(&ctx);
@@ -1017,7 +1037,7 @@ static void session_free(const struct ref *refcount) {
 }
 
 void session_init(struct client_session *session, char *session_id) {
-    session->inflights = 0;
+    session->inflights = ATOMIC_VAR_INIT(0);
     session->next_free_mid = 1;
     session->subscriptions = list_new(NULL);
     session->outgoing_msgs = list_new(NULL);
@@ -1126,10 +1146,6 @@ void inflight_msg_init(struct inflight_msg *imsg,
     imsg->client = c;
     imsg->in_use = 1;
     imsg->qos = p->header.bits.qos;
-}
-
-void inflight_msg_clear(struct inflight_msg *imsg) {
-    DECREF(imsg->packet, struct mqtt_packet);
 }
 
 unsigned next_free_mid(struct client_session *session) {

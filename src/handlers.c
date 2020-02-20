@@ -143,6 +143,7 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t) {
                 }
                 continue;
             }
+            pthread_mutex_lock(&sc->mutex);
             /*
              * The subscriber client is marked as online, so we proceed to
              * set the inflight messages according to the QoS level required
@@ -151,11 +152,14 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t) {
             inflight_msg_init(&sc->session->i_msgs[mid], sc, pkt, len);
             inflight_msg_init(&sc->session->i_acks[mid], sc, ack, len);
             ++sc->session->inflights;
+            pthread_mutex_unlock(&sc->mutex);
             all_at_most_once = false;
         }
 
+        pthread_mutex_lock(&sc->mutex);
         mqtt_pack(pkt, sc->wbuf + sc->towrite);
         sc->towrite += len;
+        pthread_mutex_unlock(&sc->mutex);
 
         // Schedule a write for the current subscriber on the next event cycle
         enqueue_event_write(sc);
@@ -499,6 +503,7 @@ static int subscribe_handler(struct io_event *e) {
          *    multilevel wildcard '#'
          * 2. A topic contaning one or more single level wildcard '+'
          */
+        pthread_mutex_lock(&c->mutex);
         pthread_mutex_lock(&mutex);
         if (!index(topic, '+')) {
             struct subscriber *tmp;
@@ -535,6 +540,7 @@ static int subscribe_handler(struct io_event *e) {
             memcpy(c->wbuf + c->towrite, t->retained_msg, len);
             c->towrite += len;
         }
+        pthread_mutex_unlock(&c->mutex);
         rcs[i] = s->tuples[i].qos;
     }
 
@@ -543,9 +549,11 @@ static int subscribe_handler(struct io_event *e) {
     };
     mqtt_suback(&pkt, s->pkt_id, rcs, s->tuples_len);
 
+    pthread_mutex_lock(&c->mutex);
     size_t len = mqtt_size(&pkt, NULL);
     mqtt_pack(&pkt, c->wbuf + c->towrite);
     c->towrite += len;
+    pthread_mutex_unlock(&c->mutex);
 
     log_debug("Sending SUBACK to %s", c->client_id);
 
@@ -560,6 +568,7 @@ static int unsubscribe_handler(struct io_event *e) {
 
     log_debug("Received UNSUBSCRIBE from %s", c->client_id);
 
+    pthread_mutex_lock(&c->mutex);
     pthread_mutex_lock(&mutex);
     struct topic *t = NULL;
     for (int i = 0; i < e->data.unsubscribe.tuples_len; ++i) {
@@ -572,6 +581,7 @@ static int unsubscribe_handler(struct io_event *e) {
 
     mqtt_pack_mono(c->wbuf + c->towrite, UNSUBACK, e->data.unsubscribe.pkt_id);
     c->towrite += MQTT_ACK_LEN;
+    pthread_mutex_unlock(&c->mutex);
 
     log_debug("Sending UNSUBACK to %s", c->client_id);
 
@@ -610,6 +620,7 @@ static int publish_handler(struct io_event *e) {
     else
         snprintf(topic, p->topiclen + 1, "%s", (const char *) p->topic);
 
+    pthread_mutex_lock(&c->mutex);
     pthread_mutex_lock(&mutex);
     /*
      * Retrieve the topic from the global map, if it wasn't created before,
@@ -646,6 +657,7 @@ static int publish_handler(struct io_event *e) {
         t->retained_msg = bstring_empty(publen);
         mqtt_pack(&e->data, t->retained_msg);
     }
+    pthread_mutex_unlock(&c->mutex);
 
     if (publish_message(pkt, t) == 0)
         DECREF(pkt, struct mqtt_packet);
@@ -656,7 +668,7 @@ static int publish_handler(struct io_event *e) {
 
     int ptype = PUBACK;
 
-    pthread_mutex_lock(&mutex);
+    pthread_mutex_lock(&c->mutex);
     // TODO check for unwanted values
     if (qos == EXACTLY_ONCE) {
         ptype = PUBREC;
@@ -666,21 +678,19 @@ static int publish_handler(struct io_event *e) {
         inflight_msg_init(&c->session->in_i_acks[orig_mid], c, ack, publen);
         ++c->session->inflights;
     }
-    pthread_mutex_unlock(&mutex);
-
-    log_debug("Sending %s to %s (m%u)",
-              ptype == PUBACK ? "PUBACK" : "PUBREC", c->client_id, orig_mid);
 
     mqtt_ack(&e->data, ptype == PUBACK ? PUBACK_B : PUBREC_B);
     mqtt_pack_mono(c->wbuf + c->towrite, ptype, orig_mid);
     c->towrite += MQTT_ACK_LEN;
-
+    pthread_mutex_unlock(&c->mutex);
+    log_debug("Sending %s to %s (m%u)",
+              ptype == PUBACK ? "PUBACK" : "PUBREC", c->client_id, orig_mid);
     return REPLY;
 
 exit:
 
     /*
-     * We're in the case of AT_MOST_ONCE QoS level, we don't need to sent out
+     * We're in the case of AT_MOST_ONCE QoS level, we don't need to send out
      * any byte, it's a fire-and-forget.
      */
     return NOREPLY;
@@ -690,13 +700,13 @@ static int puback_handler(struct io_event *e) {
     struct client *c = e->client;
     unsigned pkt_id = e->data.ack.pkt_id;
     log_debug("Received PUBACK from %s (m%u)", c->client_id, pkt_id);
-    pthread_mutex_lock(&mutex);
-    c->session->i_msgs[pkt_id].in_use = 0;
+    pthread_mutex_lock(&c->mutex);
+    c->session->i_msgs[pkt_id].in_use = false;
     inflight_msg_clear(&c->session->i_msgs[pkt_id]);
-    c->session->i_acks[pkt_id].in_use = 0;
+    c->session->i_acks[pkt_id].in_use = false;
     inflight_msg_clear(&c->session->i_acks[pkt_id]);
     --c->session->inflights;
-    pthread_mutex_unlock(&mutex);
+    pthread_mutex_unlock(&c->mutex);
     return NOREPLY;
 }
 
@@ -704,8 +714,10 @@ static int pubrec_handler(struct io_event *e) {
     struct client *c = e->client;
     unsigned pkt_id = e->data.ack.pkt_id;
     log_debug("Received PUBREC from %s (m%u)", c->client_id, pkt_id);
+    pthread_mutex_lock(&c->mutex);
     mqtt_pack_mono(c->wbuf + c->towrite, PUBREL, pkt_id);
     c->towrite += MQTT_ACK_LEN;
+    pthread_mutex_unlock(&c->mutex);
     // Update inflight acks table
     c->session->i_acks[pkt_id].seen = time(NULL);
     log_debug("Sending PUBREL to %s (m%u)", c->client_id, pkt_id);
@@ -716,13 +728,13 @@ static int pubrel_handler(struct io_event *e) {
     struct client *c = e->client;
     unsigned pkt_id = e->data.ack.pkt_id;
     log_debug("Received PUBREL from %s (m%u)", c->client_id, pkt_id);
+    pthread_mutex_lock(&c->mutex);
     mqtt_pack_mono(c->wbuf + c->towrite, PUBCOMP, pkt_id);
     c->towrite += MQTT_ACK_LEN;
-    pthread_mutex_lock(&mutex);
-    c->session->in_i_acks[pkt_id].in_use = 0;
+    c->session->in_i_acks[pkt_id].in_use = false;
     --c->session->inflights;
     inflight_msg_clear(&c->session->in_i_acks[pkt_id]);
-    pthread_mutex_unlock(&mutex);
+    pthread_mutex_unlock(&c->mutex);
     log_debug("Sending PUBCOMP to %s (m%u)", c->client_id, pkt_id);
     return REPLY;
 }
@@ -731,21 +743,23 @@ static int pubcomp_handler(struct io_event *e) {
     struct client *c = e->client;
     unsigned pkt_id = e->data.ack.pkt_id;
     log_debug("Received PUBCOMP from %s (m%u)", c->client_id, pkt_id);
-    pthread_mutex_lock(&mutex);
-    c->session->i_acks[pkt_id].in_use = 0;
-    c->session->i_msgs[pkt_id].in_use = 0;
-    inflight_msg_clear(&c->session->i_msgs[pkt_id]);
+    pthread_mutex_lock(&c->mutex);
+    c->session->i_acks[pkt_id].in_use = false;
     inflight_msg_clear(&c->session->i_acks[pkt_id]);
+    c->session->i_msgs[pkt_id].in_use = false;
+    inflight_msg_clear(&c->session->i_msgs[pkt_id]);
     --c->session->inflights;
-    pthread_mutex_unlock(&mutex);
+    pthread_mutex_unlock(&c->mutex);
     return NOREPLY;
 }
 
 static int pingreq_handler(struct io_event *e) {
     log_debug("Received PINGREQ from %s", e->client->client_id);
     e->data.header.byte = PINGRESP_B;
+    pthread_mutex_lock(&e->client->mutex);
     mqtt_pack(&e->data, e->client->wbuf + e->client->towrite);
     e->client->towrite += MQTT_HEADER_LEN;
+    pthread_mutex_unlock(&e->client->mutex);
     log_debug("Sending PINGRESP to %s", e->client->client_id);
     return REPLY;
 }
