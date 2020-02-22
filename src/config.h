@@ -69,7 +69,7 @@
 #define DEFAULT_HOSTNAME            "127.0.0.1"
 #define DEFAULT_PORT                "1883"
 #define DEFAULT_MAX_MEMORY          "2GB"
-#define DEFAULT_MAX_REQUEST_SIZE    "2MB"
+#define DEFAULT_MAX_REQUEST_SIZE    "512KB"
 #define DEFAULT_STATS_INTERVAL      "10s"
 #define DEFAULT_KEEPALIVE           "60s"
 #ifdef TLS1_3_VERSION

@@ -27,7 +27,6 @@
 
 #include <string.h>
 #include <arpa/inet.h>
-#include "ref.h"
 #include "util.h"
 #include "pack.h"
 #include "mqtt.h"
@@ -623,6 +622,11 @@ void mqtt_set_dup(struct mqtt_packet *pkt) {
     pkt->header.bits.dup = 1;
 }
 
+/*
+ * Helper function for ACKs with a packet identifier, just encode a bytearray
+ * of length 4, 1 byte for the fixed header, 1 for the encoded length of the
+ * packet and 2 for the packet identifier value, which is a 16 bit integer
+ */
 int mqtt_pack_mono(unsigned char *buf, unsigned char op, unsigned short id) {
     unsigned byte = 0;
     switch (op) {

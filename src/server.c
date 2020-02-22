@@ -173,6 +173,8 @@ static const char *solerr(int rc) {
     switch (rc) {
         case -ERRCLIENTDC:
             return "Client disconnected";
+        case -ERRSOCKETERR:
+            return strerror(errno);
         case -ERRPACKETERR:
             return "Error reading packet";
         case -ERRMAXREQSIZE:
@@ -307,50 +309,61 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
 static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
     (void) data;
     (void) ctx;
+    size_t size = 0;
     time_t now = time(NULL);
     struct mqtt_packet *p = NULL;
     struct client *c, *tmp;
+#if THREADSNR > 0
     pthread_mutex_lock(&mutex);
+#endif
     HASH_ITER(hh, server.clients_map, c, tmp) {
         if (!c || !c->connected || !c->session || !has_inflight(c->session))
             continue;
+#if THREADSNR > 0
         pthread_mutex_lock(&c->mutex);
+#endif
         for (int i = 1; i < MAX_INFLIGHT_MSGS; ++i) {
             // TODO remove 20 hardcoded value
             // Messages
-            if (c->session->i_msgs[i].in_use
+            if (c->session->i_msgs[i].packet
                 && (now - c->session->i_msgs[i].seen) > 20) {
                 log_debug("Re-sending message to %s", c->client_id);
                 p = c->session->i_msgs[i].packet;
                 p->header.bits.qos = c->session->i_msgs[i].qos;
                 // Set DUP flag to 1
                 mqtt_set_dup(p);
+                size = mqtt_size(c->session->i_msgs[i].packet, NULL);
                 // Serialize the packet and send it out again
                 mqtt_pack(p, c->wbuf + c->towrite);
-                c->towrite += c->session->i_msgs[i].size;
+                c->towrite += size;
                 enqueue_event_write(c);
                 // Update information stats
                 info.messages_sent++;
             }
             // ACKs
-            if (c->session->i_acks[i].in_use
+            if (c->session->i_acks[i].packet
                 && (now - c->session->i_acks[i].seen) > 20) {
                 log_debug("Re-sending ack to %s", c->client_id);
                 p = c->session->i_acks[i].packet;
                 p->header.bits.qos = c->session->i_acks[i].qos;
                 // Set DUP flag to 1
                 mqtt_set_dup(p);
+                size = mqtt_size(c->session->i_acks[i].packet, NULL);
                 // Serialize the packet and send it out again
                 mqtt_pack(p, c->wbuf + c->towrite);
-                c->towrite += c->session->i_acks[i].size;
+                c->towrite += size;
                 enqueue_event_write(c);
                 // Update information stats
                 info.messages_sent++;
             }
         }
+#if THREADSNR > 0
         pthread_mutex_unlock(&c->mutex);
+#endif
     }
+#if THREADSNR > 0
     pthread_mutex_unlock(&mutex);
+#endif
 }
 
 /*
@@ -404,7 +417,9 @@ static int subscription_cmp(const void *ptr_s1, const void *ptr_s2) {
  */
 static void client_deactivate(struct client *client) {
 
+#if THREADSNR > 0
     pthread_mutex_lock(&client->mutex);
+#endif
     if (client->online == false) return;
 
     client->rpos = client->toread = client->read = 0;
@@ -413,7 +428,9 @@ static void client_deactivate(struct client *client) {
 
     client->online = false;
 
+#if THREADSNR > 0
     pthread_mutex_lock(&mutex);
+#endif
     if (client->clean_session == true) {
         if (client->session) {
             list_remove(server.wildcards, client->client_id, subscription_cmp);
@@ -427,11 +444,15 @@ static void client_deactivate(struct client *client) {
             HASH_DEL(server.clients_map, client);
         memorypool_free(server.pool, client);
     }
+#if THREADSNR > 0
     pthread_mutex_unlock(&mutex);
+#endif
     client->connected = false;
     client->client_id[0] = '\0';
+#if THREADSNR > 0
     pthread_mutex_unlock(&client->mutex);
     pthread_mutex_destroy(&client->mutex);
+#endif
 }
 
 /*
@@ -465,7 +486,7 @@ static ssize_t recv_packet(struct client *c) {
         nread = recv_data(&c->conn, c->rbuf + c->read, 2 - c->read);
 
         if (errno != EAGAIN && errno != EWOULDBLOCK && nread <= 0)
-            return -ERRCLIENTDC;
+            return nread == -1 ? -ERRSOCKETERR : -ERRCLIENTDC;
 
         c->read += nread;
 
@@ -511,7 +532,7 @@ static ssize_t recv_packet(struct client *c) {
         nread = recv_data(&c->conn, c->rbuf + c->read, 4 - c->read);
 
         if (errno != EAGAIN && errno != EWOULDBLOCK && nread <= 0)
-            return -ERRCLIENTDC;
+            return nread == -1 ? -ERRSOCKETERR : -ERRCLIENTDC;
 
         c->read += nread;
 
@@ -556,7 +577,7 @@ static ssize_t recv_packet(struct client *c) {
     nread = recv_data(&c->conn, c->rbuf + c->read, c->toread - c->read);
 
     if (errno != EAGAIN && errno != EWOULDBLOCK && nread <= 0)
-        return -ERRCLIENTDC;
+        return nread == -1 ? -ERRSOCKETERR : -ERRCLIENTDC;
 
     c->read += nread;
     if (errno == EAGAIN && c->read < c->toread)
@@ -615,7 +636,9 @@ err:
  * meaning we cannot write anymore for the current cycle.
  */
 static inline int write_data(struct client *c) {
+#if THREADSNR > 0
     pthread_mutex_lock(&c->mutex);
+#endif
     ssize_t wrote = send_data(&c->conn, c->wbuf+c->wrote, c->towrite-c->wrote);
     if (errno != EAGAIN && errno != EWOULDBLOCK && wrote < 0)
         goto clientdc;
@@ -626,15 +649,21 @@ static inline int write_data(struct client *c) {
     info.bytes_sent += c->towrite;
     // Reset client written bytes track fields
     c->towrite = c->wrote = 0;
+#if THREADSNR > 0
     pthread_mutex_unlock(&c->mutex);
+#endif
     return SOL_OK;
 
 clientdc:
+#if THREADSNR > 0
     pthread_mutex_unlock(&c->mutex);
-    return -ERRCLIENTDC;
+#endif
+    return -ERRSOCKETERR;
 
 eagain:
+#if THREADSNR > 0
     pthread_mutex_unlock(&c->mutex);
+#endif
     return -ERREAGAIN;
 }
 
@@ -706,9 +735,13 @@ static void accept_callback(struct ev_ctx *ctx, void *data) {
          * Create a client structure to handle his context
          * connection
          */
+#if THREADSNR > 0
         pthread_mutex_lock(&mutex);
+#endif
         struct client *c = memorypool_alloc(server.pool);
+#if THREADSNR > 0
         pthread_mutex_unlock(&mutex);
+#endif
         c->conn = conn;
         client_init(c);
         c->ctx = ctx;
@@ -752,6 +785,7 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
             process_message(ctx, c);
             break;
         case -ERRCLIENTDC:
+        case -ERRSOCKETERR:
         case -ERRPACKETERR:
         case -ERRMAXREQSIZE:
             /*
@@ -762,7 +796,9 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
              */
             log_error("Closing connection with %s (%s): %s",
                       c->client_id, c->conn.ip, solerr(rc));
+#if THREADSNR > 0
             pthread_mutex_lock(&mutex);
+#endif
             // Publish, if present, LWT message
             if (c->has_lwt == true) {
                 char *tname = (char *) c->session->lwt_msg.publish.topic;
@@ -779,7 +815,9 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
                     topic_del_subscriber(item->data, c);
                 }
             }
+#if THREADSNR > 0
             pthread_mutex_unlock(&mutex);
+#endif
             client_deactivate(c);
             info.nclients--;
             info.nconnections--;
@@ -1022,21 +1060,18 @@ static void session_free(const struct ref *refcount) {
     list_destroy(session->outgoing_msgs, 0);
     if (has_inflight(session)) {
         for (int i = 0; i < MAX_INFLIGHT_MSGS; ++i) {
-            if (session->i_acks[i].in_use)
+            if (session->i_acks[i].packet)
                 DECREF(session->i_acks[i].packet, struct mqtt_packet);
-            if (session->in_i_acks[i].in_use)
-                DECREF(session->in_i_acks[i].packet, struct mqtt_packet);
-            if (session->i_msgs[i].in_use)
+            if (session->i_msgs[i].packet)
                 DECREF(session->i_msgs[i].packet, struct mqtt_packet);
         }
     }
     xfree(session->i_acks);
     xfree(session->i_msgs);
-    xfree(session->in_i_acks);
     xfree(session);
 }
 
-void session_init(struct client_session *session, char *session_id) {
+void session_init(struct client_session *session, const char *session_id) {
     session->inflights = ATOMIC_VAR_INIT(0);
     session->next_free_mid = 1;
     session->subscriptions = list_new(NULL);
@@ -1044,11 +1079,10 @@ void session_init(struct client_session *session, char *session_id) {
     snprintf(session->session_id, MQTT_CLIENT_ID_LEN, "%s", session_id);
     session->i_acks = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
     session->i_msgs = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
-    session->in_i_acks = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
     session->refcount = (struct ref) { session_free, 0 };
 }
 
-struct client_session *client_session_alloc(char *session_id) {
+struct client_session *client_session_alloc(const char *session_id) {
     struct client_session *session = xmalloc(sizeof(*session));
     if (!session) return NULL;
     session_init(session, session_id);
@@ -1136,15 +1170,9 @@ struct topic *topic_get_or_create(struct server *server, const char *name) {
     return t;
 }
 
-void inflight_msg_init(struct inflight_msg *imsg,
-                       struct client *c,
-                       struct mqtt_packet *p,
-                       size_t size) {
+void inflight_msg_init(struct inflight_msg *imsg, struct mqtt_packet *p) {
     imsg->seen = time(NULL);
-    imsg->size = size;
     imsg->packet = p;
-    imsg->client = c;
-    imsg->in_use = 1;
     imsg->qos = p->header.bits.qos;
 }
 

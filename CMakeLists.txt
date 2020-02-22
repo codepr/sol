@@ -19,7 +19,7 @@ set(AUTHOR "Andrea Giacomo Baldan")
 set(LICENSE "BSD2 license")
 
 # Executable
-add_executable(sol ${SOURCES} include/uthash.h)
+add_executable(sol ${SOURCES} include/uthash.h include/ref.h)
 add_executable(sol_test ${TEST})
 
 if (DEBUG)

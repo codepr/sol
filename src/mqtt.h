@@ -30,7 +30,6 @@
 
 #include <stdio.h>
 #include "ref.h"
-#include "pack.h"
 
 // Packing/unpacking error codes
 #define MQTT_OK    0

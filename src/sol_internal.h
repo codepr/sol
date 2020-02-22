@@ -46,12 +46,15 @@
  * - error packet sent exceeds size defined by configuration (generally default
  *   to 2MB)
  * - error EAGAIN from a non-blocking read/write function
+ * - error sending/receiving data on a connected socket
+ * - error OUT OF MEMORY
  */
 #define ERRCLIENTDC         1
 #define ERRPACKETERR        2
 #define ERRMAXREQSIZE       3
 #define ERREAGAIN           4
-#define ERRNOMEM            5
+#define ERRSOCKETERR        5
+#define ERRNOMEM            6
 
 /*
  * Return code of handler functions, signaling if there's data payload to be
@@ -111,16 +114,12 @@ struct subscription {
  * generic ACKs, fields required are the descriptor of destination, the type
  * of the message, the timestamp of the last send try, the size of the packet
  * and the packet himself.
- * It's meant to be used in a fixed length array, that's why we add an 'in_use'
- * flag.
+ * It's meant to be used in a fixed length array.
  */
 struct inflight_msg {
     time_t seen; /* Timestamp of the last time we have seen this msg */
-    size_t size; /* The size of the message at the time of the store */
-    struct client *client; /* Client reference to write the payload to */
     struct mqtt_packet *packet; /* The payload to be written out in case of timeout */
     unsigned char qos; /* The QoS at the time of the publish */
-    bool in_use; /* Just a flag stating the use of the inflight_msg struct */
 };
 
 /*
@@ -169,18 +168,18 @@ struct client {
                       * it, so we need an offset to know where the actual packet
                       * will start
                       */
-    volatile atomic_ulong read; /* The number of bytes already read */
-    volatile atomic_ulong toread; /* The number of bytes that have to be read */
+    volatile atomic_size_t read; /* The number of bytes already read */
+    volatile atomic_size_t toread; /* The number of bytes that have to be read */
     unsigned char *rbuf; /* The reading buffer */
-    volatile atomic_ulong wrote; /* The number of bytes already written */
-    volatile atomic_ulong towrite; /* The number of bytes we have to write */
+    volatile atomic_size_t wrote; /* The number of bytes already written */
+    volatile atomic_size_t towrite; /* The number of bytes we have to write */
     unsigned char *wbuf; /* The writing buffer */
     char client_id[MQTT_CLIENT_ID_LEN]; /* The client ID according to MQTT specs */
     struct connection conn; /* A connection structure, takes care of plain or
                              * TLS encrypted communication by using callbacks
                              */
     struct client_session *session; /* The session associated to the client */
-    unsigned long last_seen; /* The timestamp of the last action performed */
+    time_t last_seen; /* The timestamp of the last action performed */
     bool online;  /* Just an online flag */
     bool connected; /* States if the client has already processed a connection packet */
     bool has_lwt; /* States if the connection packet carried a LWT message */
@@ -194,24 +193,23 @@ struct client {
  * messages during disconnection time (that iff clean_session is set to false),
  * inflight messages and the message ID for each one.
  * A maximum of 65535 mid can be used at the same time according to MQTT specs,
- * so i_acks, i_msgs and in_i_acks, thus being allocated on the heap during the
- * init, will be of 65535 length each.
+ * so i_acks, i_msgs, thus being allocated on the heap during the init, will be
+ * of 65535 length each.
  *
  * It's a hashable struct that will be tracked during the entire lifetime of
  * the application, governed by the clean_session flag on connection from
  * clients
  */
 struct client_session {
-    int next_free_mid; /* The next 'free' message ID */
+    unsigned next_free_mid; /* The next 'free' message ID */
     List *subscriptions; /* All the clients subscriptions, stored as topic structs */
     List *outgoing_msgs; /* Outgoing messages during disconnection time, stored as mqtt_packet pointers */
-    volatile atomic_int inflights; /* Just a counter stating the presence of inflight messages */
+    volatile atomic_ushort inflights; /* Just a counter stating the presence of inflight messages */
     bool clean_session; /* Clean session flag */
     char session_id[MQTT_CLIENT_ID_LEN]; /* The client_id the session refers to */
     struct mqtt_packet lwt_msg; /* A possibly NULL LWT message, will be set on connection */
     struct inflight_msg *i_acks; /* Inflight ACKs that must be cleared */
     struct inflight_msg *i_msgs; /* Inflight MSGs that must be sent out DUP in case of timeout */
-    struct inflight_msg *in_i_acks; /* Inflight input ACKs that must be cleared by the client */
     UT_hash_handle hh; /* UTHASH handle, needed to use UTHASH macros */
     struct ref refcount; /* Reference counting struct, to share the struct easily */
 };
@@ -225,9 +223,7 @@ extern pthread_mutex_t mutex;
 
 struct server;
 
-void inflight_msg_init(struct inflight_msg *, struct client *,
-                       struct mqtt_packet *, size_t);
-//void inflight_msg_clear(struct inflight_msg *);
+void inflight_msg_init(struct inflight_msg *, struct mqtt_packet *);
 bool is_subscribed(const struct topic *, const struct client_session *);
 struct subscriber *subscriber_new(struct topic *,
                                   struct client_session *, unsigned char);
@@ -243,8 +239,8 @@ struct topic *topic_get(const struct server *, const char *);
 /* Get or create a new topic if it doesn't exists */
 struct topic *topic_get_or_create(struct server *, const char *);
 unsigned next_free_mid(struct client_session *);
-void session_init(struct client_session *, char *);
-struct client_session *client_session_alloc(char *);
+void session_init(struct client_session *, const char *);
+struct client_session *client_session_alloc(const char *);
 
 #define has_inflight(session) ((session)->inflights > 0)
 #define inflight_msg_clear(msg) DECREF((msg)->packet, struct mqtt_packet)

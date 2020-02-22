@@ -28,6 +28,7 @@ there's probably some corner cases, not deeply investigated yet.
 - Daemon mode
 - Multiplexing IO with abstraction over backend, currently supports
   select/poll/epoll choosing the better implementation.
+- Multithread load-balancing on connections for high concurrent performance
 
 ### To be implemented
 
