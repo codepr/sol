@@ -6,7 +6,10 @@ Sol
 Oversimplified MQTT broker written from scratch, which mimic mosquitto
 features. Implemented to learning how the protocol works, it supports
 almost all MQTT v3.1.1 commands on linux platform and relies on EPOLL interface
-for multiplexing I/O. Development process is documented in this [series of posts](https://codepr.github.io/posts/sol-mqtt-broker).
+for multiplexing I/O. The basic development process is documented in this
+[series of posts](https://codepr.github.io/posts/sol-mqtt-broker), referring to
+the [tutorial branch](https://github.com/codepr/sol/tree/tutorial); the master
+branch is the most up-to-date and tested.
 **Not for production use**.
 
 ### Features
@@ -130,6 +133,44 @@ $ cat sample_passwd_file
 user1:$6$69qVAELLWuKXWQPQ$oO7lP/hNS4WPABTyK4nkJs4bcRLYFi365YX13cEc/QBJtQgqf2d5rOIUdqoUin.YVGXC3OXY9MSz7Z66ZDkCW/
 user2:$6$vtHdafhGhxpXwgBa$Y3Etz8koC1YPSYhXpTnhz.2vJTZvCUGk3xUdjyLr9z9XgE8asNwfYDRLIKN4Apz48KKwKz0YntjHsPRiE6r3g/
 ```
+
+## Concurrency
+
+The broker provides an access through a simple IO multiplexing event-loop based
+TCP server, the model is designed to be self-contained and thus easy to be
+spread on multiple threads. Another approach and probably more elegant would be
+to share a single event loop to multiple threads, at the cost of higher
+complexity and race-conditions to be handled.
+
+```sh
+                                THREADS 1..N
+ *                              [EVENT-LOOP]
+ *
+ *    ACCEPT_CALLBACK         READ_CALLBACK         WRITE_CALLBACK
+ *  -------------------    ------------------    --------------------
+ *        |                        |                       |
+ *      ACCEPT                     |                       |
+ *        | ---------------------> |                       |
+ *        |                  READ AND DECODE               |
+ *        |                        |                       |
+ *        |                        |                       |
+ *        |                     PROCESS                    |
+ *        |                        |                       |
+ *        |                        |                       |
+ *        |                        | --------------------> |
+ *        |                        |                     WRITE
+ *      ACCEPT                     |                       |
+ *        | ---------------------> | <-------------------- |
+ *        |                        |                       |
+
+```
+
+However, the current model gives some advantages against the single-thread
+implementation, as each thread can handle a share of the total number of
+connected client effectively increasing the throughput of the broker, the
+main drawback is that in worst cases a scenario that can originate is where some
+threads are serving heavy-load clients and some others are esentially idling
+without partecipating or helping.
 
 ## Contributing
 
