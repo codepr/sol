@@ -137,10 +137,10 @@ user2:$6$vtHdafhGhxpXwgBa$Y3Etz8koC1YPSYhXpTnhz.2vJTZvCUGk3xUdjyLr9z9XgE8asNwfYD
 ## Concurrency
 
 The broker provides an access through a simple IO multiplexing event-loop based
-TCP server, the model is designed to be self-contained and thus easy to be
-spread on multiple threads. Another approach and probably more elegant would be
-to share a single event loop to multiple threads, at the cost of higher
-complexity and race-conditions to be handled.
+TCP server, the model is designed to be self-contained and thus easy to spread
+on multiple threads. Another approach and probably more elegant would be to
+share a single event loop to multiple threads, at the cost of higher complexity
+and race-conditions to be handled.
 
 ```sh
                                 THREADS 1..N
