@@ -172,6 +172,26 @@ main drawback is that in worst cases a scenario that can originate is where some
 threads are serving heavy-load clients and some others are esentially idling
 without partecipating or helping.
 
+## Benchmarks
+
+I've run some basic benchmarks comparing Sol and Mosquitto's performance, using
+[mqtt-benchmark](https://github.com/krylovsk/mqtt-benchmark) tool to test
+concurrent connections and different loads of traffic on my modest machine, an
+Intel(R) I5-8265U (8) @ 3.900 GHz CPUs and 8 GB RAM.
+To be minded that currently Sol skips some checks like UTF-8 strings for topics
+and the memory footprint is also much greater than Mosquitto's one.
+
+![MQTT mosquitto vs sol comparison](MQTTcomparison.png)
+
+All tests are run pointing to localhost:1883, apparently, out of QoS 0 tests
+which are the least interesting as there's no real "handshakes" or overhead on
+the communication between the peers, QoS 1 and even more QoS 2 is where Sol
+seems to shine, highlighting a 48% increased throughtput over Mosquitto.
+Of course these benchmarks are of little relevance and Mosquitto is compiled
+without any optimizations, just an out of the box version binary shipped by
+the OS repository, version 1.6.8, but in terms of sheer concurrency Sol does
+pretty good.
+
 ## Contributing
 
 Pull requests are welcome, just create an issue and fork it.
