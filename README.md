@@ -176,7 +176,7 @@ without partecipating or helping.
 
 I've run some basic benchmarks comparing Sol and Mosquitto's performance, using
 [mqtt-benchmark](https://github.com/krylovsk/mqtt-benchmark) tool to test
-concurrent connections and different loads of traffic on my modest machine, an
+concurrent connections and different loads of traffic on my laptop, an
 Intel(R) I5-8265U (8) @ 3.900 GHz CPUs and 8 GB RAM.
 To be minded that currently Sol skips some checks like UTF-8 strings for topics
 and the memory footprint is also much greater than Mosquitto's one.
