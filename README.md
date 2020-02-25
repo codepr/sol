@@ -142,7 +142,7 @@ on multiple threads. Another approach and probably more elegant would be to
 share a single event loop to multiple threads, at the cost of higher complexity
 and race-conditions to be handled.
 
-```sh
+```
                             THREADS 1..N
                             [EVENT-LOOP]
 
