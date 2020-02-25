@@ -186,7 +186,8 @@ and the memory footprint is also much greater than Mosquitto's one.
 All tests are run pointing to localhost:1883, apparently, out of QoS 0 tests
 which are the least interesting as there's no real "handshakes" or overhead on
 the communication between the peers, QoS 1 and even more QoS 2 is where Sol
-seems to shine, highlighting a 48% increased throughtput over Mosquitto.
+seems to shine, highlighting a 48% increased throughtput over Mosquitto on the
+QoS 2 1000 clients benchmark.
 Of course these benchmarks are of little relevance and Mosquitto is compiled
 without any optimizations, just an out of the box version binary shipped by
 the OS repository, version 1.6.8, but in terms of sheer concurrency Sol does
