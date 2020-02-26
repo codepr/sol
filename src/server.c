@@ -341,14 +341,14 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
                 info.messages_sent++;
             }
             // ACKs
-            if (c->session->i_acks[i].packet
-                && (now - c->session->i_acks[i].seen) > 20) {
+            if (c->session->i_acks[i] > 0
+                && (now - c->session->i_acks[i]) > 20) {
                 log_debug("Re-sending ack to %s", c->client_id);
-                p = c->session->i_acks[i].packet;
-                p->header.bits.qos = c->session->i_acks[i].qos;
+                struct mqtt_packet ack;
+                mqtt_ack(&ack, i);
                 // Set DUP flag to 1
-                mqtt_set_dup(p);
-                size = mqtt_size(c->session->i_acks[i].packet, NULL);
+                mqtt_set_dup(&ack);
+                size = mqtt_size(&ack, NULL);
                 // Serialize the packet and send it out again
                 mqtt_pack(p, c->wbuf + c->towrite);
                 c->towrite += size;
@@ -474,7 +474,7 @@ static ssize_t recv_packet(struct client *c) {
 
     ssize_t nread = 0;
     unsigned opcode = 0, pos = 0;
-    unsigned long long pktlen = 0LL;
+    unsigned int pktlen = 0LL;
 
     // Base status, we have read 0 to 2 bytes
     if (c->status == WAITING_HEADER) {
@@ -1060,8 +1060,6 @@ static void session_free(const struct ref *refcount) {
     list_destroy(session->outgoing_msgs, 0);
     if (has_inflight(session)) {
         for (int i = 0; i < MAX_INFLIGHT_MSGS; ++i) {
-            if (session->i_acks[i].packet)
-                DECREF(session->i_acks[i].packet, struct mqtt_packet);
             if (session->i_msgs[i].packet)
                 DECREF(session->i_msgs[i].packet, struct mqtt_packet);
         }
@@ -1077,7 +1075,7 @@ void session_init(struct client_session *session, const char *session_id) {
     session->subscriptions = list_new(NULL);
     session->outgoing_msgs = list_new(NULL);
     snprintf(session->session_id, MQTT_CLIENT_ID_LEN, "%s", session_id);
-    session->i_acks = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
+    session->i_acks = xcalloc(MAX_INFLIGHT_MSGS, sizeof(time_t));
     session->i_msgs = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
     session->refcount = (struct ref) { session_free, 0 };
 }
@@ -1086,7 +1084,6 @@ struct client_session *client_session_alloc(const char *session_id) {
     struct client_session *session = xmalloc(sizeof(*session));
     if (!session) return NULL;
     session_init(session, session_id);
-    snprintf(session->session_id, MQTT_CLIENT_ID_LEN, "%s", session_id);
     return session;
 }
 
@@ -1121,12 +1118,7 @@ struct subscriber *subscriber_clone(const struct subscriber *s) {
 struct subscriber *topic_add_subscriber(struct topic *t,
                                         struct client_session *s,
                                         unsigned char qos) {
-    struct subscriber *sub = xmalloc(sizeof(*sub)), *tmp;
-    if (!sub) return NULL;
-    sub->session = s;
-    sub->granted_qos = qos;
-    sub->refcount = (struct ref) { .count = 0, .free = subscriber_free };
-    memcpy(sub->id, s->session_id, MQTT_CLIENT_ID_LEN);
+    struct subscriber *sub = subscriber_new(t, s, qos), *tmp;
     HASH_FIND_STR(t->subscribers, sub->id, tmp);
     if (!tmp)
         HASH_ADD_STR(t->subscribers, id, sub);

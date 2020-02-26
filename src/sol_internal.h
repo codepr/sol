@@ -208,7 +208,7 @@ struct client_session {
     bool clean_session; /* Clean session flag */
     char session_id[MQTT_CLIENT_ID_LEN]; /* The client_id the session refers to */
     struct mqtt_packet lwt_msg; /* A possibly NULL LWT message, will be set on connection */
-    struct inflight_msg *i_acks; /* Inflight ACKs that must be cleared */
+    time_t *i_acks; /* Inflight ACKs that must be cleared */
     struct inflight_msg *i_msgs; /* Inflight MSGs that must be sent out DUP in case of timeout */
     UT_hash_handle hh; /* UTHASH handle, needed to use UTHASH macros */
     struct ref refcount; /* Reference counting struct, to share the struct easily */

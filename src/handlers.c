@@ -93,8 +93,6 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t) {
         goto exit;
     }
 
-    unsigned char type;
-
     // first run check
     struct subscriber *sub, *dummy;
     HASH_ITER(hh, t->subscribers, sub, dummy) {
@@ -123,12 +121,8 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t) {
          */
         if (pkt->header.bits.qos > AT_MOST_ONCE) {
             mid = next_free_mid(s);
-            type = sub->granted_qos == AT_LEAST_ONCE ? PUBACK : PUBREC;
             pkt->publish.pkt_id = mid;
             INCREF(pkt, struct mqtt_packet);
-            struct mqtt_packet *ack = mqtt_packet_alloc(type);
-            INCREF(ack, struct mqtt_packet);
-            mqtt_ack(ack, mid);
             /*
              * If offline, we must enqueue messages in the inflight queue
              * of the client, they will be sent out only in case of a
@@ -140,7 +134,7 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t) {
                     all_at_most_once = false;
                     INCREF(pkt, struct mqtt_packet);
                     inflight_msg_init(&s->i_msgs[mid], pkt);
-                    inflight_msg_init(&s->i_acks[mid], ack);
+                    s->i_acks[mid] = time(NULL);
                     ++s->inflights;
                 }
                 continue;
@@ -154,7 +148,7 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t) {
              * and write back the payload
              */
             inflight_msg_init(&sc->session->i_msgs[mid], pkt);
-            inflight_msg_init(&sc->session->i_acks[mid], ack);
+            sc->session->i_acks[mid] = time(NULL);
             ++sc->session->inflights;
 #if THREADSNR > 0
             pthread_mutex_unlock(&sc->mutex);
@@ -735,8 +729,7 @@ static int puback_handler(struct io_event *e) {
 #endif
     inflight_msg_clear(&c->session->i_msgs[pkt_id]);
     c->session->i_msgs[pkt_id].packet = NULL;
-    inflight_msg_clear(&c->session->i_acks[pkt_id]);
-    c->session->i_acks[pkt_id].packet = NULL;
+    c->session->i_acks[pkt_id] = -1;
     --c->session->inflights;
 #if THREADSNR > 0
     pthread_mutex_unlock(&c->mutex);
@@ -757,7 +750,7 @@ static int pubrec_handler(struct io_event *e) {
     pthread_mutex_unlock(&c->mutex);
 #endif
     // Update inflight acks table
-    c->session->i_acks[pkt_id].seen = time(NULL);
+    c->session->i_acks[pkt_id] = time(NULL);
     log_debug("Sending PUBREL to %s (m%u)", c->client_id, pkt_id);
     return REPLY;
 }
@@ -785,8 +778,7 @@ static int pubcomp_handler(struct io_event *e) {
 #if THREADSNR > 0
     pthread_mutex_lock(&c->mutex);
 #endif
-    inflight_msg_clear(&c->session->i_acks[pkt_id]);
-    c->session->i_acks[pkt_id].packet = NULL;
+    c->session->i_acks[pkt_id] = -1;
     inflight_msg_clear(&c->session->i_msgs[pkt_id]);
     c->session->i_msgs[pkt_id].packet = NULL;
     --c->session->inflights;
