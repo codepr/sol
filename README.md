@@ -119,8 +119,8 @@ stats_publish_interval 10s
 # tls_protocols tlsv1_2,tlsv1_3
 ```
 
-If `allow_anonymous` if false, a password file have to be specyfied. The
-password file follow the standard format of username:password line by line.
+If `allow_anonymous` is false, a password file have to be specified. The
+password file follows the standard format of username:password line by line.
 To generate one just add all entries needed in a file and run passwd.py after
 it:
 
@@ -148,20 +148,20 @@ and race-conditions to be handled.
 
     ACCEPT_CALLBACK         READ_CALLBACK         WRITE_CALLBACK
   -------------------    ------------------    --------------------
-        |                        |                       |
-      ACCEPT                     |                       |
-        | ---------------------> |                       |
-        |                  READ AND DECODE               |
-        |                        |                       |
-        |                        |                       |
-        |                     PROCESS                    |
-        |                        |                       |
-        |                        |                       |
-        |                        | --------------------> |
-        |                        |                     WRITE
-      ACCEPT                     |                       |
-        | ---------------------> | <-------------------- |
-        |                        |                       |
+          |                      |                       |
+       ACCEPT                    |                       |
+          | -------------------> |                       |
+          |                READ AND DECODE               |
+          |                      |                       |
+          |                      |                       |
+          |                   PROCESS                    |
+          |                      |                       |
+          |                      |                       |
+          |                      | --------------------> |
+          |                      |                     WRITE
+       ACCEPT                    |                       |
+          | -------------------> | <-------------------- |
+          |                      |                       |
 
 ```
 
