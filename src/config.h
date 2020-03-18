@@ -45,12 +45,15 @@
 #define SELECT 1
 #define EVENTLOOP_BACKEND "select"
 #endif
-/*
+
 #elif (defined(__APPLE__) && defined(MAC_OS_X_VERSION_10_6)) \
     || defined(__FreeBSD__) || defined(__OpenBSD__) || defined (__NetBSD__)
+/*
 #define KQUEUE 1
 #define EVENTLOOP_BACKEND "kqueue"
 */
+#define SELECT 1
+#define EVENTLOOP_BACKEND "select"
 #endif // __linux__
 
 // TLS versions
@@ -62,7 +65,7 @@
 
 // Default parameters
 
-#define VERSION                     "0.17.0"
+#define VERSION                     "0.17.1"
 #define DEFAULT_SOCKET_FAMILY       INET
 #define DEFAULT_LOG_LEVEL           DEBUG
 #define DEFAULT_CONF_PATH           "/etc/sol/sol.conf"
