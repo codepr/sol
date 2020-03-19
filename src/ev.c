@@ -476,9 +476,13 @@ static int ev_api_poll(struct ev_ctx *ctx, time_t timeout) {
 
 static int ev_api_del_fd(struct ev_ctx *ctx, int fd) {
     struct kqueue_api *k_api = ctx->api;
-    int mask = ctx->events_monitored[fd].mask;
     struct kevent ke;
-    EV_SET(&ke, fd, mask, EV_DELETE, 0, 0, NULL);
+    int ev_mask = ctx->events_monitored[fd].mask;
+    int mask = 0;
+    if (ev_mask & EV_READ) mask |= EVFILT_READ;
+    if (ev_mask & EV_WRITE) mask |= EVFILT_WRITE;
+    if (ev_mask & EV_TIMER) mask |= EVFILT_TIMER;
+    EV_SET(&ke, fd, ev_mask, EV_DELETE, 0, 0, NULL);
     if (kevent(k_api->fd, &ke, 1, NULL, 0, NULL) == -1)
         return -EV_ERR;
     return EV_OK;
