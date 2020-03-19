@@ -28,7 +28,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
-#include <string.h>
+#include <pthread.h>
 #include "network.h"
 #include "util.h"
 #include "config.h"
@@ -900,7 +900,11 @@ static void eventloop_start(void *args) {
     int sfd = loop_data->fd;
     ev_init(&ctx, EVENTLOOP_MAX_EVENTS);
     // Register stop event
+#ifdef __linux__
     ev_register_event(&ctx, conf->run, EV_CLOSEFD|EV_READ, stop_handler, NULL);
+#else
+    ev_register_event(&ctx, conf->run[1], EV_CLOSEFD|EV_READ, stop_handler, NULL);
+#endif
     // Register listening FD with accept callback
     ev_register_event(&ctx, sfd, EV_READ, accept_callback, &sfd);
     // Register periodic tasks

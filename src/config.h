@@ -28,8 +28,6 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include <stdio.h>
-#include <stdbool.h>
 #include "uthash.h"
 
 // Eventloop backend check
@@ -46,12 +44,11 @@
 #define EVENTLOOP_BACKEND "select"
 #endif
 
-#elif (defined(__APPLE__) && defined(MAC_OS_X_VERSION_10_6)) \
-    || defined(__FreeBSD__) || defined(__OpenBSD__) || defined (__NetBSD__)
-/*
+#elif defined(__APPLE__) || defined(__FreeBSD__) \
+       || defined(__OpenBSD__) || defined (__NetBSD__)
 #define KQUEUE 1
 #define EVENTLOOP_BACKEND "kqueue"
-*/
+#else
 #define SELECT 1
 #define EVENTLOOP_BACKEND "select"
 #endif // __linux__
@@ -85,7 +82,11 @@ struct config {
     /* Sol version <MAJOR.MINOR.PATCH> */
     const char *version;
     /* Eventfd to break the epoll_wait loop in case of signals */
+#ifdef __linux__
     int run;
+#else
+    int run[2];
+#endif // __linux__
     /* Logging level, to be set by reading configuration */
     int loglevel;
     /* Socket family (Unix domain or TCP) */

@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2019, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2020, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -28,7 +28,7 @@
 #ifndef EV_H
 #define EV_H
 
-#include <sys/time.h>
+#include <time.h>
 
 #define EV_OK  0
 #define EV_ERR 1

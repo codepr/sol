@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2019, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2020, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,18 +25,29 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <time.h>
 #include <errno.h>
 #include <string.h>
-#include <unistd.h>
 #include <assert.h>
+#include <unistd.h>
+#ifdef __linux__
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
+#endif
 #include "ev.h"
 #include "util.h"
 #include "config.h"
 
 #if defined(EPOLL)
+
+/*
+ * =========================
+ *  Epoll backend functions
+ * =========================
+ *
+ * The epoll_api structure contains the epoll fd and the events array needed to
+ * wait on events with epoll_wait(2) blocking call. It's the best multiplexing
+ * IO api available on Linux systems and thus the optimal choice.
+ */
 
 #include <sys/epoll.h>
 
@@ -161,6 +172,20 @@ static inline struct ev *ev_api_fetch_event(const struct ev_ctx *ctx,
 
 #elif defined(POLL)
 
+/*
+ * =========================
+ *  Poll backend functions
+ * =========================
+ *
+ * The poll_api structure contains the number of fds to monitor and the array
+ * of pollfd structures associated. This number must be adjusted everytime a
+ * client disconnect or a new connection have an fd > nfds to avoid iterating
+ * over closed fds everytime a new event is triggered.
+ * As select, poll iterate linearly over all the triggered events, without the
+ * hard limit of 1024 connections. It's the second best option available if no
+ * epoll or kqueue for Mac OSX are not present.
+ */
+
 #include <poll.h>
 
 struct poll_api {
@@ -217,7 +242,7 @@ static int ev_api_watch_fd(struct ev_ctx *ctx, int fd) {
     if (p_api->nfds >= p_api->events_monitored) {
         p_api->events_monitored *= 2;
         p_api->fds = xrealloc(p_api->fds,
-                              p_api->events_monitored * sizeof(struct pollfd));
+                                 p_api->events_monitored * sizeof(struct pollfd));
     }
     return EV_OK;
 }
@@ -250,7 +275,7 @@ static int ev_api_register_event(struct ev_ctx *ctx, int fd, int mask) {
     if (p_api->nfds >= p_api->events_monitored) {
         p_api->events_monitored *= 2;
         p_api->fds = xrealloc(p_api->fds,
-                              p_api->events_monitored * sizeof(struct pollfd));
+                                 p_api->events_monitored * sizeof(struct pollfd));
     }
     return EV_OK;
 }
@@ -277,6 +302,20 @@ static inline struct ev *ev_api_fetch_event(const struct ev_ctx *ctx,
 
 #elif defined(SELECT)
 
+/*
+ * ==========================
+ *  Select backend functions
+ * ==========================
+ *
+ * The select_api structure contains two copies of the read/write fdset, it's
+ * a measure to reset the original monitored fd_set after each select(2) call
+ * as it's not safe to iterate over the already selected sets, select(2) make
+ * side-effects on the passed in fd_sets.
+ * At each new event all the monitored fd_set are iterated and check for read
+ * or write readiness; the number of monitored sockets is hard-capped at 1024.
+ * It's the oldest multiplexing IO and practically obiquitous, making it the
+ * perfect fallback for every system.
+ */
 struct select_api {
     fd_set rfds, wfds;
     // Copy of the original fdset arrays to re-initialize them after each cycle
@@ -389,7 +428,101 @@ static inline struct ev *ev_api_fetch_event(const struct ev_ctx *ctx,
     return ctx->events_monitored + idx;
 }
 
-#endif // SELECT
+#elif defined(KQUEUE)
+
+#include <sys/types.h>
+#include <sys/event.h>
+#include <sys/time.h>
+
+struct kqueue_api {
+    int fd;
+    struct kevent *events;
+};
+
+static void ev_api_init(struct ev_ctx *ctx, int events_nr) {
+    struct kqueue_api *k_api = xmalloc(sizeof(*k_api));
+    k_api->fd = kqueue();
+    k_api->events = xcalloc(events_nr, sizeof(struct kevent));
+    ctx->api = k_api;
+    ctx->maxfd = events_nr;
+}
+
+static void ev_api_destroy(struct ev_ctx *ctx) {
+    close(((struct kqueue_api *) ctx->api)->fd);
+    xfree(((struct kqueue_api *) ctx->api)->events);
+    xfree(ctx->api);
+}
+
+static int ev_api_get_event_type(struct ev_ctx *ctx, int idx) {
+    struct kqueue_api *k_api = ctx->api;
+    int events = k_api->events[idx].flags;
+    int ev_mask = ctx->events_monitored[k_api->events[idx].ident].mask;
+    // We want to remember the previous events only if they're not of type
+    // CLOSE or TIMER
+    int mask = ev_mask & (EV_CLOSEFD | EV_TIMERFD) ? ev_mask : EV_NONE;
+    if (events & (EV_EOF | EV_ERROR)) mask |= EV_DISCONNECT;
+    if (events & EVFILT_READ) mask |= EV_READ;
+    if (events & EVFILT_WRITE) mask |= EV_WRITE;
+    return mask;
+}
+
+static int ev_api_poll(struct ev_ctx *ctx, time_t timeout) {
+    struct kqueue_api *k_api = ctx->api;
+    int err = kevent(k_api->fd, NULL, 0, k_api->events, ctx->maxevents, NULL);
+    if (err < 0)
+        return -EV_ERR;
+    return err;
+}
+
+static int ev_api_del_fd(struct ev_ctx *ctx, int fd) {
+    struct kqueue_api *k_api = ctx->api;
+    int mask = ctx->events_monitored[fd].mask;
+    struct kevent ke;
+    EV_SET(&ke, fd, mask, EV_DELETE, 0, 0, NULL);
+    if (kevent(k_api->fd, &ke, 1, NULL, 0, NULL) == -1)
+        return -EV_ERR;
+    return EV_OK;
+}
+
+static int ev_api_register_event(struct ev_ctx *ctx, int fd, int mask) {
+    struct kqueue_api *k_api = ctx->api;
+    struct kevent ke;
+    int op = 0;
+    if (mask & EV_READ) op |= EVFILT_READ;
+    if (mask & EV_WRITE) op |= EVFILT_WRITE;
+    EV_SET(&ke, fd, op, EV_ADD, 0, 0, NULL);
+    if (kevent(k_api->fd, &ke, 1, NULL, 0, NULL) == -1)
+        return -EV_ERR;
+    return EV_OK;
+}
+
+static int ev_api_watch_fd(struct ev_ctx *ctx, int fd) {
+    return ev_api_register_event(ctx, fd, EV_READ);
+}
+
+static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask) {
+    struct kqueue_api *k_api = ctx->api;
+    struct kevent ke;
+    int op = 0;
+    if (mask & (EV_READ | EV_EVENTFD)) op |= EVFILT_READ;
+    if (mask & EV_WRITE) op |= EVFILT_WRITE;
+    EV_SET(&ke, fd, op, EV_ADD | EV_ENABLE, 0, 0, NULL);
+    if (kevent(k_api->fd, &ke, 1, NULL, 0, NULL) == -1)
+        return -EV_ERR;
+    return EV_OK;
+}
+
+/*
+ * Get the event on the idx position inside the events map. The event can also
+ * be an unset one (EV_NONE)
+ */
+static inline struct ev *ev_api_fetch_event(const struct ev_ctx *ctx,
+                                            int idx, int mask) {
+    int fd = ((struct kqueue_api *) ctx->api)->events[idx].ident;
+    return ctx->events_monitored + fd;
+}
+
+#endif // KQUEUE
 
 /*
  * Process the event at the position idx in the events_monitored array. Read or
@@ -402,13 +535,21 @@ static int ev_process_event(struct ev_ctx *ctx, int idx, int mask) {
     struct ev *e = ev_api_fetch_event(ctx, idx, mask);
     int err = 0, fired = 0, fd = e->fd;
     if (mask & EV_CLOSEFD) {
+#ifdef __linux__
         err = eventfd_read(fd, &(eventfd_t){0});
+#else
+        err = read(fd, &(unsigned long){0}, sizeof(unsigned long));
+#endif // __linux__
         if (err < 0) return EV_OK;
         e->rcallback(ctx, e->rdata);
         ++fired;
     } else {
         if (mask & EV_EVENTFD) {
+#ifdef __linux__
             err = eventfd_read(fd, &(eventfd_t){0L});
+#else
+            err = read(fd, &(unsigned long){0}, sizeof(unsigned long));
+#endif // __linux__
             close(fd);
         } else if (mask & EV_TIMERFD) {
             err = read(fd, &(unsigned long int){0L}, sizeof(unsigned long int));
@@ -550,7 +691,11 @@ int ev_register_event(struct ev_ctx *ctx, int fd, int mask,
     ret = ev_api_register_event(ctx, fd, mask);
     if (ret < 0) return -EV_ERR;
     if (mask & EV_EVENTFD)
+#ifdef __linux__
         (void) eventfd_write(fd, 1);
+#else
+        (void) write(fd, &(unsigned long){1}, sizeof(unsigned long));
+#endif
     return EV_OK;
 }
 
@@ -563,6 +708,7 @@ int ev_register_cron(struct ev_ctx *ctx,
                      void (*callback)(struct ev_ctx *, void *),
                      void *data,
                      long long s, long long ns) {
+#ifdef __linux__
     struct itimerspec timer;
     memset(&timer, 0x00, sizeof(timer));
     timer.it_value.tv_sec = s;
@@ -578,6 +724,16 @@ int ev_register_cron(struct ev_ctx *ctx,
     // Add the timer to the event loop
     ev_add_monitored(ctx, timerfd, EV_TIMERFD|EV_READ, callback, data);
     return ev_api_watch_fd(ctx, timerfd);
+#else
+    struct kqueue_api *k_api = ctx->api;
+    // milliseconds
+    unsigned period = (s * 1000)  + (ns / 100);
+    struct kevent ke;
+    EV_SET(&ke, 1, EVFILT_TIMER, EV_ADD | EV_ENABLE, 0, period, 0);
+    if (kevent(k_api->fd, &ke, 1, NULL, 0, NULL) == -1)
+        return -EV_ERR;
+    return EV_OK;
+#endif // __linux__
 }
 
 /*
@@ -599,7 +755,11 @@ int ev_fire_event(struct ev_ctx *ctx, int fd, int mask,
     ret = ev_api_fire_event(ctx, fd, mask);
     if (ret < 0) return -EV_ERR;
     if (mask & EV_EVENTFD) {
+#ifdef __linux__
         ret = eventfd_write(fd, 1);
+#else
+        ret = write(fd, &(unsigned long){1}, sizeof(unsigned long));
+#endif // __linux__
         if (ret < 0) return -EV_ERR;
     }
     return EV_OK;

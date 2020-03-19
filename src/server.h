@@ -28,10 +28,6 @@
 #ifndef SERVER_H
 #define SERVER_H
 
-#include <pthread.h>
-#include <sys/types.h>
-#include <sys/eventfd.h>
-#include <openssl/ssl.h>
 #include "mqtt.h"
 #include "pack.h"
 #include "trie.h"

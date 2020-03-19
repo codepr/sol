@@ -26,10 +26,12 @@
  */
 
 #include <ctype.h>
-#include <string.h>
 #include <assert.h>
-#include <sys/socket.h>
+#ifdef __linux__
 #include <sys/eventfd.h>
+#else
+#include <unistd.h>
+#endif
 #include "util.h"
 #include "config.h"
 #include "network.h"
@@ -328,7 +330,11 @@ void config_set_default(void) {
     memset(config.logpath, 0x00, 0xFFF);
     strcpy(config.hostname, DEFAULT_HOSTNAME);
     strcpy(config.port, DEFAULT_PORT);
+#ifdef __linux__
     config.run = eventfd(0, EFD_NONBLOCK);
+#else
+    pipe(config.run);
+#endif
     config.max_memory = read_memory_with_mul(DEFAULT_MAX_MEMORY);
     config.max_request_size = read_memory_with_mul(DEFAULT_MAX_REQUEST_SIZE);
     config.tcp_backlog = SOMAXCONN;

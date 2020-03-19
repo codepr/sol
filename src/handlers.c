@@ -25,9 +25,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <errno.h>
-#include <string.h>
-#include <sys/epoll.h>
+#include <stdio.h>
 #include "mqtt.h"
 #include "util.h"
 #include "config.h"

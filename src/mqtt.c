@@ -26,7 +26,6 @@
  */
 
 #include <string.h>
-#include <arpa/inet.h>
 #include "util.h"
 #include "pack.h"
 #include "mqtt.h"

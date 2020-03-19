@@ -28,7 +28,6 @@
 #ifndef MQTT_H
 #define MQTT_H
 
-#include <stdio.h>
 #include "ref.h"
 
 // Packing/unpacking error codes

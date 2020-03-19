@@ -28,9 +28,6 @@
 #ifndef MEMORYPOOL_H
 #define MEMORYPOOL_H
 
-#include <stdlib.h>
-#include <stdbool.h>
-
 /*
  * Simple memory object-pool, the purpose is to allow for fixed size objects to
  * be pre-allocated and re-use of memory blocks, so no size have to be

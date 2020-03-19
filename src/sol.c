@@ -25,12 +25,11 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <signal.h>
-#include <unistd.h>
+#ifdef __linux__
 #include <sys/eventfd.h>
+#endif
+#include <unistd.h>
 #include "util.h"
 #include "config.h"
 #include "server.h"
@@ -39,7 +38,11 @@
 static void sigint_handler(int signum) {
     (void) signum;
     for (int i = 0; i < THREADSNR + 1; ++i) {
+#ifdef __linux__
         eventfd_write(conf->run, 1);
+#else
+        (void) write(conf->run[0], &(unsigned long) {1}, sizeof(unsigned long));
+#endif
         usleep(1500);
     }
 }

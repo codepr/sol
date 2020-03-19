@@ -32,7 +32,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <strings.h>
 
 #define MAX_LOG_SIZE 119
 

@@ -28,7 +28,6 @@
 #include <ctype.h>
 #include <string.h>
 #include <stdarg.h>
-#include <arpa/inet.h>
 #include "pack.h"
 #include "util.h"
 

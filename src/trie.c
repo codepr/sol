@@ -26,7 +26,6 @@
  */
 
 #include <assert.h>
-#include <stdlib.h>
 #include <string.h>
 #include "trie.h"
 #include "util.h"

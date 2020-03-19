@@ -28,9 +28,7 @@
 #include <time.h>
 #include <crypt.h>
 #include <ctype.h>
-#include <errno.h>
 #include <assert.h>
-#include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <sys/time.h>

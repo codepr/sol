@@ -29,11 +29,8 @@
 #ifndef NETWORK_H
 #define NETWORK_H
 
-#include <stdio.h>
 #include <openssl/ssl.h>
 #include <arpa/inet.h>
-#include <sys/types.h>
-#include <sys/timerfd.h>
 
 // Socket families
 #define UNIX    0

@@ -26,19 +26,11 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <string.h>
-#include <stdlib.h>
-#include <errno.h>
 #include <netdb.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/un.h>
-#include <sys/epoll.h>
-#include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/eventfd.h>
 #include <openssl/err.h>
 #include "util.h"
 #include "config.h"
@@ -303,7 +295,14 @@ SSL_CTX *create_ssl_context() {
 
     SSL_CTX *ctx;
 
+#ifdef __linux__
+    // TODO
+    // this check should be done against OpenSSL version > 1.1.0
     ctx = SSL_CTX_new(TLS_server_method());
+#else
+    ctx = SSL_CTX_new(SSLv23_method());
+#endif // __linux__
+
     if (!ctx) {
         perror("Unable to create SSL context");
         ERR_print_errors_fp(stderr);

@@ -28,7 +28,6 @@
 #ifndef PACK_H
 #define PACK_H
 
-#include <stdio.h>
 #include <stdint.h>
 
 /*
