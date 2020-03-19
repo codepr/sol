@@ -430,6 +430,17 @@ static inline struct ev *ev_api_fetch_event(const struct ev_ctx *ctx,
 
 #elif defined(KQUEUE)
 
+/*
+ * ==========================
+ *  Kqueue backend functions
+ * ==========================
+ *
+ * The Epoll counterpart on BSD systems, including Mac OSX, it's the older of
+ * the two Mux IO implementations and on par in terms of performances, a bit
+ * more versatile as it's possible to schedule timers directly as events
+ * instead of relying on support mechanisms like `timerfd` on linux.
+ */
+
 #include <sys/types.h>
 #include <sys/event.h>
 #include <sys/time.h>
