@@ -98,12 +98,18 @@ struct server server;
  *        | ---------------------> | <-------------------- |
  *        |                        |                       |
  *
- * Right now we're using a single thread, but the whole method could be easily
- * distributed across a threadpool, by paying attention to the shared critical
- * parts on handler module.
- * The access to shared data strucures on the worker thread pool could be
- * guarded by a spinlock, and being generally fast operations it shouldn't
- * suffer high contentions by the threads and thus being really fast.
+ * The whole method could be easily distributed across a threadpool, by paying
+ * attention to the shared critical parts on handler module.
+ * The access to shared data strucures could be guarded by a mutex or a
+ * spinlock, and being generally fast operations it shouldn't suffer high
+ * contentions by the threads and thus being really fast.
+ * The drawback of this approach is that the concurrency is not equally
+ * distributed across all threads, each thread has it's own eventloop and thus
+ * is responsible for a subset of connections, without any possibility of
+ * cooperation from other threads. This should be mitigated by the fact that
+ * this application mainly deals with short-lived connections so there's
+ * frequent turnover of monitored FDs, increasing the number of connections
+ * for each different thread.
  */
 
 static void client_init(struct client *);
