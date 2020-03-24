@@ -34,7 +34,7 @@ struct memorypool *memorypool_new(size_t blocks_nr, size_t blocksize) {
     struct memorypool *pool = xmalloc(sizeof(*pool));
     if (!pool)
         return NULL;
-    blocksize = blocksize >= sizeof(uintptr_t) ? blocksize : sizeof(uintptr_t);
+    blocksize = blocksize >= sizeof(intptr_t) ? blocksize : sizeof(intptr_t);
     pool->memory = xcalloc(blocks_nr, blocksize);
     pool->free = pool->memory;
     pool->blocks_nr = blocks_nr;
