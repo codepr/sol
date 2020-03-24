@@ -80,7 +80,7 @@ err:
  * Set TCP_NODELAY flag to true, disabling Nagle's algorithm, no more waiting
  * for incoming packets on the buffer
  */
-static int set_tcp_nodelay(int fd) {
+static int set_tcpnodelay(int fd) {
     return setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &(int) {1}, sizeof(int));
 }
 
@@ -177,7 +177,7 @@ int make_listen(const char *host, const char *port, int s_family) {
 
     // Set TCP_NODELAY only for TCP sockets
     if (s_family == INET)
-        (void) set_tcp_nodelay(sfd);
+        (void) set_tcpnodelay(sfd);
 
     if ((listen(sfd, conf->tcp_backlog)) == -1) {
         perror("listen");
@@ -206,7 +206,7 @@ static int accept_conn(int sfd, char *ip) {
     (void) set_cloexec(clientsock);
 
     // Set TCP_NODELAY only for TCP sockets
-    if (conf->socket_family == INET) (void) set_tcp_nodelay(clientsock);
+    if (conf->socket_family == INET) (void) set_tcpnodelay(clientsock);
 
     char ip_buff[INET_ADDRSTRLEN];
     if (inet_ntop(AF_INET, &addr.sin_addr, ip_buff, sizeof(ip_buff)) == NULL) {
@@ -295,9 +295,9 @@ SSL_CTX *create_ssl_context() {
 
     SSL_CTX *ctx;
 
-#ifdef __linux__
-    // TODO
-    // this check should be done against OpenSSL version > 1.1.0
+#if OPENSSL_VERSION_NUMBER >= 0x10100000
+    // TLS_server_method has been added with OpenSSL version > 1.1.0
+    // and should be used in place of SSLv* which is goind to be deprecated
     ctx = SSL_CTX_new(TLS_server_method());
 #else
     ctx = SSL_CTX_new(SSLv23_method());
