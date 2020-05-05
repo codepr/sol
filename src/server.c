@@ -993,7 +993,6 @@ int start_server(const char *addr, const char *port) {
     pthread_t thrs[THREADSNR];
     for (int i = 0; i < THREADSNR; ++i) {
         pthread_create(&thrs[i], NULL, (void * (*) (void *)) &eventloop_start, &loop_start);
-        /* usleep(1500); */
     }
 #endif
     loop_start.cronjobs = true;
