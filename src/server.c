@@ -48,7 +48,7 @@ pthread_mutex_t mutex;
  */
 struct listen_payload {
     int fd;
-    bool cronjobs;
+    atomic_bool cronjobs;
 };
 
 /* Seconds in a Sol, easter egg */
@@ -218,20 +218,20 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     (void)data;
 
     char cclients[21];
-    snprintf(cclients, 21, "%d", info.nclients);
+    snprintf(cclients, 21, "%lu", info.nclients);
 
     char bsent[21];
-    snprintf(bsent, 21, "%lld", info.bytes_sent);
+    snprintf(bsent, 21, "%lu", info.bytes_sent);
 
     char msent[21];
-    snprintf(msent, 21, "%lld", info.messages_sent);
+    snprintf(msent, 21, "%lu", info.messages_sent);
 
     char mrecv[21];
-    snprintf(mrecv, 21, "%lld", info.messages_recv);
+    snprintf(mrecv, 21, "%lu", info.messages_recv);
 
     long long uptime = time(NULL) - info.start_time;
     char utime[21];
-    snprintf(utime, 21, "%lld", uptime);
+    snprintf(utime, 21, "%llu", uptime);
 
     double sol_uptime = (double)(time(NULL) - info.start_time) / SOL_SECONDS;
     char sutime[16];
@@ -955,6 +955,8 @@ static int wildcard_destructor(struct list_node *node) {
  */
 int start_server(const char *addr, const char *port) {
 
+    INIT_INFO;
+
     /* Initialize global Sol instance */
     trie_init(&server.topics, NULL);
     server.authentications = NULL;
@@ -985,13 +987,13 @@ int start_server(const char *addr, const char *port) {
     log_info("Server start");
     info.start_time = time(NULL);
 
-    struct listen_payload loop_start = { sfd, false };
+    struct listen_payload loop_start = { sfd, ATOMIC_VAR_INIT(false) };
 
 #if THREADSNR > 0
     pthread_t thrs[THREADSNR];
     for (int i = 0; i < THREADSNR; ++i) {
         pthread_create(&thrs[i], NULL, (void * (*) (void *)) &eventloop_start, &loop_start);
-        usleep(1500);
+        /* usleep(1500); */
     }
 #endif
     loop_start.cronjobs = true;

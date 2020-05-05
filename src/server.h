@@ -67,24 +67,36 @@ struct io_event {
 /* Global informations statistics structure */
 struct sol_info {
     /* Number of clients currently connected */
-    unsigned int nclients;
+    atomic_size_t nclients;
     /* Total number of clients connected since the start */
-    unsigned long long nconnections;
+    atomic_size_t nconnections;
     /* Total number of sent messages */
-    unsigned long long messages_sent;
+    atomic_size_t messages_sent;
     /* Total number of received messages */
-    unsigned long long messages_recv;
+    atomic_size_t messages_recv;
     /* Timestamp of the start time */
-    unsigned long long start_time;
+    atomic_size_t start_time;
     /* Seconds passed since the start */
-    unsigned long long uptime;
+    atomic_size_t uptime;
     /* Total number of requests served */
-    unsigned long long nrequests;
+    atomic_size_t nrequests;
     /* Total number of bytes received */
-    unsigned long long bytes_sent;
+    atomic_size_t bytes_sent;
     /* Total number of bytes sent out */
-    unsigned long long bytes_recv;
+    atomic_size_t bytes_recv;
 };
+
+#define INIT_INFO do { \
+    info.nclients = ATOMIC_VAR_INIT(0);         \
+    info.nconnections = ATOMIC_VAR_INIT(0);     \
+    info.messages_sent = ATOMIC_VAR_INIT(0);    \
+    info.messages_recv = ATOMIC_VAR_INIT(0);    \
+    info.start_time = ATOMIC_VAR_INIT(0);       \
+    info.uptime = ATOMIC_VAR_INIT(0);           \
+    info.nrequests = ATOMIC_VAR_INIT(0);        \
+    info.bytes_sent = ATOMIC_VAR_INIT(0);       \
+    info.bytes_recv = ATOMIC_VAR_INIT(0);       \
+} while (0)
 
 /*
  * General informations of the broker, all fields will be published

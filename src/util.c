@@ -33,11 +33,12 @@
 #include <stdarg.h>
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <stdatomic.h>
 #include "util.h"
 #include "mqtt.h"
 #include "config.h"
 
-static size_t memory = 0;
+static atomic_size_t memory = ATOMIC_VAR_INIT(0);
 
 static FILE *fh = NULL;
 
