@@ -59,6 +59,7 @@ char *xstrdup(const char *);
 char *remove_occur(char *, char);
 char *append_string(const char *, char *, size_t);
 bool check_passwd(const char *, const char *);
+void die(const char *, ...);
 
 size_t memory_used(void);
 

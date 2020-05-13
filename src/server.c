@@ -961,6 +961,9 @@ int start_server(const char *addr, const char *port) {
     trie_init(&server.topics, NULL);
     server.authentications = NULL;
     server.pool = memorypool_new(BASE_CLIENTS_NUM, sizeof(struct client));
+    if (!server.pool)
+        die("Failed to allocate %d sized memory pool for clients",
+            BASE_CLIENTS_NUM);
     server.clients_map = NULL;
     server.sessions = NULL;
     server.wildcards = list_new(wildcard_destructor);

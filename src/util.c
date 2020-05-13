@@ -324,3 +324,15 @@ long get_fh_soft_limit(void) {
     }
     return limit.rlim_cur;
 }
+
+void die(const char *msg, ...) {
+    va_list ap;
+    char error[MAX_LOG_SIZE];
+
+    va_start(ap, msg);
+    vsnprintf(error, sizeof(error), msg, ap);
+    va_end(ap);
+    fprintf(stderr, "%s: Out of memory\n", error);
+    fflush(stderr);
+    abort();
+}
