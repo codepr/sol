@@ -102,12 +102,15 @@ static int epoll_del(int efd, int fd) {
     return epoll_ctl(efd, EPOLL_CTL_DEL, fd, NULL);
 }
 
-static void ev_api_init(struct ev_ctx *ctx, int events_nr) {
+static int ev_api_init(struct ev_ctx *ctx, int events_nr) {
     struct epoll_api *e_api = xmalloc(sizeof(*e_api));
+    if (!e_api)
+        return -EV_OOM;
     e_api->fd = epoll_create1(0);
     e_api->events = xcalloc(events_nr, sizeof(struct epoll_event));
     ctx->api = e_api;
     ctx->maxfd = events_nr;
+    return EV_OK;
 }
 
 static void ev_api_destroy(struct ev_ctx *ctx) {
@@ -196,13 +199,16 @@ struct poll_api {
     struct pollfd *fds;
 };
 
-static void ev_api_init(struct ev_ctx *ctx, int events_nr) {
+static int ev_api_init(struct ev_ctx *ctx, int events_nr) {
     struct poll_api *p_api = xmalloc(sizeof(*p_api));
+    if (!p_api)
+        return -EV_OOM;
     p_api->nfds = 0;
     p_api->fds = xcalloc(events_nr, sizeof(struct pollfd));
     p_api->events_monitored = events_nr;
     ctx->api = p_api;
     ctx->maxfd = events_nr;
+    return EV_OK;
 }
 
 static void ev_api_destroy(struct ev_ctx *ctx) {
@@ -325,17 +331,20 @@ struct select_api {
     fd_set _rfds, _wfds;
 };
 
-static void ev_api_init(struct ev_ctx *ctx, int events_nr) {
+static int ev_api_init(struct ev_ctx *ctx, int events_nr) {
     /*
      * fd_set is an array of 32 i32 and each FD is represented by a bit so
      * 32 x 32 = 1024 as hard limit
      */
     assert(events_nr <= 1024);
     struct select_api *s_api = xmalloc(sizeof(*s_api));
+    if (!s_api)
+        return -EV_OOM;
     FD_ZERO(&s_api->rfds);
     FD_ZERO(&s_api->wfds);
     ctx->api = s_api;
     ctx->maxfd = 0;
+    return EV_OK;
 }
 
 static void ev_api_destroy(struct ev_ctx *ctx) {
@@ -452,12 +461,15 @@ struct kqueue_api {
     struct kevent *events;
 };
 
-static void ev_api_init(struct ev_ctx *ctx, int events_nr) {
+static int ev_api_init(struct ev_ctx *ctx, int events_nr) {
     struct kqueue_api *k_api = xmalloc(sizeof(*k_api));
+    if (!k_api)
+        return -EV_OOM;
     k_api->fd = kqueue();
     k_api->events = xcalloc(events_nr, sizeof(struct kevent));
     ctx->api = k_api;
     ctx->maxfd = events_nr;
+    return EV_OK;
 }
 
 static void ev_api_destroy(struct ev_ctx *ctx) {
@@ -630,13 +642,16 @@ static inline int ev_get_event_type(struct ev_ctx *ctx, int idx) {
     return ev_api_get_event_type(ctx, idx);
 }
 
-void ev_init(struct ev_ctx *ctx, int events_nr) {
-    ev_api_init(ctx, events_nr);
+int ev_init(struct ev_ctx *ctx, int events_nr) {
+    int err = ev_api_init(ctx, events_nr);
+    if (err < 0)
+        return err;
     ctx->stop = 0;
     ctx->fired_events = 0;
     ctx->maxevents = events_nr;
     ctx->events_nr = events_nr;
     ctx->events_monitored = xcalloc(events_nr, sizeof(struct ev));
+    return EV_OK;
 }
 
 void ev_destroy(struct ev_ctx *ctx) {

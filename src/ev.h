@@ -32,6 +32,7 @@
 
 #define EV_OK  0
 #define EV_ERR 1
+#define EV_OOM 2
 
 /*
  * Event types, meant to be OR-ed on a bitmask to define the type of an event
@@ -84,7 +85,7 @@ struct ev_ctx {
     void *api; // opaque pointer to platform defined backends
 };
 
-void ev_init(struct ev_ctx *, int);
+int ev_init(struct ev_ctx *, int);
 
 void ev_destroy(struct ev_ctx *);
 
