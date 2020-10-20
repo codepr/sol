@@ -146,6 +146,8 @@ char *update_integer_string(char *str, int num) {
 char *append_string(const char *src, char *dst, size_t chunklen) {
     size_t srclen = strlen(src);
     char *ret = xmalloc(srclen + chunklen + 1);
+    if (!ret)
+        return NULL;
     memcpy(ret, src, srclen);
     memcpy(ret + srclen, dst, chunklen);
     ret[srclen + chunklen] = '\0';

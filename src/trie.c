@@ -96,6 +96,8 @@ struct trie_node *trie_create_node(char c) {
 // Returns new Trie, with a NULL root and 0 size
 Trie *trie_new(trie_destructor *destructor) {
     Trie *trie = xmalloc(sizeof(*trie));
+    if (!trie)
+        return NULL;
     trie_init(trie, destructor);
     return trie;
 }
