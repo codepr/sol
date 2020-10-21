@@ -395,10 +395,14 @@ static void client_init(struct client *client) {
     client->toread = ATOMIC_VAR_INIT(0);
     if (!client->rbuf)
         client->rbuf = xcalloc(conf->max_request_size, sizeof(unsigned char));
+    if (!client->rbuf)
+        log_critical("client_init failed: Out of memory");
     client->wrote = ATOMIC_VAR_INIT(0);
     client->towrite = ATOMIC_VAR_INIT(0);
     if (!client->wbuf)
         client->wbuf = xcalloc(conf->max_request_size, sizeof(unsigned char));
+    if (!client->wbuf)
+        log_critical("client_init failed: Out of memory");
     client->last_seen = time(NULL);
     client->has_lwt = false;
     client->session = NULL;
@@ -1097,13 +1101,18 @@ void session_init(struct client_session *session, const char *session_id) {
     session->outgoing_msgs = list_new(NULL);
     snprintf(session->session_id, MQTT_CLIENT_ID_LEN, "%s", session_id);
     session->i_acks = xcalloc(MAX_INFLIGHT_MSGS, sizeof(time_t));
+    if (!session->i_acks)
+        log_critical("session_init failed: Out of memory");
     session->i_msgs = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
+    if (!session->i_msgs)
+        log_critical("session_init failed: Out of memory");
     session->refcount = (struct ref) { session_free, 0 };
 }
 
 struct client_session *client_session_alloc(const char *session_id) {
     struct client_session *session = xmalloc(sizeof(*session));
-    if (!session) return NULL;
+    if (!session)
+        return NULL;
     session_init(session, session_id);
     return session;
 }
@@ -1118,7 +1127,8 @@ struct subscriber *subscriber_new(struct topic *t,
                                   struct client_session * s,
                                   unsigned char qos) {
     struct subscriber *sub = xmalloc(sizeof(*sub));
-    if (!sub) return NULL;
+    if (!sub)
+        return NULL;
     sub->session = s;
     sub->granted_qos = qos;
     sub->refcount = (struct ref) { .count = 0, .free = subscriber_free };
@@ -1128,7 +1138,8 @@ struct subscriber *subscriber_new(struct topic *t,
 
 struct subscriber *subscriber_clone(const struct subscriber *s) {
     struct subscriber *sub = xmalloc(sizeof(*sub));
-    if (!sub) return NULL;
+    if (!sub)
+        return NULL;
     sub->session = s->session;
     sub->granted_qos = s->granted_qos;
     sub->refcount = (struct ref) { .count = 0, .free = subscriber_free };

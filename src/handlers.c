@@ -390,6 +390,9 @@ static int connect_handler(struct io_event *e) {
             }
         };
 
+        if (!cc->session->lwt_msg.publish.topic || !cc->session->lwt_msg.publish.payload)
+            log_critical("connect_handler failed: Out of memory");
+
         cc->session->lwt_msg.header.bits.qos = c->bits.will_qos;
         // We must store the retained message in the topic
         if (c->bits.will_retain == 1) {
@@ -443,8 +446,12 @@ static int disconnect_handler(struct io_event *e) {
 static inline void add_wildcard(const char *topic, struct subscriber *s,
                                 bool wildcard) {
     struct subscription *subscription = xmalloc(sizeof(*subscription));
+    if (!subscription)
+        log_critical("add_wildcard failed: Out of memory");
     subscription->subscriber = s;
     subscription->topic = xstrdup(topic);
+    if (!subscription->topic)
+        log_critical("add_wildcard failed: Out of memory");
     subscription->multilevel = wildcard;
     INCREF(s, struct subscriber);
     server.wildcards = list_push(server.wildcards, subscription);
