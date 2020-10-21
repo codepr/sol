@@ -973,8 +973,12 @@ int start_server(const char *addr, const char *port) {
         config_read_passwd_file(conf->password_file, &server.authentications);
 
     /* Generate stats topics */
-    for (int i = 0; i < SYS_TOPICS; i++)
-        topic_put(&server, topic_new(xstrdup(sys_topics[i].name)));
+    for (int i = 0; i < SYS_TOPICS; i++) {
+        struct topic *t = topic_new(xstrdup(sys_topics[i].name));
+        if (!t)
+            log_critical("start_server failed: Out of memory");
+        topic_put(&server, t);
+    }
 
     /* Start listening for new connections */
     int sfd = make_listen(addr, port, conf->socket_family);
@@ -1050,8 +1054,11 @@ void daemonize(void) {
  */
 
 static struct topic *topic_new(const char *name) {
+    if (!name)
+        return NULL;
     struct topic *t = xmalloc(sizeof(*t));
-    if (!t) return NULL;
+    if (!t)
+        return NULL;
     topic_init(t, name);
     return t;
 }
@@ -1169,10 +1176,12 @@ struct topic *topic_get(const struct server *server, const char *name) {
 
 struct topic *topic_get_or_create(struct server *server, const char *name) {
     struct topic *t = topic_get(server, name);
-    if (!t) {
-        t = topic_new(xstrdup(name));
-        topic_put(server, t);
-    }
+    if (t != NULL)
+        return t;
+    t = topic_new(xstrdup(name));
+    if (!t)
+        return NULL;
+    topic_put(server, t);
     return t;
 }
 

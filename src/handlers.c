@@ -371,6 +371,8 @@ static int connect_handler(struct io_event *e) {
         const char *will_message = (const char *) c->payload.will_message;
         // TODO check for will_topic != NULL
         struct topic *t = topic_get_or_create(&server, will_topic);
+        if (!t)
+            log_critical("connect_handler failed: Out of memory");
         if (!topic_exists(&server, t->name))
             topic_put(&server, t);
         // I'm sure that the string will be NUL terminated by unpack function
@@ -504,6 +506,8 @@ static int subscribe_handler(struct io_event *e) {
         }
 
         struct topic *t = topic_get_or_create(&server, topic);
+        if (!t)
+            log_critical("subscribe_handler failed: Out of memory");
         /*
          * Let's explore two possible scenarios:
          * 1. Normal topic (no single level wildcard '+') which can end with
@@ -652,6 +656,8 @@ static int publish_handler(struct io_event *e) {
      * create a new one with the name selected
      */
     struct topic *t = topic_get_or_create(&server, topic);
+    if (!t)
+        log_critical("publish_handler failed: Out of memory");
 
     /* Check for # wildcards subscriptions */
     if (list_size(server.wildcards) > 0) {
