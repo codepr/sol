@@ -16,6 +16,7 @@ __pycache__
 *.hex
 *.dSYM/
 *.su
+*.db
 tags
 build
 CMakeCache.txt
@@ -32,3 +33,7 @@ test
 compile_commands.json
 certs/
 perf.txt
+passwd_file
+.ccls
+.clangd
+.vscode
