@@ -29,9 +29,10 @@
 #include "mqtt.h"
 #include "config.h"
 #include "server.h"
+#include "memory.h"
 #include "logging.h"
-#include "sol_internal.h"
 #include "handlers.h"
+#include "sol_internal.h"
 
 /* Prototype for a command handler */
 typedef int handler(struct io_event *);
@@ -384,9 +385,9 @@ static int connect_handler(struct io_event *e) {
             .publish = (struct mqtt_publish) {
                 .pkt_id = 0,  // placeholder
                 .topiclen = tpc_len,
-                .topic = (unsigned char *) xstrdup(will_topic),
+                .topic = (unsigned char *) try_strdup(will_topic),
                 .payloadlen = msg_len,
-                .payload = (unsigned char *) xstrdup(will_message)
+                .payload = (unsigned char *) try_strdup(will_message)
             }
         };
 
@@ -397,9 +398,7 @@ static int connect_handler(struct io_event *e) {
         // We must store the retained message in the topic
         if (c->bits.will_retain == 1) {
             size_t publen = mqtt_size(&cc->session->lwt_msg, NULL);
-            unsigned char *payload = xmalloc(publen);
-            if (!payload)
-                log_fatal("connect_handler failed: Out of memory")
+            unsigned char *payload = try_alloc(publen);
             mqtt_pack(&cc->session->lwt_msg, payload);
             // We got a ready-to-be-sent bytestring in the retained message
             // field
@@ -447,13 +446,9 @@ static int disconnect_handler(struct io_event *e) {
 
 static inline void add_wildcard(const char *topic, struct subscriber *s,
                                 bool wildcard) {
-    struct subscription *subscription = xmalloc(sizeof(*subscription));
-    if (!subscription)
-        log_fatal("add_wildcard failed: Out of memory");
+    struct subscription *subscription = try_alloc(sizeof(*subscription));
     subscription->subscriber = s;
-    subscription->topic = xstrdup(topic);
-    if (!subscription->topic)
-        log_fatal("add_wildcard failed: Out of memory");
+    subscription->topic = try_strdup(topic);
     subscription->multilevel = wildcard;
     INCREF(s, struct subscriber);
     server.wildcards = list_push(server.wildcards, subscription);
@@ -560,7 +555,7 @@ static int subscribe_handler(struct io_event *e) {
         // Retained message? Publish it
         // TODO move after SUBACK response
         if (t->retained_msg) {
-            size_t len = xmalloc_size(t->retained_msg);
+            size_t len = alloc_size(t->retained_msg);
             memcpy(c->wbuf + c->towrite, t->retained_msg, len);
             c->towrite += len;
         }
@@ -695,9 +690,7 @@ static int publish_handler(struct io_event *e) {
     pkt->publish = e->data.publish;
 
     if (hdr->bits.retain == 1) {
-        t->retained_msg = xmalloc(mqtt_size(&e->data, NULL));
-        if (!t->retained_msg)
-            log_fatal("publish_handler failed: Out of memory");
+        t->retained_msg = try_alloc(mqtt_size(&e->data, NULL));
         mqtt_pack(&e->data, t->retained_msg);
     }
 #if THREADSNR > 0

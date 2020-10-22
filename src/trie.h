@@ -28,6 +28,7 @@
 #ifndef TRIE_H
 #define TRIE_H
 
+#include <stdbool.h>
 #include "bst.h"
 #include "list.h"
 

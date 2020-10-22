@@ -33,6 +33,7 @@
 #include "config.h"
 #include "sol_internal.h"
 #include "server.h"
+#include "memory.h"
 #include "logging.h"
 #include "handlers.h"
 #include "memorypool.h"
@@ -394,15 +395,11 @@ static void client_init(struct client *client) {
     client->read = ATOMIC_VAR_INIT(0);
     client->toread = ATOMIC_VAR_INIT(0);
     if (!client->rbuf)
-        client->rbuf = xcalloc(conf->max_request_size, sizeof(unsigned char));
-    if (!client->rbuf)
-        log_fatal("client_init failed: Out of memory");
+        client->rbuf = try_calloc(conf->max_request_size, sizeof(unsigned char));
     client->wrote = ATOMIC_VAR_INIT(0);
     client->towrite = ATOMIC_VAR_INIT(0);
     if (!client->wbuf)
-        client->wbuf = xcalloc(conf->max_request_size, sizeof(unsigned char));
-    if (!client->wbuf)
-        log_fatal("client_init failed: Out of memory");
+        client->wbuf = try_calloc(conf->max_request_size, sizeof(unsigned char));
     client->last_seen = time(NULL);
     client->has_lwt = false;
     client->session = NULL;
@@ -947,9 +944,9 @@ static int wildcard_destructor(struct list_node *node) {
         return -SOL_ERR;
     struct subscription *s = node->data;
     DECREF(s->subscriber, struct subscriber);
-    xfree((char *) s->topic);
-    xfree(s);
-    xfree(node);
+    free_memory((char *) s->topic);
+    free_memory(s);
+    free_memory(node);
     return SOL_OK;
 }
 
@@ -978,7 +975,7 @@ int start_server(const char *addr, const char *port) {
 
     /* Generate stats topics */
     for (int i = 0; i < SYS_TOPICS; i++) {
-        struct topic *t = topic_new(xstrdup(sys_topics[i].name));
+        struct topic *t = topic_new(try_strdup(sys_topics[i].name));
         if (!t)
             log_fatal("start_server failed: Out of memory");
         topic_put(&server, t);
@@ -1060,16 +1057,14 @@ void daemonize(void) {
 static struct topic *topic_new(const char *name) {
     if (!name)
         return NULL;
-    struct topic *t = xmalloc(sizeof(*t));
-    if (!t)
-        return NULL;
+    struct topic *t = try_alloc(sizeof(*t));
     topic_init(t, name);
     return t;
 }
 
 static void subscriber_free(const struct ref *r) {
     struct subscriber *sub = container_of(r, struct subscriber, refcount);
-    xfree(sub);
+    free_memory(sub);
 }
 
 static void topic_init(struct topic *t, const char *name) {
@@ -1089,9 +1084,9 @@ static void session_free(const struct ref *refcount) {
                 DECREF(session->i_msgs[i].packet, struct mqtt_packet);
         }
     }
-    xfree(session->i_acks);
-    xfree(session->i_msgs);
-    xfree(session);
+    free_memory(session->i_acks);
+    free_memory(session->i_msgs);
+    free_memory(session);
 }
 
 void session_init(struct client_session *session, const char *session_id) {
@@ -1100,19 +1095,13 @@ void session_init(struct client_session *session, const char *session_id) {
     session->subscriptions = list_new(NULL);
     session->outgoing_msgs = list_new(NULL);
     snprintf(session->session_id, MQTT_CLIENT_ID_LEN, "%s", session_id);
-    session->i_acks = xcalloc(MAX_INFLIGHT_MSGS, sizeof(time_t));
-    if (!session->i_acks)
-        log_fatal("session_init failed: Out of memory");
-    session->i_msgs = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
-    if (!session->i_msgs)
-        log_fatal("session_init failed: Out of memory");
+    session->i_acks = try_calloc(MAX_INFLIGHT_MSGS, sizeof(time_t));
+    session->i_msgs = try_calloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
     session->refcount = (struct ref) { session_free, 0 };
 }
 
 struct client_session *client_session_alloc(const char *session_id) {
-    struct client_session *session = xmalloc(sizeof(*session));
-    if (!session)
-        return NULL;
+    struct client_session *session = try_alloc(sizeof(*session));
     session_init(session, session_id);
     return session;
 }
@@ -1126,9 +1115,7 @@ bool is_subscribed(const struct topic *t, const struct client_session *s) {
 struct subscriber *subscriber_new(struct topic *t,
                                   struct client_session * s,
                                   unsigned char qos) {
-    struct subscriber *sub = xmalloc(sizeof(*sub));
-    if (!sub)
-        return NULL;
+    struct subscriber *sub = try_alloc(sizeof(*sub));
     sub->session = s;
     sub->granted_qos = qos;
     sub->refcount = (struct ref) { .count = 0, .free = subscriber_free };
@@ -1137,9 +1124,7 @@ struct subscriber *subscriber_new(struct topic *t,
 }
 
 struct subscriber *subscriber_clone(const struct subscriber *s) {
-    struct subscriber *sub = xmalloc(sizeof(*sub));
-    if (!sub)
-        return NULL;
+    struct subscriber *sub = try_alloc(sizeof(*sub));
     sub->session = s->session;
     sub->granted_qos = s->granted_qos;
     sub->refcount = (struct ref) { .count = 0, .free = subscriber_free };
@@ -1189,7 +1174,7 @@ struct topic *topic_get_or_create(struct server *server, const char *name) {
     struct topic *t = topic_get(server, name);
     if (t != NULL)
         return t;
-    t = topic_new(xstrdup(name));
+    t = topic_new(try_strdup(name));
     if (!t)
         return NULL;
     topic_put(server, t);

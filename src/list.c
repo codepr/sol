@@ -26,17 +26,14 @@
  */
 
 #include "list.h"
-#include "util.h"
+#include "memory.h"
 
 /*
  * Create a list, initializing all fields
  */
 List *list_new(int (*destructor)(struct list_node *)) {
 
-    List *l = xmalloc(sizeof(List));
-
-    if (!l)
-        return NULL;
+    List *l = try_alloc(sizeof(List));
 
     // set default values to the List structure fields
     l->head = l->tail = NULL;
@@ -61,14 +58,14 @@ void list_destroy(List *l, int deep) {
             l->destructor(h);
         } else {
             if (h) {
-                if (h->data && deep == 1) xfree(h->data);
-                xfree(h);
+                if (h->data && deep == 1) free_memory(h->data);
+                free_memory(h);
             }
         }
         h = tmp;
     }
     // free List structure pointer
-    xfree(l);
+    free_memory(l);
 }
 
 unsigned long list_size(const List *list) {
@@ -93,8 +90,8 @@ void list_clear(List *l, int deep) {
 
         if (h) {
             if (h->data && deep == 1)
-                xfree(h->data);
-            xfree(h);
+                free_memory(h->data);
+            free_memory(h);
         }
 
         h = tmp;
@@ -120,10 +117,7 @@ List *list_attach(List *l, struct list_node *head, unsigned long len) {
  */
 List *list_push(List *l, void *val) {
 
-    struct list_node *new_node = xmalloc(sizeof(struct list_node));
-
-    if (!new_node)
-        return NULL;
+    struct list_node *new_node = try_alloc(sizeof(struct list_node));
 
     new_node->data = val;
 
@@ -146,10 +140,7 @@ List *list_push(List *l, void *val) {
  */
 List *list_push_back(List *l, void *val) {
 
-    struct list_node *new_node = xmalloc(sizeof(struct list_node));
-
-    if (!new_node)
-        return NULL;
+    struct list_node *new_node = try_alloc(sizeof(struct list_node));
 
     new_node->data = val;
     new_node->next = NULL;

@@ -25,22 +25,21 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "util.h"
+#include <stdint.h>
+#include "memory.h"
 #include "memorypool.h"
 
 static void memorypool_resize(struct memorypool *);
 
 struct memorypool *memorypool_new(size_t blocks_nr, size_t blocksize) {
-    struct memorypool *pool = xmalloc(sizeof(*pool));
-    if (!pool)
-        return NULL;
+    struct memorypool *pool = try_alloc(sizeof(*pool));
     blocksize = blocksize >= sizeof(intptr_t) ? blocksize : sizeof(intptr_t);
-    pool->memory = xcalloc(blocks_nr, blocksize);
+    pool->memory = try_calloc(blocks_nr, blocksize);
     pool->free = pool->memory;
     pool->blocks_nr = blocks_nr;
     pool->blocksize = blocksize;
     if (!pool->free) {
-        xfree(pool);
+        free_memory(pool);
         return NULL;
     }
     /*
@@ -79,8 +78,8 @@ struct memorypool *memorypool_new(size_t blocks_nr, size_t blocksize) {
 }
 
 void memorypool_destroy(struct memorypool *pool) {
-    xfree(pool->memory);
-    xfree(pool);
+    free_memory(pool->memory);
+    free_memory(pool);
 }
 
 void *memorypool_alloc(struct memorypool *pool) {
@@ -116,7 +115,7 @@ static void memorypool_resize(struct memorypool *pool) {
     size_t newsize = pool->blocks_nr * pool->blocksize;
     /* We extract next memory block offset position */
     intptr_t offset = *((intptr_t *) pool->free);
-    pool->memory = xrealloc(pool->memory, newsize);
+    pool->memory = try_realloc(pool->memory, newsize);
     pool->free = (void *)((char *) pool->memory + ((offset-1) * pool->blocksize));
     /*
      * Apply the same logic of the init, but starting from the updated offset,

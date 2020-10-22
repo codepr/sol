@@ -37,6 +37,7 @@
 #endif
 #include "ev.h"
 #include "util.h"
+#include "memory.h"
 #include "config.h"
 
 #if defined(EPOLL)
@@ -103,11 +104,9 @@ static int epoll_del(int efd, int fd) {
 }
 
 static int ev_api_init(struct ev_ctx *ctx, int events_nr) {
-    struct epoll_api *e_api = xmalloc(sizeof(*e_api));
-    if (!e_api)
-        return -EV_OOM;
+    struct epoll_api *e_api = try_alloc(sizeof(*e_api));
     e_api->fd = epoll_create1(0);
-    e_api->events = xcalloc(events_nr, sizeof(struct epoll_event));
+    e_api->events = try_calloc(events_nr, sizeof(struct epoll_event));
     ctx->api = e_api;
     ctx->maxfd = events_nr;
     return EV_OK;
@@ -115,8 +114,8 @@ static int ev_api_init(struct ev_ctx *ctx, int events_nr) {
 
 static void ev_api_destroy(struct ev_ctx *ctx) {
     close(((struct epoll_api *) ctx->api)->fd);
-    xfree(((struct epoll_api *) ctx->api)->events);
-    xfree(ctx->api);
+    free_memory(((struct epoll_api *) ctx->api)->events);
+    free_memory(ctx->api);
 }
 
 static int ev_api_get_event_type(struct ev_ctx *ctx, int idx) {
@@ -200,11 +199,9 @@ struct poll_api {
 };
 
 static int ev_api_init(struct ev_ctx *ctx, int events_nr) {
-    struct poll_api *p_api = xmalloc(sizeof(*p_api));
-    if (!p_api)
-        return -EV_OOM;
+    struct poll_api *p_api = try_alloc(sizeof(*p_api));
     p_api->nfds = 0;
-    p_api->fds = xcalloc(events_nr, sizeof(struct pollfd));
+    p_api->fds = try_calloc(events_nr, sizeof(struct pollfd));
     p_api->events_monitored = events_nr;
     ctx->api = p_api;
     ctx->maxfd = events_nr;
@@ -212,8 +209,8 @@ static int ev_api_init(struct ev_ctx *ctx, int events_nr) {
 }
 
 static void ev_api_destroy(struct ev_ctx *ctx) {
-    xfree(((struct poll_api *) ctx->api)->fds);
-    xfree(ctx->api);
+    free_memory(((struct poll_api *) ctx->api)->fds);
+    free_memory(ctx->api);
 }
 
 static int ev_api_get_event_type(struct ev_ctx *ctx, int idx) {
@@ -249,7 +246,7 @@ static int ev_api_watch_fd(struct ev_ctx *ctx, int fd) {
     p_api->nfds++;
     if (p_api->nfds >= p_api->events_monitored) {
         p_api->events_monitored *= 2;
-        p_api->fds = xrealloc(p_api->fds,
+        p_api->fds = try_realloc(p_api->fds,
                                  p_api->events_monitored * sizeof(struct pollfd));
     }
     return EV_OK;
@@ -282,7 +279,7 @@ static int ev_api_register_event(struct ev_ctx *ctx, int fd, int mask) {
     p_api->nfds++;
     if (p_api->nfds >= p_api->events_monitored) {
         p_api->events_monitored *= 2;
-        p_api->fds = xrealloc(p_api->fds,
+        p_api->fds = try_realloc(p_api->fds,
                                  p_api->events_monitored * sizeof(struct pollfd));
     }
     return EV_OK;
@@ -337,9 +334,7 @@ static int ev_api_init(struct ev_ctx *ctx, int events_nr) {
      * 32 x 32 = 1024 as hard limit
      */
     assert(events_nr <= 1024);
-    struct select_api *s_api = xmalloc(sizeof(*s_api));
-    if (!s_api)
-        return -EV_OOM;
+    struct select_api *s_api = try_alloc(sizeof(*s_api));
     FD_ZERO(&s_api->rfds);
     FD_ZERO(&s_api->wfds);
     ctx->api = s_api;
@@ -348,7 +343,7 @@ static int ev_api_init(struct ev_ctx *ctx, int events_nr) {
 }
 
 static void ev_api_destroy(struct ev_ctx *ctx) {
-    xfree(ctx->api);
+    free_memory(ctx->api);
 }
 
 static int ev_api_get_event_type(struct ev_ctx *ctx, int idx) {
@@ -462,11 +457,9 @@ struct kqueue_api {
 };
 
 static int ev_api_init(struct ev_ctx *ctx, int events_nr) {
-    struct kqueue_api *k_api = xmalloc(sizeof(*k_api));
-    if (!k_api)
-        return -EV_OOM;
+    struct kqueue_api *k_api = try_alloc(sizeof(*k_api));
     k_api->fd = kqueue();
-    k_api->events = xcalloc(events_nr, sizeof(struct kevent));
+    k_api->events = try_calloc(events_nr, sizeof(struct kevent));
     ctx->api = k_api;
     ctx->maxfd = events_nr;
     return EV_OK;
@@ -474,8 +467,8 @@ static int ev_api_init(struct ev_ctx *ctx, int events_nr) {
 
 static void ev_api_destroy(struct ev_ctx *ctx) {
     close(((struct kqueue_api *) ctx->api)->fd);
-    xfree(((struct kqueue_api *) ctx->api)->events);
-    xfree(ctx->api);
+    free_memory(((struct kqueue_api *) ctx->api)->events);
+    free_memory(ctx->api);
 }
 
 static int ev_api_get_event_type(struct ev_ctx *ctx, int idx) {
@@ -620,8 +613,8 @@ static void ev_add_monitored(struct ev_ctx *ctx, int fd, int mask,
         int i = ctx->maxevents;
         ctx->maxevents = fd;
         if (fd > ctx->events_nr) {
-            ctx->events_monitored =
-                xrealloc(ctx->events_monitored, (fd + 1) * sizeof(struct ev));
+            ctx->events_monitored = try_realloc(ctx->events_monitored,
+                                                (fd + 1) * sizeof(struct ev));
             for (; i < ctx->maxevents; ++i)
                 ctx->events_monitored[i].mask = EV_NONE;
         }
@@ -650,7 +643,7 @@ int ev_init(struct ev_ctx *ctx, int events_nr) {
     ctx->fired_events = 0;
     ctx->maxevents = events_nr;
     ctx->events_nr = events_nr;
-    ctx->events_monitored = xcalloc(events_nr, sizeof(struct ev));
+    ctx->events_monitored = try_calloc(events_nr, sizeof(struct ev));
     return EV_OK;
 }
 
@@ -660,7 +653,7 @@ void ev_destroy(struct ev_ctx *ctx) {
             ctx->events_monitored[i].mask != EV_NONE)
             ev_del_fd(ctx, ctx->events_monitored[i].fd);
     }
-    xfree(ctx->events_monitored);
+    free_memory(ctx->events_monitored);
     ev_api_destroy(ctx);
 }
 

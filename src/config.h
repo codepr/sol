@@ -146,9 +146,9 @@ struct authentication {
     struct authentication *auth, *dummy;        \
     HASH_ITER(hh, (auth_map), auth, dummy) {    \
         HASH_DEL((auth_map), auth);             \
-        xfree(auth->username);                  \
-        xfree(auth->salt);                      \
-        xfree(auth);                            \
+        free_memory(auth->username);            \
+        free_memory(auth->salt);                \
+        free_memory(auth);                      \
     }                                           \
 } while (0);
 

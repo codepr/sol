@@ -32,6 +32,7 @@
 #include "../src/util.h"
 #include "../src/trie.h"
 #include "../src/list.h"
+#include "../src/memory.h"
 #include "../src/iterator.h"
 
 /*
@@ -102,7 +103,7 @@ static char *test_list_remove_node(void) {
     ASSERT("[! list_remove_node :: list_push]: item not pushed in", l->len == 1);
     struct list_node *node = list_remove_node(l, x, compare_str);
     ASSERT("[! list_remove_node]: item not removed", strcmp(node->data, x) == 0);
-    xfree(node);
+    free_memory(node);
     list_destroy(l, 0);
     printf(" [list::list_remove_node]: OK\n");
     return 0;
@@ -154,7 +155,7 @@ static char *test_trie_insert(void) {
     struct Trie *root = trie_new(NULL);
     const char *key = "hello";
     char *val = "world";
-    trie_insert(root, key, xstrdup(val));
+    trie_insert(root, key, try_strdup(val));
     void *payload = NULL;
     bool found = trie_find(root, key, &payload);
     ASSERT("[! trie_insert]: Trie insertion failed",
@@ -171,7 +172,7 @@ static char *test_trie_find(void) {
     struct Trie *root = trie_new(NULL);
     const char *key = "hello";
     char *val = "world";
-    trie_insert(root, key, xstrdup(val));
+    trie_insert(root, key, try_strdup(val));
     void *payload = NULL;
     bool found = trie_find(root, key, &payload);
     ASSERT("[! trie_find]: Trie search failed",
@@ -192,9 +193,9 @@ static char *test_trie_delete(void) {
     char *val1 = "world";
     char *val2 = "world";
     char *val3 = "world";
-    trie_insert(root, key1, xstrdup(val1));
-    trie_insert(root, key2, xstrdup(val2));
-    trie_insert(root, key3, xstrdup(val3));
+    trie_insert(root, key1, try_strdup(val1));
+    trie_insert(root, key2, try_strdup(val2));
+    trie_insert(root, key3, try_strdup(val3));
     trie_delete(root, key1);
     trie_delete(root, key2);
     trie_delete(root, key3);
@@ -226,10 +227,10 @@ static char *test_trie_prefix_delete(void) {
     char *val2 = "world";
     char *val3 = "world";
     char *val4 = "world";
-    trie_insert(root, key1, xstrdup(val1));
-    trie_insert(root, key2, xstrdup(val2));
-    trie_insert(root, key3, xstrdup(val3));
-    trie_insert(root, key4, xstrdup(val4));
+    trie_insert(root, key1, try_strdup(val1));
+    trie_insert(root, key2, try_strdup(val2));
+    trie_insert(root, key3, try_strdup(val3));
+    trie_insert(root, key4, try_strdup(val4));
     trie_prefix_delete(root, key1);
     void *payload = NULL;
     bool found = trie_find(root, key1, &payload);
@@ -262,10 +263,10 @@ static char *test_trie_prefix_count(void) {
     char *val2 = "world";
     char *val3 = "world";
     char *val4 = "world";
-    trie_insert(root, key1, xstrdup(val1));
-    trie_insert(root, key2, xstrdup(val2));
-    trie_insert(root, key3, xstrdup(val3));
-    trie_insert(root, key4, xstrdup(val4));
+    trie_insert(root, key1, try_strdup(val1));
+    trie_insert(root, key2, try_strdup(val2));
+    trie_insert(root, key3, try_strdup(val3));
+    trie_insert(root, key4, try_strdup(val4));
     int count = trie_prefix_count(root, "hel");
     ASSERT("[! trie_prefix_count]: Trie prefix count on prefix \"hel\" failed",
             count == 4);

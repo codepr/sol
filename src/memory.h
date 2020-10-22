@@ -1,7 +1,6 @@
-/*
- * BSD 2-Clause License
+/* BSD 2-Clause License
  *
- * Copyright (c) 2019, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2020, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -26,36 +25,17 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "memory.h"
-#include "iterator.h"
+#ifndef MEMORY_H
+#define MEMORY_H
 
-/*
- * Create an iterator for the given iterable data structure, requires a next
- * function to define how the iterator next ptr should be updated
- */
-struct iterator *iter_new(void *iterable, void (*next)(struct iterator *)) {
-    struct iterator *i = try_alloc(sizeof(*i));
-    iter_init(i, iterable, next);
-    return i;
-}
+#include <stdio.h>
 
-void iter_init(struct iterator *i, void *iterable,
-               void (*next)(struct iterator *)) {
-    i->index = 0;
-    i->iterable = iterable;
-    i->ptr = NULL;
-    i->next = next;
-    iter_next(i);
-}
+void *try_alloc(size_t);
+void *try_calloc(size_t, size_t);
+void *try_realloc(void *, size_t);
+size_t alloc_size(void *);
+void free_memory(void *);
+char *try_strdup(const char *);
+size_t memory_used(void);
 
-void iter_destroy(struct iterator *i) {
-    free_memory(i);
-}
-
-/*
- * Advance the iterator ptr to the next item in the iterable collection
- */
-struct iterator *iter_next(struct iterator *i) {
-    i->next(i);
-    return i;
-}
+#endif

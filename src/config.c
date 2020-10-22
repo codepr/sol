@@ -33,6 +33,7 @@
 #include <unistd.h>
 #endif
 #include "util.h"
+#include "memory.h"
 #include "config.h"
 #include "network.h"
 #include "logging.h"
@@ -117,25 +118,25 @@ char *memory_to_string(size_t memory) {
         translated_memory = memory;
         numlen = number_len(translated_memory);
         // +1 for 'b' +1 for nul terminating
-        mstring = xmalloc(numlen + 1);
+        mstring = try_alloc(numlen + 1);
         snprintf(mstring, numlen + 1, "%db", translated_memory);
     } else if (memory < 1048576) {
         translated_memory = memory / 1024;
         numlen = number_len(translated_memory);
         // +2 for 'Kb' +1 for nul terminating
-        mstring = xmalloc(numlen + 2);
+        mstring = try_alloc(numlen + 2);
         snprintf(mstring, numlen + 2, "%dKb", translated_memory);
     } else if (memory < 1073741824) {
         translated_memory = memory / (1024 * 1024);
         numlen = number_len(translated_memory);
         // +2 for 'Mb' +1 for nul terminating
-        mstring = xmalloc(numlen + 2);
+        mstring = try_alloc(numlen + 2);
         snprintf(mstring, numlen + 2, "%dMb", translated_memory);
     } else {
         translated_memory = memory / (1024 * 1024 * 1024);
         numlen = number_len(translated_memory);
         // +2 for 'Gb' +1 for nul terminating
-        mstring = xmalloc(numlen + 2);
+        mstring = try_alloc(numlen + 2);
         snprintf(mstring, numlen + 2, "%dGb", translated_memory);
     }
 
@@ -155,25 +156,25 @@ char *time_to_string(size_t time) {
         translated_time = time;
         numlen = number_len(translated_time);
         // +1 for 's' +1 for nul terminating
-        tstring = xmalloc(numlen + 1);
+        tstring = try_alloc(numlen + 1);
         snprintf(tstring, numlen + 1, "%ds", translated_time);
     } else if (time < 60 * 60) {
         translated_time = time / 60;
         numlen = number_len(translated_time);
         // +1 for 'm' +1 for nul terminating
-        tstring = xmalloc(numlen + 1);
+        tstring = try_alloc(numlen + 1);
         snprintf(tstring, numlen + 1, "%dm", translated_time);
     } else if (time < 60 * 60 * 24) {
         translated_time = time / (60 * 60);
         numlen = number_len(translated_time);
         // +1 for 'h' +1 for nul terminating
-        tstring = xmalloc(numlen + 1);
+        tstring = try_alloc(numlen + 1);
         snprintf(tstring, numlen + 1, "%dh", translated_time);
     } else {
         translated_time = time / (60 * 60 * 24);
         numlen = number_len(translated_time);
         // +1 for 'd' +1 for nul terminating
-        tstring = xmalloc(numlen + 1);
+        tstring = try_alloc(numlen + 1);
         snprintf(tstring, numlen + 1, "%dd", translated_time);
     }
 
@@ -399,8 +400,8 @@ void config_print(void) {
         const char *human_memory = memory_to_string(config.max_memory);
         log_info("Max memory: %s", human_memory);
         log_info("Event loop backend: %s", EVENTLOOP_BACKEND);
-        xfree((char *) human_memory);
-        xfree((char *) human_rsize);
+        free_memory((char *) human_memory);
+        free_memory((char *) human_rsize);
     }
 }
 
@@ -437,9 +438,9 @@ bool config_read_passwd_file(const char *path, struct authentication **auth_map)
         while (*puname != '\n')
             password[i++] = *puname++;
 
-        struct authentication *auth = xmalloc(sizeof(*auth));
-        auth->username = xstrdup(username);
-        auth->salt = xstrdup(password);
+        struct authentication *auth = try_alloc(sizeof(*auth));
+        auth->username = try_strdup(username);
+        auth->salt = try_strdup(password);
         HASH_ADD_STR(*auth_map, username, auth);
     }
 

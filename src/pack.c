@@ -30,6 +30,7 @@
 #include <stdarg.h>
 #include "pack.h"
 #include "util.h"
+#include "memory.h"
 
 /* Host-to-network (native endian to big endian) */
 void htonll(u8 *block, u64 num) {
@@ -430,7 +431,7 @@ i64 unpack_integer(u8 **buf, i8 size) {
 }
 
 u8 *unpack_bytes(u8 **buf, usize len) {
-    u8 *dest = xmalloc(len + 1);
+    u8 *dest = try_alloc(len + 1);
     memcpy(dest, *buf, len);
     dest[len] = '\0';
     *buf += len;

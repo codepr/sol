@@ -27,13 +27,14 @@
  */
 
 #include "bst.h"
+#include "memory.h"
 
 #define MAX(a, b) a > b ? a : b
 #define HEIGHT(n) !n ? 0 : n->height
 #define BALANCE(n) !n ? 0 : (HEIGHT(n->left)) - (HEIGHT(n->right))
 
 struct bst_node *bst_new(unsigned char key, const void *data) {
-    struct bst_node *node = xmalloc(sizeof(*node));
+    struct bst_node *node = try_alloc(sizeof(*node));
     node->key = key;
     node->height = 1;
     node->left = NULL;
@@ -187,7 +188,7 @@ struct bst_node *bst_delete(struct bst_node *node, unsigned char key) {
                 node = NULL;
             } else
                 *node = *tmp;
-            xfree(tmp);
+            free_memory(tmp);
         } else {
             struct bst_node *tmp = bst_min(node->right);
             node->key = tmp->key;

@@ -33,6 +33,7 @@
 #include <netinet/tcp.h>
 #include <openssl/err.h>
 #include "util.h"
+#include "memory.h"
 #include "config.h"
 #include "server.h"
 #include "network.h"
@@ -534,9 +535,7 @@ void connection_init(struct connection *conn, const SSL_CTX *ssl_ctx) {
  * type of the underlying communication.
  */
 struct connection *connection_new(const SSL_CTX *ssl_ctx) {
-    struct connection *conn = xmalloc(sizeof(*conn));
-    if (!conn)
-        return NULL;
+    struct connection *conn = try_alloc(sizeof(*conn));
     connection_init(conn, ssl_ctx);
     return conn;
 }

@@ -36,9 +36,10 @@
 #include <stdatomic.h>
 #include "util.h"
 #include "mqtt.h"
+#include "memory.h"
 #include "config.h"
 
-static atomic_size_t memory = ATOMIC_VAR_INIT(0);
+#define SOL_PREFIX   "sol"
 
 /* Auxiliary function to check wether a string is an integer */
 bool is_integer(const char *string) {
@@ -85,7 +86,7 @@ char *update_integer_string(char *str, int num) {
     char tmp[number_len(n) + 1];  // max size in bytes
     sprintf(tmp, "%d", n);  // XXX Unsafe
     size_t len = strlen(tmp);
-    str = xrealloc(str, len + 1);
+    str = try_realloc(str, len + 1);
     memcpy(str, tmp, len + 1);
 
     return str;
@@ -98,9 +99,7 @@ char *update_integer_string(char *str, int num) {
  */
 char *append_string(const char *src, char *dst, size_t chunklen) {
     size_t srclen = strlen(src);
-    char *ret = xmalloc(srclen + chunklen + 1);
-    if (!ret)
-        return NULL;
+    char *ret = try_alloc(srclen + chunklen + 1);
     memcpy(ret, src, srclen);
     memcpy(ret + srclen, dst, chunklen);
     ret[srclen + chunklen] = '\0';
@@ -133,142 +132,6 @@ void generate_random_id(char *dest) {
 
 bool check_passwd(const char *passwd, const char *salt) {
     return STREQ(crypt(passwd, salt), salt, strlen(salt));
-}
-
-/*
- * Custom malloc function, allocate a defined size of bytes plus 8, the size
- * of an unsigned long long, and append the length choosen at the beginning of
- * the memory chunk as an unsigned long long, returning the memory chunk
- * allocated just 8 bytes after the start; this way it is possible to track
- * the memory usage at every allocation
- */
-void *xmalloc(size_t size) {
-
-    assert(size > 0);
-
-    void *ptr = malloc(size + sizeof(size_t));
-
-    if (!ptr)
-        return NULL;
-
-    memory += size + sizeof(size_t);
-
-    *((size_t *) ptr) = size;
-
-    return (char *) ptr + sizeof(size_t);
-}
-
-/*
- * Same as xmalloc, but with calloc, creating chunk o zero'ed memory.
- * TODO: still a suboptimal solution
- */
-void *xcalloc(size_t len, size_t size) {
-
-    assert(len > 0 && size > 0);
-
-    void *ptr = xmalloc(len * size);
-    if (!ptr)
-        return NULL;
-
-    memset(ptr, 0x00, len * size);
-
-    return ptr;
-}
-
-/*
- * Same of xmalloc but with realloc, resize a chunk of memory pointed by a
- * given pointer, again appends the new size in front of the byte array
- */
-void *xrealloc(void *ptr, size_t size) {
-
-    assert(size > 0);
-
-    if (!ptr)
-        return xmalloc(size);
-
-    void *realptr = (char *)ptr-sizeof(size_t);
-
-    size_t curr_size = *((size_t *) realptr);
-
-    if (size == curr_size)
-        return ptr;
-
-    void *newptr = realloc(realptr, size + sizeof(size_t));
-
-    if (!newptr)
-        return NULL;
-
-    *((size_t *) newptr) = size;
-
-    memory += (-curr_size) + size + sizeof(size_t);
-
-    return (char *) newptr + sizeof(size_t);
-
-}
-
-/*
- * Custom free function, must be used on memory chunks allocated with t*
- * functions, it move the pointer 8 position backward by the starting address
- * of memory pointed by `ptr`, this way it knows how many bytes will be
- * free'ed by the call
- */
-void xfree(void *ptr) {
-
-    if (!ptr)
-        return;
-
-    void *realptr = (char *) ptr - sizeof(size_t);
-
-    if (!realptr)
-        return;
-
-    size_t ptr_size = *((size_t *) realptr);
-
-    memory -= ptr_size + sizeof(size_t);
-
-    free(realptr);
-}
-
-/*
- * Retrieve the bytes allocated by t* functions by backwarding the pointer of
- * 8 positions, the size of an unsigned long long in order to read the number
- * of allcated bytes
- */
-size_t xmalloc_size(void *ptr) {
-
-    if (!ptr)
-        return 0L;
-
-    void *realptr = (char *) ptr - sizeof(size_t);
-
-    if (!realptr)
-        return 0L;
-
-    size_t ptr_size = *((size_t *) realptr);
-
-    return ptr_size;
-}
-
-/*
- * As strdup but using xmalloc instead of malloc, to track the number of bytes
- * allocated and to enable use of xfree on duplicated strings without having
- * to care when to use a normal free or a xfree
- */
-char *xstrdup(const char *s) {
-
-    size_t len = strlen(s);
-    char *ds = xmalloc(len + 1);
-
-    if (!ds)
-        return NULL;
-
-    snprintf(ds, len + 1, "%s", s);
-
-    return ds;
-}
-
-size_t memory_used(void) {
-    return memory;
 }
 
 long get_fh_soft_limit(void) {

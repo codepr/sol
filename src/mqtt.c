@@ -29,6 +29,7 @@
 #include "util.h"
 #include "pack.h"
 #include "mqtt.h"
+#include "memory.h"
 
 typedef int mqtt_unpack_handler(u8 *, struct mqtt_packet *, usize);
 
@@ -354,8 +355,8 @@ static int unpack_mqtt_subscribe(u8 *buf, struct mqtt_packet *pkt, usize len) {
         len -= sizeof(u16);
 
         /* We have to make room for additional incoming tuples */
-        subscribe.tuples = xrealloc(subscribe.tuples,
-                                    (i+1) * sizeof(*subscribe.tuples));
+        subscribe.tuples = try_realloc(subscribe.tuples,
+                                       (i+1) * sizeof(*subscribe.tuples));
         subscribe.tuples[i].topic_len = topic_len;
         subscribe.tuples[i].topic = unpack_bytes(&buf, topic_len);
 
@@ -400,8 +401,8 @@ static int unpack_mqtt_unsubscribe(u8 *buf,
         len -= sizeof(u16);
 
         /* We have to make room for additional incoming tuples */
-        unsubscribe.tuples = xrealloc(unsubscribe.tuples,
-                                      (i+1) * sizeof(*unsubscribe.tuples));
+        unsubscribe.tuples = try_realloc(unsubscribe.tuples,
+                                         (i+1) * sizeof(*unsubscribe.tuples));
         unsubscribe.tuples[i].topic_len = topic_len;
         unsubscribe.tuples[i].topic = unpack_bytes(&buf, topic_len);
 
@@ -556,7 +557,7 @@ void mqtt_suback(struct mqtt_packet *pkt, u16 pkt_id, u8 *rcs, u16 rcslen) {
     pkt->suback = (struct mqtt_suback) {
         .pkt_id = pkt_id,
         .rcslen = rcslen,
-        .rcs = xmalloc(rcslen)
+        .rcs = try_alloc(rcslen)
     };
     memcpy(pkt->suback.rcs, rcs, rcslen);
 }
@@ -577,26 +578,26 @@ void mqtt_packet_destroy(struct mqtt_packet *pkt) {
     switch (pkt->header.bits.type) {
         case CONNECT:
             if (pkt->connect.bits.username == 1)
-                xfree(pkt->connect.payload.username);
+                free_memory(pkt->connect.payload.username);
             if (pkt->connect.bits.password == 1)
-                xfree(pkt->connect.payload.password);
+                free_memory(pkt->connect.payload.password);
             if (pkt->connect.bits.will == 1) {
-                xfree(pkt->connect.payload.will_message);
-                xfree(pkt->connect.payload.will_topic);
+                free_memory(pkt->connect.payload.will_message);
+                free_memory(pkt->connect.payload.will_topic);
             }
             break;
         case SUBSCRIBE:
         case UNSUBSCRIBE:
             for (unsigned i = 0; i < pkt->subscribe.tuples_len; i++)
-                xfree(pkt->subscribe.tuples[i].topic);
-            xfree(pkt->subscribe.tuples);
+                free_memory(pkt->subscribe.tuples[i].topic);
+            free_memory(pkt->subscribe.tuples);
             break;
         case SUBACK:
-            xfree(pkt->suback.rcs);
+            free_memory(pkt->suback.rcs);
             break;
         case PUBLISH:
-            xfree(pkt->publish.topic);
-            xfree(pkt->publish.payload);
+            free_memory(pkt->publish.topic);
+            free_memory(pkt->publish.payload);
             break;
         default:
             break;
@@ -682,12 +683,12 @@ usize mqtt_size(const struct mqtt_packet *pkt, usize *len) {
 static void mqtt_packet_free(const struct ref *refcount) {
     struct mqtt_packet *pkt = container_of(refcount, struct mqtt_packet, refcount);
     mqtt_packet_destroy(pkt);
-    xfree(pkt);
+    free_memory(pkt);
 }
 
 /* Just a packet allocing with the reference counter set */
 struct mqtt_packet *mqtt_packet_alloc(u8 byte) {
-    struct mqtt_packet *packet = xmalloc(sizeof(*packet));
+    struct mqtt_packet *packet = try_alloc(sizeof(*packet));
     packet->header = (union mqtt_header) { .byte = byte };
     packet->refcount = (struct ref) { mqtt_packet_free, 0 };
     packet->refcount.count = ATOMIC_VAR_INIT(0);

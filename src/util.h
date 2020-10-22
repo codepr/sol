@@ -33,25 +33,13 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define SOL_PREFIX   "sol"
-
 bool is_integer(const char *);
 int parse_int(const char *);
 int number_len(size_t);
 void generate_random_id(char *);
-
-/* Memory management */
-void *xmalloc(size_t);
-void *xcalloc(size_t, size_t);
-void *xrealloc(void *, size_t);
-size_t xmalloc_size(void *);
-void xfree(void *);
-char *xstrdup(const char *);
 char *remove_occur(char *, char);
 char *append_string(const char *, char *, size_t);
 bool check_passwd(const char *, const char *);
-
-size_t memory_used(void);
 
 long get_fh_soft_limit(void);
 
