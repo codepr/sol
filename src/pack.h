@@ -28,75 +28,76 @@
 #ifndef PACK_H
 #define PACK_H
 
-#include <stdint.h>
+// #include <stdint.h>
+#include "types.h"
 
 /*
  * Bytestring type, provides a convenient way of handling byte string data.
- * It is essentially an unsigned char pointer that track the position of the
+ * It is essentially an u8 pointer that track the position of the
  * last written byte and the total size of the bystestring
  */
-typedef unsigned char *bstring;
+// typedef u8 *bstring;
+//
+// /* Return the length of a bytestring */
+// usize bstring_len(const bstring);
+//
+// /*
+//  * Bytestring constructor, it creates a new bytestring from an existing and
+//  * nul terminated string (array of char).
+//  */
+// bstring bstring_new(const u8 *);
+//
+// /*
+//  * Copy the content of a bstring returning another one with the copied
+//  * content till a given nr of bytes
+//  */
+// bstring bstring_copy(const u8 *, size_t);
+//
+// /* Duplicate a bstring */
+// bstring bstring_dup(const bstring);
+//
+// /* Bytestring constructor, it creates a new empty bytstring of a given size */
+// bstring bstring_empty(size_t);
+//
+// /* Release memory of a bytestring effectively deleting it */
+// void bstring_destroy(bstring);
 
-/* Return the length of a bytestring */
-size_t bstring_len(const bstring);
+void htonll(u8 *, u64);
 
-/*
- * Bytestring constructor, it creates a new bytestring from an existing and
- * nul terminated string (array of char).
- */
-bstring bstring_new(const unsigned char *);
+u64 ntohll(const u8 *);
 
-/*
- * Copy the content of a bstring returning another one with the copied
- * content till a given nr of bytes
- */
-bstring bstring_copy(const unsigned char *, size_t);
-
-/* Duplicate a bstring */
-bstring bstring_dup(const bstring);
-
-/* Bytestring constructor, it creates a new empty bytstring of a given size */
-bstring bstring_empty(size_t);
-
-/* Release memory of a bytestring effectively deleting it */
-void bstring_destroy(bstring);
-
-void htonll(uint8_t *, uint_least64_t );
-
-uint_least64_t ntohll(const uint8_t *);
-
-/* Reading data on const uint8_t pointer */
+/* Reading data on const u8 pointer */
 
 // bytes -> int16_t
-int unpacki16(unsigned char *);
+i16 unpacki16(u8 *);
 
 // bytes -> uint16_t
-unsigned int unpacku16(unsigned char *);
+u16 unpacku16(u8 *);
 
 // bytes -> int32_t
-long int unpacki32(unsigned char *);
+i32 unpacki32(u8 *);
 
 // bytes -> uint32_t
-unsigned long int unpacku32(unsigned char *);
+u32 unpacku32(u8 *);
 
 // bytes -> int64_t
-long long int unpacki64(unsigned char *);
+i64 unpacki64(u8 *);
 
 // bytes -> uint64_t
-unsigned long long int unpacku64(unsigned char *);
+u64 unpacku64(u8 *);
 
-/* Write data on const uint8_t pointer */
-// append a uint8_t -> bytes into the bytestring
-void pack_u8(uint8_t **, uint8_t);
+/* Write data on const u8 pointer */
+// append a u8 -> bytes into the bytestring
+void pack_u8(u8 **, u8);
 
 // append a uint16_t -> bytes into the bytestring
-void packi16(unsigned char *, unsigned short);
+void packi16(u8 *, u16);
 
 // append a int32_t -> bytes into the bytestring
-void packi32(unsigned char *, unsigned int);
+void packi32(u8 *, u32);
 
 // append a uint64_t -> bytes into the bytestring
-void packi64(unsigned char *, unsigned long long int);
+void packi64(u8 *, u64);
 
 /*
  * pack() -- store data dictated by the format string in the buffer
@@ -111,7 +112,7 @@ void packi64(unsigned char *, unsigned long long int);
  *
  *  (16-bit unsigned length is automatically prepended to strings)
  */
-unsigned int pack(unsigned char *, char *, ...);
+usize pack(u8 *, char *, ...);
 
 /*
  * unpack() -- unpack data dictated by the format string into the buffer
@@ -127,10 +128,10 @@ unsigned int pack(unsigned char *, char *, ...);
  *  (string is extracted based on its stored length, but 's' can be
  *  prepended with a max length)
  */
-unsigned int unpack(unsigned char *, char *, ...);
+usize unpack(u8 *, char *, ...);
 
-long long unpack_integer(unsigned char **, char);
+i64 unpack_integer(u8 **, i8);
 
-unsigned char *unpack_bytes(unsigned char **, size_t);
+u8 *unpack_bytes(u8 **, usize);
 
 #endif

@@ -37,50 +37,50 @@
  * fact stored in memory in an unsigned long just before the position of the
  * string itself.
  */
-size_t bstring_len(const bstring s) {
-    return *((size_t *) (s - sizeof(size_t)));
-}
-
-bstring bstring_new(const unsigned char *init) {
-    if (!init)
-        return NULL;
-    size_t len = strlen((const char *) init);
-    return bstring_copy(init, len);
-}
-
-bstring bstring_copy(const unsigned char *init, size_t len) {
-    /*
-     * The strategy would be to piggyback the real string to its stored length
-     * in memory, having already implemented this logic before to actually
-     * track memory usage of the system, we just need to malloc it with the
-     * custom malloc in utils
-     */
-    unsigned char *str = xmalloc(len);
-    memcpy(str, init, len);
-    return str;
-}
-
-bstring bstring_dup(const bstring src) {
-    size_t len = bstring_len(src);
-    return bstring_copy(src, len);
-}
-
-/* Same as bstring_copy but setting the entire content of the string to 0 */
-bstring bstring_empty(size_t len) {
-    unsigned char *str = xcalloc(len, sizeof(unsigned char));
-    return str;
-}
-
-void bstring_destroy(bstring s) {
-    /*
-     * Being allocated with utils custom functions just free it with the
-     * corrispective free function
-     */
-    xfree(s);
-}
+/* size_t bstring_len(const bstring s) { */
+/*     return *((size_t *) (s - sizeof(size_t))); */
+/* } */
+/*  */
+/* bstring bstring_new(const u8 *init) { */
+/*     if (!init) */
+/*         return NULL; */
+/*     size_t len = strlen((const char *) init); */
+/*     return bstring_copy(init, len); */
+/* } */
+/*  */
+/* bstring bstring_copy(const u8 *init, size_t len) { */
+/*     #<{(| */
+/*      * The strategy would be to piggyback the real string to its stored length */
+/*      * in memory, having already implemented this logic before to actually */
+/*      * track memory usage of the system, we just need to malloc it with the */
+/*      * custom malloc in utils */
+/*      |)}># */
+/*     u8 *str = xmalloc(len); */
+/*     memcpy(str, init, len); */
+/*     return str; */
+/* } */
+/*  */
+/* bstring bstring_dup(const bstring src) { */
+/*     size_t len = bstring_len(src); */
+/*     return bstring_copy(src, len); */
+/* } */
+/*  */
+/* #<{(| Same as bstring_copy but setting the entire content of the string to 0 |)}># */
+/* bstring bstring_empty(size_t len) { */
+/*     u8 *str = xcalloc(len, sizeof(u8)); */
+/*     return str; */
+/* } */
+/*  */
+/* void bstring_destroy(bstring s) { */
+/*     #<{(| */
+/*      * Being allocated with utils custom functions just free it with the */
+/*      * corrispective free function */
+/*      |)}># */
+/*     xfree(s); */
+/* } */
 
 /* Host-to-network (native endian to big endian) */
-void htonll(uint8_t *block, uint_least64_t num) {
+void htonll(u8 *block, u64 num) {
     block[0] = num >> 56 & 0xFF;
     block[1] = num >> 48 & 0xFF;
     block[2] = num >> 40 & 0xFF;
@@ -92,11 +92,11 @@ void htonll(uint8_t *block, uint_least64_t num) {
 }
 
 /* Network-to-host (big endian to native endian) */
-uint_least64_t ntohll(const uint8_t *block) {
-    return (uint_least64_t) block[0] << 56 | (uint_least64_t) block[1] << 48
-        | (uint_least64_t) block[2] << 40 | (uint_least64_t) block[3] << 32
-        | (uint_least64_t) block[4] << 24 | (uint_least64_t) block[5] << 16
-        | (uint_least64_t) block[6] << 8 | (uint_least64_t) block[7] << 0;
+u64 ntohll(const u8 *block) {
+    return (u64) block[0] << 56 | (u64) block[1] << 48
+        | (u64) block[2] << 40 | (u64) block[3] << 32
+        | (u64) block[4] << 24 | (u64) block[5] << 16
+        | (u64) block[6] << 8 | (u64) block[7] << 0;
 }
 
 // Beej'us network guide functions
@@ -104,7 +104,7 @@ uint_least64_t ntohll(const uint8_t *block) {
 /*
 ** packi16() -- store a 16-bit int into a char buffer (like htons())
 */
-void packi16(unsigned char *buf, unsigned short val) {
+void packi16(u8 *buf, u16 val) {
     *buf++ = val >> 8;
     *buf++ = val;
 }
@@ -112,7 +112,7 @@ void packi16(unsigned char *buf, unsigned short val) {
 /*
 ** packi32() -- store a 32-bit int into a char buffer (like htonl())
 */
-void packi32(unsigned char *buf, unsigned int val) {
+void packi32(u8 *buf, u32 val) {
     *buf++ = val >> 24;
     *buf++ = val >> 16;
     *buf++ = val >> 8;
@@ -122,7 +122,7 @@ void packi32(unsigned char *buf, unsigned int val) {
 /*
 ** packi64() -- store a 64-bit int into a char buffer (like htonl())
 */
-void packi64(unsigned char *buf, unsigned long long int val) {
+void packi64(u8 *buf, u64 val) {
     *buf++ = val >> 56; *buf++ = val >> 48;
     *buf++ = val >> 40; *buf++ = val >> 32;
     *buf++ = val >> 24; *buf++ = val >> 16;
@@ -132,15 +132,15 @@ void packi64(unsigned char *buf, unsigned long long int val) {
 /*
 ** unpacki16() -- unpack a 16-bit int from a char buffer (like ntohs())
 */
-int unpacki16(unsigned char *buf) {
-    unsigned int i2 = ((unsigned int) buf[0] << 8) | buf[1];
-    int val;
+i16 unpacki16(u8 *buf) {
+    u16 i2 = ((u16) buf[0] << 8) | buf[1];
+    i16 val;
 
     // change unsigned numbers to signed
     if (i2 <= 0x7fffu)
         val = i2;
     else
-        val = -1 - (unsigned int) (0xffffu - i2);
+        val = -1 - (u16) (0xffffu - i2);
 
     return val;
 }
@@ -148,25 +148,25 @@ int unpacki16(unsigned char *buf) {
 /*
 ** unpacku16() -- unpack a 16-bit unsigned from a char buffer (like ntohs())
 */
-unsigned int unpacku16(unsigned char *buf) {
-    return ((unsigned int) buf[0] << 8) | buf[1];
+u16 unpacku16(u8 *buf) {
+    return ((u16) buf[0] << 8) | buf[1];
 }
 
 /*
 ** unpacki32() -- unpack a 32-bit int from a char buffer (like ntohl())
 */
-long int unpacki32(unsigned char *buf) {
-    unsigned long int i2 = ((unsigned long int) buf[0] << 24) |
-                           ((unsigned long int) buf[1] << 16) |
-                           ((unsigned long int) buf[2] << 8)  |
-                           buf[3];
-    long int val;
+i32 unpacki32(u8 *buf) {
+    u32 i2 = ((i32) buf[0] << 24) |
+        ((i32) buf[1] << 16) |
+        ((i32) buf[2] << 8)  |
+        buf[3];
+    i32 val;
 
     // change unsigned numbers to signed
     if (i2 <= 0x7fffffffu)
         val = i2;
     else
-        val = -1 - (long int) (0xffffffffu - i2);
+        val = -1 - (i32) (0xffffffffu - i2);
 
     return val;
 }
@@ -174,32 +174,32 @@ long int unpacki32(unsigned char *buf) {
 /*
 ** unpacku32() -- unpack a 32-bit unsigned from a char buffer (like ntohl())
 */
-unsigned long int unpacku32(unsigned char *buf) {
-    return ((unsigned long int) buf[0] << 24) |
-           ((unsigned long int) buf[1] << 16) |
-           ((unsigned long int) buf[2] << 8)  |
-           buf[3];
+u32 unpacku32(u8 *buf) {
+    return ((u32) buf[0] << 24) |
+        ((u32) buf[1] << 16) |
+        ((u32) buf[2] << 8)  |
+        buf[3];
 }
 
 /*
 ** unpacki64() -- unpack a 64-bit int from a char buffer (like ntohl())
 */
-long long int unpacki64(unsigned char *buf) {
-    unsigned long long int i2 = ((unsigned long long int) buf[0] << 56) |
-                                ((unsigned long long int) buf[1] << 48) |
-                                ((unsigned long long int) buf[2] << 40) |
-                                ((unsigned long long int) buf[3] << 32) |
-                                ((unsigned long long int) buf[4] << 24) |
-                                ((unsigned long long int) buf[5] << 16) |
-                                ((unsigned long long int) buf[6] << 8)  |
-                                buf[7];
-    long long int val;
+i64 unpacki64(u8 *buf) {
+    u64 i2 = ((u64) buf[0] << 56) |
+        ((u64) buf[1] << 48) |
+        ((u64) buf[2] << 40) |
+        ((u64) buf[3] << 32) |
+        ((u64) buf[4] << 24) |
+        ((u64) buf[5] << 16) |
+        ((u64) buf[6] << 8)  |
+        buf[7];
+    i64 val;
 
     // change unsigned numbers to signed
     if (i2 <= 0x7fffffffffffffffu)
         val = i2;
     else
-        val = -1 -(long long int) (0xffffffffffffffffu - i2);
+        val = -1 -(i64) (0xffffffffffffffffu - i2);
 
     return val;
 }
@@ -207,15 +207,15 @@ long long int unpacki64(unsigned char *buf) {
 /*
 ** unpacku64() -- unpack a 64-bit unsigned from a char buffer (like ntohl())
 */
-unsigned long long int unpacku64(unsigned char *buf) {
-    return ((unsigned long long int) buf[0] << 56) |
-           ((unsigned long long int) buf[1] << 48) |
-           ((unsigned long long int) buf[2] << 40) |
-           ((unsigned long long int) buf[3] << 32) |
-           ((unsigned long long int) buf[4] << 24) |
-           ((unsigned long long int) buf[5] << 16) |
-           ((unsigned long long int) buf[6] << 8)  |
-           buf[7];
+u64 unpacku64(u8 *buf) {
+    return ((u64) buf[0] << 56) |
+        ((u64) buf[1] << 48) |
+        ((u64) buf[2] << 40) |
+        ((u64) buf[3] << 32) |
+        ((u64) buf[4] << 24) |
+        ((u64) buf[5] << 16) |
+        ((u64) buf[6] << 8)  |
+        buf[7];
 }
 
 /*
@@ -231,25 +231,23 @@ unsigned long long int unpacku64(unsigned char *buf) {
  *
  *  (16-bit unsigned length is automatically prepended to strings)
  */
-unsigned int pack(unsigned char *buf, char *format, ...) {
+usize pack(u8 *buf, char *format, ...) {
     va_list ap;
 
-    signed char b;              // 8-bit
-    unsigned char B;
+    i8 b;              // 8-bit
+    u8 B;
 
-    int h;                      // 16-bit
-    unsigned int H;
+    i16 h;                      // 16-bit
+    u16 H;
 
-    long int i;                 // 32-bit
-    unsigned long int I;
+    i32 i;                 // 32-bit
+    u32 I;
 
-    long long int q;            // 64-bit
-    unsigned long long int Q;
+    i64 q;            // 64-bit
+    u64 Q;
 
     char *s;                    // strings
-    unsigned int len;
-
-    unsigned int size = 0;
+    usize len, size = 0;
 
     va_start(ap, format);
 
@@ -257,54 +255,54 @@ unsigned int pack(unsigned char *buf, char *format, ...) {
         switch(*format) {
             case 'b': // 8-bit
                 size += 1;
-                b = (signed char) va_arg(ap, int); // promoted
+                b = (i8) va_arg(ap, i16); // promoted
                 *buf++ = b;
                 break;
 
             case 'B': // 8-bit unsigned
                 size += 1;
-                B = (unsigned char) va_arg(ap, unsigned int); // promoted
+                B = (u8) va_arg(ap, u16); // promoted
                 *buf++ = B;
                 break;
 
             case 'h': // 16-bit
                 size += 2;
-                h = va_arg(ap, int);
+                h = va_arg(ap, i16);
                 packi16(buf, h);
                 buf += 2;
                 break;
 
             case 'H': // 16-bit unsigned
                 size += 2;
-                H = va_arg(ap, unsigned int);
+                H = va_arg(ap, u16);
                 packi16(buf, H);
                 buf += 2;
                 break;
 
             case 'i': // 32-bit
                 size += 4;
-                i = va_arg(ap, long int);
+                i = va_arg(ap, i32);
                 packi32(buf, i);
                 buf += 4;
                 break;
 
             case 'I': // 32-bit unsigned
                 size += 4;
-                I = va_arg(ap, unsigned long int);
+                I = va_arg(ap, u32);
                 packi32(buf, I);
                 buf += 4;
                 break;
 
             case 'q': // 64-bit
                 size += 8;
-                q = va_arg(ap, long long int);
+                q = va_arg(ap, i64);
                 packi64(buf, q);
                 buf += 8;
                 break;
 
             case 'Q': // 64-bit unsigned
                 size += 8;
-                Q = va_arg(ap, unsigned long long int);
+                Q = va_arg(ap, u64);
                 packi64(buf, Q);
                 buf += 8;
                 break;
@@ -337,83 +335,81 @@ unsigned int pack(unsigned char *buf, char *format, ...) {
  *  (string is extracted based on its stored length, but 's' can be
  *  prepended with a max length)
  */
-unsigned int unpack(unsigned char *buf, char *format, ...) {
+usize unpack(u8 *buf, char *format, ...) {
     va_list ap;
 
-    signed char *b;              // 8-bit
-    unsigned char *B;
+    i8 *b;              // 8-bit
+    u8 *B;
 
-    int *h;                      // 16-bit
-    unsigned int *H;
+    i16 *h;                      // 16-bit
+    u16 *H;
 
-    long int *i;                 // 32-bit
-    unsigned long int *I;
+    i32 *i;                 // 32-bit
+    u32 *I;
 
-    long long int *q;            // 64-bit
-    unsigned long long int *Q;
+    i64 *q;            // 64-bit
+    u64 *Q;
 
     char *s;
-    unsigned int maxstrlen = 0;
-
-    unsigned int size = 0;
+    usize maxstrlen = 0, size = 0;
 
     va_start(ap, format);
 
     for(; *format != '\0'; format++) {
         switch(*format) {
             case 'b': // 8-bit
-                b = va_arg(ap, signed char*);
+                b = va_arg(ap, i8*);
                 if (*buf <= 0x7f)
                     *b = *buf; // re-sign
                 else
-                    *b = -1 - (unsigned char) (0xffu - *buf);
+                    *b = -1 - (u8) (0xffu - *buf);
                 buf++;
                 size += 1;
                 break;
 
             case 'B': // 8-bit unsigned
-                B = va_arg(ap, unsigned char*);
+                B = va_arg(ap, u8*);
                 *B = *buf++;
                 size += 1;
                 break;
 
             case 'h': // 16-bit
-                h = va_arg(ap, int*);
+                h = va_arg(ap, i16*);
                 *h = unpacki16(buf);
                 buf += 2;
                 size += 2;
                 break;
 
             case 'H': // 16-bit unsigned
-                H = va_arg(ap, unsigned int*);
+                H = va_arg(ap, u16*);
                 *H = unpacku16(buf);
                 buf += 2;
                 size += 2;
                 break;
 
             case 'i': // 32-bit
-                i = va_arg(ap, long int*);
+                i = va_arg(ap, i32*);
                 *i = unpacki32(buf);
                 buf += 4;
                 size += 4;
                 break;
 
             case 'I': // 32-bit unsigned
-                I = va_arg(ap, unsigned long int*);
+                I = va_arg(ap, u32*);
                 *I = unpacku32(buf);
                 buf += 4;
                 size += 4;
                 break;
 
             case 'q': // 64-bit
-                q = va_arg(ap, long long int*);
+                q = va_arg(ap, i64*);
                 *q = unpacki64(buf);
                 buf += 8;
                 size += 8;
                 break;
 
             case 'Q': // 64-bit unsigned
-                Q = va_arg(ap, unsigned long long int*);
+                Q = va_arg(ap, u64*);
                 *Q = unpacku64(buf);
                 buf += 8;
                 size += 8;
@@ -442,8 +438,8 @@ unsigned int unpack(unsigned char *buf, char *format, ...) {
 }
 
 /* Helper functions */
-long long unpack_integer(unsigned char **buf, char size) {
-    long long val = 0LL;
+i64 unpack_integer(u8 **buf, i8 size) {
+    i64 val = 0LL;
     switch (size) {
         case 'b':
             val = **buf;
@@ -481,8 +477,8 @@ long long unpack_integer(unsigned char **buf, char size) {
     return val;
 }
 
-unsigned char *unpack_bytes(unsigned char **buf, size_t len) {
-    unsigned char *dest = xmalloc(len + 1);
+u8 *unpack_bytes(u8 **buf, usize len) {
+    u8 *dest = xmalloc(len + 1);
     memcpy(dest, *buf, len);
     dest[len] = '\0';
     *buf += len;
