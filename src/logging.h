@@ -25,39 +25,23 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef UTIL_H
-#define UTIL_H
+#ifndef LOGGING_H
+#define LOGGING_H
 
-#include <stdio.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdbool.h>
+enum log_level { DEBUG, INFORMATION, WARNING, ERROR, FATAL };
 
-#define SOL_PREFIX   "sol"
+void sol_log_init(const char *, int);
+void sol_log_close(void);
+void sol_log(int, const char *, ...);
 
-bool is_integer(const char *);
-int parse_int(const char *);
-int number_len(size_t);
-void generate_random_id(char *);
-
-/* Memory management */
-void *xmalloc(size_t);
-void *xcalloc(size_t, size_t);
-void *xrealloc(void *, size_t);
-size_t xmalloc_size(void *);
-void xfree(void *);
-char *xstrdup(const char *);
-char *remove_occur(char *, char);
-char *append_string(const char *, char *, size_t);
-bool check_passwd(const char *, const char *);
-
-size_t memory_used(void);
-
-long get_fh_soft_limit(void);
-
-#define STREQ(s1, s2, len) strncasecmp(s1, s2, len) == 0 ? true : false
-
-#define container_of(ptr, type, field) \
-    ((type *)((char *)(ptr) - offsetof(type, field)))
+#define log(...) sol_log( __VA_ARGS__ )
+#define log_debug(...) log(DEBUG, __VA_ARGS__)
+#define log_warning(...) log(WARNING, __VA_ARGS__)
+#define log_error(...) log(ERROR, __VA_ARGS__)
+#define log_info(...) log(INFORMATION, __VA_ARGS__)
+#define log_fatal(...) do {      \
+    log(FATAL, __VA_ARGS__);     \
+    exit(EXIT_FAILURE);             \
+} while(0);
 
 #endif

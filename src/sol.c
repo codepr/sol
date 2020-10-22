@@ -33,6 +33,7 @@
 #include "util.h"
 #include "config.h"
 #include "server.h"
+#include "logging.h"
 
 // Stops epoll_wait loops by sending an event
 static void sigint_handler(int signum) {
@@ -115,7 +116,7 @@ int main (int argc, char **argv) {
     // Try to load a configuration, if found
     config_load(confpath);
 
-    sol_log_init(conf->logpath);
+    sol_log_init(conf->logpath, conf->loglevel);
 
     if (daemon == 1)
         daemonize();

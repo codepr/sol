@@ -25,39 +25,60 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef UTIL_H
-#define UTIL_H
-
+#include <time.h>
 #include <stdio.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdbool.h>
+#include <stdarg.h>
+#include <string.h>
+#include <assert.h>
+#include "logging.h"
 
-#define SOL_PREFIX   "sol"
+#define MAX_LOG_SIZE 120
 
-bool is_integer(const char *);
-int parse_int(const char *);
-int number_len(size_t);
-void generate_random_id(char *);
+static FILE *fh = NULL;
+static int logging_level = DEBUG;
 
-/* Memory management */
-void *xmalloc(size_t);
-void *xcalloc(size_t, size_t);
-void *xrealloc(void *, size_t);
-size_t xmalloc_size(void *);
-void xfree(void *);
-char *xstrdup(const char *);
-char *remove_occur(char *, char);
-char *append_string(const char *, char *, size_t);
-bool check_passwd(const char *, const char *);
+void sol_log_init(const char *file, int level) {
+    if (!file) return;
+    fh = fopen(file, "a+");
+    logging_level = level;
+    if (!fh)
+        printf("%lu * WARNING: Unable to open file %s\n",
+               (unsigned long) time(NULL), file);
+}
 
-size_t memory_used(void);
+void sol_log_close(void) {
+    if (fh) {
+        fflush(fh);
+        fclose(fh);
+    }
+}
 
-long get_fh_soft_limit(void);
+void sol_log(int level, const char *fmt, ...) {
 
-#define STREQ(s1, s2, len) strncasecmp(s1, s2, len) == 0 ? true : false
+    if (level < logging_level)
+        return;
 
-#define container_of(ptr, type, field) \
-    ((type *)((char *)(ptr) - offsetof(type, field)))
+    assert(fmt);
 
-#endif
+    va_list ap;
+    char msg[MAX_LOG_SIZE + 4];
+
+    va_start(ap, fmt);
+    vsnprintf(msg, sizeof(msg), fmt, ap);
+    va_end(ap);
+
+    /* Truncate message too long and copy 3 bytes to make space for 3 dots */
+    memcpy(msg + MAX_LOG_SIZE, "...", 3);
+    msg[MAX_LOG_SIZE + 3] = '\0';
+
+    // Open two handler, one for standard output and a second for the
+    // persistent log file
+    FILE *fp = stdout;
+
+    if (!fp)
+        return;
+
+    fprintf(fp, "%lu %s\n", (unsigned long) time(NULL), msg);
+    if (fh)
+        fprintf(fh, "%lu %s\n", (unsigned long) time(NULL), msg);
+}

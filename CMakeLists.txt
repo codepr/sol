@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 2.8)
 
 project(sol)
 set (VERSION 0.17.1)
+set (CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 OPTION(DEBUG "add debug flags" OFF)
 
@@ -13,7 +14,7 @@ set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
 include_directories(include)
 file(GLOB SOURCES src/*.c)
 file(GLOB TEST src/hashtable.c src/bst.c src/config.c src/list.c src/trie.c
-    src/util.c src/iterator.c tests/*.c)
+    src/util.c src/iterator.c src/logging.c tests/*.c)
 
 set(AUTHOR "Andrea Giacomo Baldan")
 set(LICENSE "BSD2 license")

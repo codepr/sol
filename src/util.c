@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2019, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2020, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -39,53 +39,6 @@
 #include "config.h"
 
 static atomic_size_t memory = ATOMIC_VAR_INIT(0);
-
-static FILE *fh = NULL;
-
-void sol_log_init(const char *file) {
-    if (!file) return;
-    fh = fopen(file, "a+");
-    if (!fh)
-        printf("%lu * WARNING: Unable to open file %s\n",
-               (unsigned long) time(NULL), file);
-}
-
-void sol_log_close(void) {
-    if (fh) {
-        fflush(fh);
-        fclose(fh);
-    }
-}
-
-void sol_log(int level, const char *fmt, ...) {
-
-    if (level < conf->loglevel)
-        return;
-
-    assert(fmt);
-
-    va_list ap;
-    char msg[MAX_LOG_SIZE + 4];
-
-    va_start(ap, fmt);
-    vsnprintf(msg, sizeof(msg), fmt, ap);
-    va_end(ap);
-
-    /* Truncate message too long and copy 3 bytes to make space for 3 dots */
-    memcpy(msg + MAX_LOG_SIZE, "...", 3);
-    msg[MAX_LOG_SIZE + 3] = '\0';
-
-    // Open two handler, one for standard output and a second for the
-    // persistent log file
-    FILE *fp = stdout;
-
-    if (!fp)
-        return;
-
-    fprintf(fp, "%lu %s\n", (unsigned long) time(NULL), msg);
-    if (fh)
-        fprintf(fh, "%lu %s\n", (unsigned long) time(NULL), msg);
-}
 
 /* Auxiliary function to check wether a string is an integer */
 bool is_integer(const char *string) {
@@ -325,16 +278,4 @@ long get_fh_soft_limit(void) {
         return -1;
     }
     return limit.rlim_cur;
-}
-
-void die(const char *msg, ...) {
-    va_list ap;
-    char error[MAX_LOG_SIZE];
-
-    va_start(ap, msg);
-    vsnprintf(error, sizeof(error), msg, ap);
-    va_end(ap);
-    fprintf(stderr, "%s: Out of memory\n", error);
-    fflush(stderr);
-    abort();
 }

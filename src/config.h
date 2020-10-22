@@ -28,6 +28,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include <stdbool.h>
 #include "uthash.h"
 
 // Eventloop backend check

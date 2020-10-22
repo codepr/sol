@@ -27,9 +27,9 @@
 
 #include <stdio.h>
 #include "mqtt.h"
-#include "util.h"
 #include "config.h"
 #include "server.h"
+#include "logging.h"
 #include "sol_internal.h"
 #include "handlers.h"
 

@@ -35,6 +35,7 @@
 #include "util.h"
 #include "config.h"
 #include "network.h"
+#include "logging.h"
 
 /* The main configuration structure */
 static struct config config;
