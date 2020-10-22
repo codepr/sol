@@ -372,7 +372,7 @@ static int connect_handler(struct io_event *e) {
         // TODO check for will_topic != NULL
         struct topic *t = topic_get_or_create(&server, will_topic);
         if (!t)
-            log_critical("connect_handler failed: Out of memory");
+            log_fatal("connect_handler failed: Out of memory");
         if (!topic_exists(&server, t->name))
             topic_put(&server, t);
         // I'm sure that the string will be NUL terminated by unpack function
@@ -391,7 +391,7 @@ static int connect_handler(struct io_event *e) {
         };
 
         if (!cc->session->lwt_msg.publish.topic || !cc->session->lwt_msg.publish.payload)
-            log_critical("connect_handler failed: Out of memory");
+            log_fatal("connect_handler failed: Out of memory");
 
         cc->session->lwt_msg.header.bits.qos = c->bits.will_qos;
         // We must store the retained message in the topic
@@ -399,7 +399,7 @@ static int connect_handler(struct io_event *e) {
             size_t publen = mqtt_size(&cc->session->lwt_msg, NULL);
             unsigned char *payload = xmalloc(publen);
             if (!payload)
-                log_critical("connect_handler failed: Out of memory")
+                log_fatal("connect_handler failed: Out of memory")
             mqtt_pack(&cc->session->lwt_msg, payload);
             // We got a ready-to-be-sent bytestring in the retained message
             // field
@@ -449,11 +449,11 @@ static inline void add_wildcard(const char *topic, struct subscriber *s,
                                 bool wildcard) {
     struct subscription *subscription = xmalloc(sizeof(*subscription));
     if (!subscription)
-        log_critical("add_wildcard failed: Out of memory");
+        log_fatal("add_wildcard failed: Out of memory");
     subscription->subscriber = s;
     subscription->topic = xstrdup(topic);
     if (!subscription->topic)
-        log_critical("add_wildcard failed: Out of memory");
+        log_fatal("add_wildcard failed: Out of memory");
     subscription->multilevel = wildcard;
     INCREF(s, struct subscriber);
     server.wildcards = list_push(server.wildcards, subscription);
@@ -516,7 +516,7 @@ static int subscribe_handler(struct io_event *e) {
 
         struct topic *t = topic_get_or_create(&server, topic);
         if (!t)
-            log_critical("subscribe_handler failed: Out of memory");
+            log_fatal("subscribe_handler failed: Out of memory");
         /*
          * Let's explore two possible scenarios:
          * 1. Normal topic (no single level wildcard '+') which can end with
@@ -666,7 +666,7 @@ static int publish_handler(struct io_event *e) {
      */
     struct topic *t = topic_get_or_create(&server, topic);
     if (!t)
-        log_critical("publish_handler failed: Out of memory");
+        log_fatal("publish_handler failed: Out of memory");
 
     /* Check for # wildcards subscriptions */
     if (list_size(server.wildcards) > 0) {
@@ -697,7 +697,7 @@ static int publish_handler(struct io_event *e) {
     if (hdr->bits.retain == 1) {
         t->retained_msg = xmalloc(mqtt_size(&e->data, NULL));
         if (!t->retained_msg)
-            log_critical("publish_handler failed: Out of memory");
+            log_fatal("publish_handler failed: Out of memory");
         mqtt_pack(&e->data, t->retained_msg);
     }
 #if THREADSNR > 0

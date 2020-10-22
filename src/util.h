@@ -37,7 +37,7 @@
 
 #define SOL_PREFIX   "sol"
 
-enum log_level { DEBUG, INFORMATION, WARNING, ERROR, CRITICAL };
+enum log_level { DEBUG, INFORMATION, WARNING, ERROR, FATAL };
 
 bool is_integer(const char *);
 int parse_int(const char *);
@@ -70,8 +70,8 @@ long get_fh_soft_limit(void);
 #define log_warning(...) log(WARNING, __VA_ARGS__)
 #define log_error(...) log(ERROR, __VA_ARGS__)
 #define log_info(...) log(INFORMATION, __VA_ARGS__)
-#define log_critical(...) do {      \
-    log(CRITICAL, __VA_ARGS__);     \
+#define log_fatal(...) do {      \
+    log(FATAL, __VA_ARGS__);     \
     exit(EXIT_FAILURE);             \
 } while(0);
 

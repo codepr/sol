@@ -396,13 +396,13 @@ static void client_init(struct client *client) {
     if (!client->rbuf)
         client->rbuf = xcalloc(conf->max_request_size, sizeof(unsigned char));
     if (!client->rbuf)
-        log_critical("client_init failed: Out of memory");
+        log_fatal("client_init failed: Out of memory");
     client->wrote = ATOMIC_VAR_INIT(0);
     client->towrite = ATOMIC_VAR_INIT(0);
     if (!client->wbuf)
         client->wbuf = xcalloc(conf->max_request_size, sizeof(unsigned char));
     if (!client->wbuf)
-        log_critical("client_init failed: Out of memory");
+        log_fatal("client_init failed: Out of memory");
     client->last_seen = time(NULL);
     client->has_lwt = false;
     client->session = NULL;
@@ -980,7 +980,7 @@ int start_server(const char *addr, const char *port) {
     for (int i = 0; i < SYS_TOPICS; i++) {
         struct topic *t = topic_new(xstrdup(sys_topics[i].name));
         if (!t)
-            log_critical("start_server failed: Out of memory");
+            log_fatal("start_server failed: Out of memory");
         topic_put(&server, t);
     }
 
@@ -1102,10 +1102,10 @@ void session_init(struct client_session *session, const char *session_id) {
     snprintf(session->session_id, MQTT_CLIENT_ID_LEN, "%s", session_id);
     session->i_acks = xcalloc(MAX_INFLIGHT_MSGS, sizeof(time_t));
     if (!session->i_acks)
-        log_critical("session_init failed: Out of memory");
+        log_fatal("session_init failed: Out of memory");
     session->i_msgs = xcalloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
     if (!session->i_msgs)
-        log_critical("session_init failed: Out of memory");
+        log_fatal("session_init failed: Out of memory");
     session->refcount = (struct ref) { session_free, 0 };
 }
 
