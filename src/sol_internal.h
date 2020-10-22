@@ -77,7 +77,7 @@
  */
 struct topic {
     const char *name;
-    bstring retained_msg;
+    unsigned char *retained_msg;
     struct subscriber *subscribers; /* UTHASH handle pointer, must be NULL */
 };
 

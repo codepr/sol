@@ -397,7 +397,9 @@ static int connect_handler(struct io_event *e) {
         // We must store the retained message in the topic
         if (c->bits.will_retain == 1) {
             size_t publen = mqtt_size(&cc->session->lwt_msg, NULL);
-            bstring payload = bstring_empty(publen);
+            unsigned char *payload = xmalloc(publen);
+            if (!payload)
+                log_critical("connect_handler failed: Out of memory")
             mqtt_pack(&cc->session->lwt_msg, payload);
             // We got a ready-to-be-sent bytestring in the retained message
             // field
@@ -558,7 +560,7 @@ static int subscribe_handler(struct io_event *e) {
         // Retained message? Publish it
         // TODO move after SUBACK response
         if (t->retained_msg) {
-            size_t len = bstring_len(t->retained_msg);
+            size_t len = xmalloc_size(t->retained_msg);
             memcpy(c->wbuf + c->towrite, t->retained_msg, len);
             c->towrite += len;
         }
@@ -693,7 +695,9 @@ static int publish_handler(struct io_event *e) {
     pkt->publish = e->data.publish;
 
     if (hdr->bits.retain == 1) {
-        t->retained_msg = bstring_empty(mqtt_size(&e->data, NULL));
+        t->retained_msg = xmalloc(mqtt_size(&e->data, NULL));
+        if (!t->retained_msg)
+            log_critical("publish_handler failed: Out of memory");
         mqtt_pack(&e->data, t->retained_msg);
     }
 #if THREADSNR > 0

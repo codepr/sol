@@ -31,54 +31,6 @@
 #include "pack.h"
 #include "util.h"
 
-/*
- * Return the length of the string without having to call strlen, thus this
- * works also with non-nul terminated string. The length of the string is in
- * fact stored in memory in an unsigned long just before the position of the
- * string itself.
- */
-/* size_t bstring_len(const bstring s) { */
-/*     return *((size_t *) (s - sizeof(size_t))); */
-/* } */
-/*  */
-/* bstring bstring_new(const u8 *init) { */
-/*     if (!init) */
-/*         return NULL; */
-/*     size_t len = strlen((const char *) init); */
-/*     return bstring_copy(init, len); */
-/* } */
-/*  */
-/* bstring bstring_copy(const u8 *init, size_t len) { */
-/*     #<{(| */
-/*      * The strategy would be to piggyback the real string to its stored length */
-/*      * in memory, having already implemented this logic before to actually */
-/*      * track memory usage of the system, we just need to malloc it with the */
-/*      * custom malloc in utils */
-/*      |)}># */
-/*     u8 *str = xmalloc(len); */
-/*     memcpy(str, init, len); */
-/*     return str; */
-/* } */
-/*  */
-/* bstring bstring_dup(const bstring src) { */
-/*     size_t len = bstring_len(src); */
-/*     return bstring_copy(src, len); */
-/* } */
-/*  */
-/* #<{(| Same as bstring_copy but setting the entire content of the string to 0 |)}># */
-/* bstring bstring_empty(size_t len) { */
-/*     u8 *str = xcalloc(len, sizeof(u8)); */
-/*     return str; */
-/* } */
-/*  */
-/* void bstring_destroy(bstring s) { */
-/*     #<{(| */
-/*      * Being allocated with utils custom functions just free it with the */
-/*      * corrispective free function */
-/*      |)}># */
-/*     xfree(s); */
-/* } */
-
 /* Host-to-network (native endian to big endian) */
 void htonll(u8 *block, u64 num) {
     block[0] = num >> 56 & 0xFF;
@@ -255,26 +207,26 @@ usize pack(u8 *buf, char *format, ...) {
         switch(*format) {
             case 'b': // 8-bit
                 size += 1;
-                b = (i8) va_arg(ap, i16); // promoted
+                b = (i8) va_arg(ap, i32); // promoted
                 *buf++ = b;
                 break;
 
             case 'B': // 8-bit unsigned
                 size += 1;
-                B = (u8) va_arg(ap, u16); // promoted
+                B = (u8) va_arg(ap, u32); // promoted
                 *buf++ = B;
                 break;
 
             case 'h': // 16-bit
                 size += 2;
-                h = va_arg(ap, i16);
+                h = va_arg(ap, i32);
                 packi16(buf, h);
                 buf += 2;
                 break;
 
             case 'H': // 16-bit unsigned
                 size += 2;
-                H = va_arg(ap, u16);
+                H = va_arg(ap, u32);
                 packi16(buf, H);
                 buf += 2;
                 break;

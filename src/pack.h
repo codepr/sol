@@ -28,39 +28,7 @@
 #ifndef PACK_H
 #define PACK_H
 
-// #include <stdint.h>
 #include "types.h"
-
-/*
- * Bytestring type, provides a convenient way of handling byte string data.
- * It is essentially an u8 pointer that track the position of the
- * last written byte and the total size of the bystestring
- */
-// typedef u8 *bstring;
-//
-// /* Return the length of a bytestring */
-// usize bstring_len(const bstring);
-//
-// /*
-//  * Bytestring constructor, it creates a new bytestring from an existing and
-//  * nul terminated string (array of char).
-//  */
-// bstring bstring_new(const u8 *);
-//
-// /*
-//  * Copy the content of a bstring returning another one with the copied
-//  * content till a given nr of bytes
-//  */
-// bstring bstring_copy(const u8 *, size_t);
-//
-// /* Duplicate a bstring */
-// bstring bstring_dup(const bstring);
-//
-// /* Bytestring constructor, it creates a new empty bytstring of a given size */
-// bstring bstring_empty(size_t);
-//
-// /* Release memory of a bytestring effectively deleting it */
-// void bstring_destroy(bstring);
 
 void htonll(u8 *, u64);
 
