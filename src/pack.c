@@ -186,19 +186,19 @@ u64 unpacku64(u8 *buf) {
 usize pack(u8 *buf, char *format, ...) {
     va_list ap;
 
-    i8 b;              // 8-bit
+    i8 b;       // 8-bit
     u8 B;
 
-    i16 h;                      // 16-bit
+    i16 h;      // 16-bit
     u16 H;
 
-    i32 i;                 // 32-bit
+    i32 i;      // 32-bit
     u32 I;
 
-    i64 q;            // 64-bit
+    i64 q;      // 64-bit
     u64 Q;
 
-    char *s;                    // strings
+    char *s;    // strings
     usize len, size = 0;
 
     va_start(ap, format);
@@ -290,19 +290,19 @@ usize pack(u8 *buf, char *format, ...) {
 usize unpack(u8 *buf, char *format, ...) {
     va_list ap;
 
-    i8 *b;              // 8-bit
+    i8 *b;      // 8-bit
     u8 *B;
 
-    i16 *h;                      // 16-bit
+    i16 *h;     // 16-bit
     u16 *H;
 
-    i32 *i;                 // 32-bit
+    i32 *i;     // 32-bit
     u32 *I;
 
-    i64 *q;            // 64-bit
+    i64 *q;     // 64-bit
     u64 *Q;
 
-    char *s;
+    char *s;    // strings
     usize maxstrlen = 0, size = 0;
 
     va_start(ap, format);

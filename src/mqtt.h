@@ -29,6 +29,7 @@
 #define MQTT_H
 
 #include "ref.h"
+#include "types.h"
 
 // Packing/unpacking error codes
 #define MQTT_OK    0
@@ -81,84 +82,84 @@ enum packet_type {
 enum qos_level { AT_MOST_ONCE, AT_LEAST_ONCE, EXACTLY_ONCE };
 
 union mqtt_header {
-    unsigned char byte;
+    u8 byte;
     struct {
-        unsigned retain : 1;
-        unsigned qos : 2;
-        unsigned dup : 1;
-        unsigned type : 4;
+        u8 retain : 1;
+        u8 qos : 2;
+        u8 dup : 1;
+        u8 type : 4;
     } bits;
 };
 
 struct mqtt_connect {
     union {
-        unsigned char byte;
+        u8 byte;
         struct {
-            unsigned reserved : 1;
-            unsigned clean_session : 1;
-            unsigned will : 1;
-            unsigned will_qos : 2;
-            unsigned will_retain : 1;
-            unsigned password : 1;
-            unsigned username : 1;
+            u8 reserved : 1;
+            u8 clean_session : 1;
+            u8 will : 1;
+            u8 will_qos : 2;
+            u8 will_retain : 1;
+            u8 password : 1;
+            u8 username : 1;
         } bits;
     };
     struct {
-        unsigned short keepalive;
-        unsigned char client_id[MQTT_CLIENT_ID_LEN];
-        unsigned char *username;
-        unsigned char *password;
-        unsigned char *will_topic;
-        unsigned char *will_message;
+        u16 keepalive;
+        u8 client_id[MQTT_CLIENT_ID_LEN];
+        u8 *username;
+        u8 *password;
+        u8 *will_topic;
+        u8 *will_message;
     } payload;
 };
 
 struct mqtt_connack {
     union {
-        unsigned char byte;
+        u8 byte;
         struct {
-            unsigned session_present : 1;
-            unsigned reserved : 7;
+            u8 session_present : 1;
+            u8 reserved : 7;
         } bits;
     };
-    unsigned char rc;
+    u8 rc;
 };
 
 struct mqtt_subscribe {
-    unsigned short pkt_id;
-    unsigned short tuples_len;
+    u16 pkt_id;
+    u16 tuples_len;
     struct {
-        unsigned qos;
-        unsigned short topic_len;
-        unsigned char *topic;
+        u8 qos;
+        u16 topic_len;
+        u8 *topic;
     } *tuples;
 };
 
 struct mqtt_unsubscribe {
-    unsigned short pkt_id;
-    unsigned short tuples_len;
+    u16 pkt_id;
+    u16 tuples_len;
     struct {
-        unsigned short topic_len;
-        unsigned char *topic;
+        u16 topic_len;
+        u8 *topic;
     } *tuples;
 };
 
 struct mqtt_suback {
-    unsigned short pkt_id;
-    unsigned short rcslen;
-    unsigned char *rcs;
+    u16 pkt_id;
+    u16 rcslen;
+    u8 *rcs;
 };
 
 struct mqtt_publish {
-    unsigned short pkt_id;
-    unsigned short topiclen;
-    unsigned char *topic;
-    unsigned int payloadlen;
-    unsigned char *payload;
+    u16 pkt_id;
+    u16 topiclen;
+    u8 *topic;
+    u32 payloadlen;
+    u8 *payload;
 };
 
 struct mqtt_ack {
-    unsigned short pkt_id;
+    u16 pkt_id;
 };
 
 typedef struct mqtt_ack mqtt_puback;
@@ -197,25 +198,25 @@ struct mqtt_packet {
  * remaining length or not.
  * Returns the number of bytes used to store the value passed.
  */
-int mqtt_encode_length(unsigned char *, size_t);
+int mqtt_encode_length(u8 *, usize);
 
 /*
  * The reverse of the encoding function, returns the value of the size decoded
  */
-size_t mqtt_decode_length(unsigned char *, unsigned *);
+usize mqtt_decode_length(u8 *, unsigned *);
 
 /*
  * Pack to binary an MQTT packet, internally it uses a dispatch table to call
  * the right pack function based on the packet opcode.
  */
-int mqtt_unpack(unsigned char *, struct mqtt_packet *, unsigned char, size_t);
+int mqtt_unpack(u8 *, struct mqtt_packet *, u8, usize);
 
 /*
  * Unpack from binary to an mqtt_packet structure. Internally it uses a
  * dispatch table to call the right unpack function based on the opcode
  * expected to read.
  */
-size_t mqtt_pack(const struct mqtt_packet *, unsigned char *);
+usize mqtt_pack(const struct mqtt_packet *, u8 *);
 
 /*
  * MQTT Build helpers
@@ -223,15 +224,13 @@ size_t mqtt_pack(const struct mqtt_packet *, unsigned char *);
  * They receive a pointer to a struct mqtt_packet and additional informations
  * to be stored inside. Just plain builder functions.
  */
-void mqtt_ack(struct mqtt_packet *, unsigned short);
+void mqtt_ack(struct mqtt_packet *, u16);
 
-void mqtt_connack(struct mqtt_packet *, unsigned char , unsigned char);
+void mqtt_connack(struct mqtt_packet *, u8 , u8);
 
-void mqtt_suback(struct mqtt_packet *, unsigned short,
-                 unsigned char *, unsigned short);
+void mqtt_suback(struct mqtt_packet *, u16, u8 *, u16);
 
-void mqtt_publish(struct mqtt_packet *, unsigned short, size_t,
-                  unsigned char *, size_t, unsigned char *);
+void mqtt_publish(struct mqtt_packet *, u16, usize, u8 *, usize, u8 *);
 
 /*
  * Release the memory allocated through helpers function calls based on the
@@ -245,19 +244,19 @@ void mqtt_set_dup(struct mqtt_packet *);
  * Helper function used to pack ACK packets, mono as the single field `packet
  * identifier` that ACKs packet carries
  */
-int mqtt_pack_mono(unsigned char *, unsigned char, unsigned short);
+int mqtt_pack_mono(u8 *, u8, u16);
 
 /*
  * Returns the size of a packet. Useful to pack functions to know the expected
  * buffer size of the packet based on the opcode. Accept an optional pointer
  * to get the len reserved for storing the remaining length of the full packet
  */
-size_t mqtt_size(const struct mqtt_packet *, size_t *);
+usize mqtt_size(const struct mqtt_packet *, usize *);
 
 /*
  * Allocate struct mqtt_packet on the heap. This should be used in place of
  * malloc/calloc in order to leverage the refcounter
  */
-struct mqtt_packet *mqtt_packet_alloc(unsigned char);
+struct mqtt_packet *mqtt_packet_alloc(u8);
 
 #endif
