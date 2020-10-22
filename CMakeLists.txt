@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 
 project(sol)
-set (VERSION 0.17.1)
+set (VERSION 0.18.2)
 set (CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 OPTION(DEBUG "add debug flags" OFF)
