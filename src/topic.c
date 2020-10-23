@@ -28,20 +28,59 @@
 #include "memory.h"
 #include "sol_internal.h"
 
+/*
+ * Initialize a struct topic pointer by setting its name, subscribers and
+ * retained_msg are set to NULL.
+ * The function expects a non-null pointer and can't fail, if a null topic
+ * is passed, the function return prematurely.
+ */
 void topic_init(struct topic *t, const char *name) {
+    if (!t)
+        return;
     t->name = name;
     t->subscribers = NULL;
     t->retained_msg = NULL;
 }
 
+/*
+ * Allocate a new topic struct on the heap, initialize it then return a pointer
+ * to it. The function can fail as a memory allocation is requested, if it
+ * fails the program execution graceful crash.
+ */
 struct topic *topic_new(const char *name) {
-    if (!name)
-        return NULL;
     struct topic *t = try_alloc(sizeof(*t));
     topic_init(t, name);
     return t;
 }
 
+/*
+ * Deallocate the topic name, retained_msg and all its subscribers
+ */
+void topic_destroy(struct topic *t) {
+    if (!t)
+        return;
+    free_memory((void *) t->name);
+    free_memory(t->retained_msg);
+    if (!t->subscribers) {
+        free_memory(t);
+        return;
+    }
+    struct subscriber *sub, *dummy;
+    HASH_ITER(hh, t->subscribers, sub, dummy) {
+        if (!sub)
+            continue;
+        HASH_DEL(t->subscribers, sub);
+        free_memory(sub);
+    }
+    free_memory(t);
+}
+
+/*
+ * Allocate a new subscriber struct on the heap referring to the passed in
+ * topic, client_session and QoS, then add it to the topic map.
+ * The function can fail as a memory allocation is requested, if it fails the
+ * program execution graceful crash.
+ */
 struct subscriber *topic_add_subscriber(struct topic *t,
                                         struct client_session *s,
                                         unsigned char qos) {
@@ -52,6 +91,14 @@ struct subscriber *topic_add_subscriber(struct topic *t,
     return sub;
 }
 
+/*
+ * Remove a subscriber from the topic, the subscriber to be removed refers to
+ * the client_id belonging to the client pointer passed in.
+ * The subscriber deletion is really a reference count subtraction, DECREF
+ * macro takes care of the counter, if it reaches 0 it de-allocates the memory
+ * reserved to the struct subscriber.
+ * The function can't fail.
+ */
 void topic_del_subscriber(struct topic *t, struct client *c) {
     struct subscriber *sub = NULL;
     HASH_FIND_STR(t->subscribers, c->client_id, sub);

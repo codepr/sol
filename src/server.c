@@ -248,7 +248,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
         }
     };
 
-    publish_message(&p, topic_store_get(server.store, (char *) p.publish.topic));
+    publish_message(&p, topic_store_get(server.store, sys_topics[2].name));
 
     // $SOL/broker/uptime/sol
     p.publish.topiclen = sys_topics[3].len;
@@ -256,7 +256,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     p.publish.payloadlen = strlen(sutime);
     p.publish.payload = (unsigned char *) &sutime;
 
-    publish_message(&p, topic_store_get(server.store, (char *) p.publish.topic));
+    publish_message(&p, topic_store_get(server.store, sys_topics[3].name));
 
     // $SOL/broker/clients/connected
     p.publish.topiclen = sys_topics[4].len;
@@ -264,7 +264,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     p.publish.payloadlen = strlen(cclients);
     p.publish.payload = (unsigned char *) &cclients;
 
-    publish_message(&p, topic_store_get(server.store, (char *) p.publish.topic));
+    publish_message(&p, topic_store_get(server.store, sys_topics[4].name));
 
     // $SOL/broker/bytes/sent
     p.publish.topiclen = sys_topics[6].len;
@@ -272,7 +272,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     p.publish.payloadlen = strlen(bsent);
     p.publish.payload = (unsigned char *) &bsent;
 
-    publish_message(&p, topic_store_get(server.store, (char *) p.publish.topic));
+    publish_message(&p, topic_store_get(server.store, sys_topics[6].name));
 
     // $SOL/broker/messages/sent
     p.publish.topiclen = sys_topics[8].len;
@@ -280,7 +280,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     p.publish.payloadlen = strlen(msent);
     p.publish.payload = (unsigned char *) &msent;
 
-    publish_message(&p, topic_store_get(server.store, (char *) p.publish.topic));
+    publish_message(&p, topic_store_get(server.store, sys_topics[8].name));
 
     // $SOL/broker/messages/received
     p.publish.topiclen = sys_topics[9].len;
@@ -288,7 +288,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     p.publish.payloadlen = strlen(mrecv);
     p.publish.payload = (unsigned char *) &mrecv;
 
-    publish_message(&p, topic_store_get(server.store, (char *) p.publish.topic));
+    publish_message(&p, topic_store_get(server.store, sys_topics[9].name));
 
     // $SOL/broker/memory/used
     p.publish.topiclen = sys_topics[10].len;
@@ -296,7 +296,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     p.publish.payloadlen = strlen(mem);
     p.publish.payload = (unsigned char *) &mem;
 
-    publish_message(&p, topic_store_get(server.store, (char *) p.publish.topic));
+    publish_message(&p, topic_store_get(server.store, sys_topics[10].name));
 }
 
 /*
@@ -982,6 +982,7 @@ int start_server(const char *addr, const char *port) {
 
     close(sfd);
     AUTH_DESTROY(server.authentications);
+    topic_store_destroy(server.store);
 
     /* Destroy SSL context, if any present */
     if (conf->tls == true) {

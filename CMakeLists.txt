@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 
 project(sol)
-set (VERSION 0.18.3)
+set (VERSION 0.18.5)
 set (CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 OPTION(DEBUG "add debug flags" OFF)
@@ -11,7 +11,6 @@ find_package(OpenSSL REQUIRED)
 
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
 
-include_directories(include)
 file(GLOB SOURCES src/*.c)
 file(GLOB TEST src/hashtable.c src/bst.c src/config.c src/list.c src/trie.c
     src/util.c src/iterator.c src/logging.c src/memory.c tests/*.c)
@@ -20,7 +19,7 @@ set(AUTHOR "Andrea Giacomo Baldan")
 set(LICENSE "BSD2 license")
 
 # Executable
-add_executable(sol ${SOURCES} include/uthash.h include/ref.h)
+add_executable(sol ${SOURCES})
 add_executable(sol_test ${TEST})
 
 if (DEBUG)

@@ -363,21 +363,17 @@ void trie_node_destroy(struct trie_node *node,
     children_destroy(node->children, size, destructor);
     node->children = NULL;
 
-    if (destructor)
+    if (destructor) {
         destructor(node, false);
-    else {
-
+    } else if (node->data) {
         // Release memory on data stored on the node
-        if (node->data) {
-            free_memory(node->data);
-            node->data = NULL;
-            if (*size > 0)
-                (*size)--;
-        }
-
-        // Release the node itself
-        free_memory(node);
+        free_memory(node->data);
+        node->data = NULL;
+        if (*size > 0)
+            (*size)--;
     }
+    // Release the node itself
+    free_memory(node);
 }
 
 void trie_destroy(Trie *trie) {

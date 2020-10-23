@@ -88,7 +88,7 @@ struct topic {
  */
 struct topic_store {
     // The main topics Trie structure
-    Trie topics;
+    Trie *topics;
     // A list of wildcards subscriptions, as it's not possible to know in
     // advance what topics will match some wildcard subscriptions
     List *wildcards;
@@ -238,35 +238,121 @@ extern pthread_mutex_t mutex;
 struct server;
 
 bool is_subscribed(const struct topic *, const struct client_session *);
+
 struct subscriber *subscriber_new(struct topic *,
                                   struct client_session *, unsigned char);
+
 struct subscriber *subscriber_clone(const struct subscriber *);
+
+/*
+ * Initialize a struct topic pointer by setting its name, subscribers and
+ * retained_msg are set to NULL.
+ * The function expects a non-null pointer and can't fail, if a null topic
+ * is passed, the function return prematurely.
+ */
+void topic_init(struct topic *, const char *);
+
+/*
+ * Allocate a new topic struct on the heap, initialize it then return a pointer
+ * to it. The function can fail as a memory allocation is requested, if it
+ * fails the program execution graceful crash.
+ */
+struct topic *topic_new(const char *);
+
+/*
+ * Deallocate the topic name, retained_msg and all its subscribers
+ */
+void topic_destroy(struct topic *);
+
+/*
+ * Allocate a new subscriber struct on the heap referring to the passed in
+ * topic, client_session and QoS, then add it to the topic map.
+ * The function can fail as a memory allocation is requested, if it fails the
+ * program execution graceful crash.
+ */
 struct subscriber *topic_add_subscriber(struct topic *,
                                         struct client_session *, unsigned char);
 
-void topic_init(struct topic *, const char *);
-struct topic *topic_new(const char *);
+/*
+ * Remove a subscriber from the topic, the subscriber to be removed refers to
+ * the client_id belonging to the client pointer passed in.
+ * The subscriber deletion is really a reference count subtraction, DECREF
+ * macro takes care of the counter, if it reaches 0 it de-allocates the memory
+ * reserved to the struct subscriber.
+ * The function can't fail.
+ */
 void topic_del_subscriber(struct topic *, struct client *);
+
+/*
+ * Allocate a new store structure on the heap and return it after its
+ * initialization, also allocating a new list on the heap to keep track of
+ * wildcard topics.
+ * The function may gracefully crash as the memory allocation may fail.
+ */
 struct topic_store *topic_store_new(void);
-/* Find a topic by name and return it */
+
+/*
+ * Deallocate heap memory for the list and every wildcard item stored into,
+ * also the store is deallocated
+ */
+void topic_store_destroy(struct topic_store *);
+
+/*
+ * Return a topic associated to a topic name from the store, returns NULL if no
+ * topic is found.
+ */
 struct topic *topic_store_get(const struct topic_store *, const char *);
-/* Get or create a new topic if it doesn't exists */
+
+/*
+ * Return a topic associated to a topic name from the store, if no topic is
+ * insert it into the store before returning it. Like topic_store_get but
+ * cannot return NULL.
+ * The function may fail as in case of no topic found it tries to allocate
+ * space on the heap for the new inserted topic.
+ */
 struct topic *topic_store_get_or_put(struct topic_store *, const char *);
+
+/*
+ * Check if the store contains a topic by name key
+ */
 bool topic_store_contains(const struct topic_store *, const char *);
+
+/*
+ * Insert a topic into the store or update it if already present
+ */
 void topic_store_put(struct topic_store *, struct topic *);
+
+/*
+ * Remove a topic into the store
+ */
 void topic_store_del(struct topic_store *, const char *);
+
+/*
+ * Add a wildcard topic to the topic_store struct, does not check if it already
+ * exists
+ */
 void topic_store_add_wildcard(struct topic_store *, struct subscription *);
+
+/*
+ * Remove a wildcard by id key from the topic_store struct
+ */
 void topic_store_remove_wildcard(struct topic_store *, char *);
+
+/*
+ * Run a function to each node of the topic_store trie holding the topic
+ * entries
+ */
 void topic_store_map(struct topic_store *, const char *,
                      void (*fn)(struct trie_node *, void *), void *);
+
+/*
+ * Check if the wildcards list of the topic_store is empty
+ */
 bool topic_store_wildcards_empty(const struct topic_store *);
 
 #define topic_store_wildcards_foreach(item, store)  \
     list_foreach(item, store->wildcards)
 
-/* unsigned next_free_mid(struct client_session *); */
-/* void session_init(struct client_session *, const char *); */
-/* struct client_session *client_session_alloc(const char *); */
-
 #define has_inflight(session) ((session)->inflights > 0)
+
 #define inflight_msg_clear(msg) DECREF((msg)->packet, struct mqtt_packet)

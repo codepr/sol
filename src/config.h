@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2019, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2020, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -63,7 +63,7 @@
 
 // Default parameters
 
-#define VERSION                     "0.18.3"
+#define VERSION                     "0.18.5"
 #define DEFAULT_SOCKET_FAMILY       INET
 #define DEFAULT_LOG_LEVEL           DEBUG
 #define DEFAULT_CONF_PATH           "/etc/sol/sol.conf"
