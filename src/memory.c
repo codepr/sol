@@ -33,11 +33,15 @@
 static atomic_size_t memory = ATOMIC_VAR_INIT(0);
 
 /*
- * Custom malloc function, allocate a defined size of bytes plus 8, the size
- * of an unsigned long long, and append the length choosen at the beginning of
- * the memory chunk as an unsigned long long, returning the memory chunk
- * allocated just 8 bytes after the start; this way it is possible to track
- * the memory usage at every allocation
+ * Custom malloc function, allocate a defined size of bytes plus
+ * sizeof(size_t), the size of an unsigned long long, and append the length
+ * choosen at the beginning of the memory chunk as an unsigned long long,
+ * returning the memory chunk allocated just sizeof(size_t) bytes after the
+ * start; this way it is possible to track the memory usage at every
+ * allocation.
+ *
+ * This function can fail if not memory is available, interrupting the
+ * execution of the program and exiting, hence the prefix "try".
  */
 void *try_alloc(size_t size) {
     void *ptr = malloc(size + sizeof(size_t));
@@ -54,6 +58,9 @@ void *try_alloc(size_t size) {
 /*
  * Same as xmalloc, but with calloc, creating chunk o zero'ed memory.
  * TODO: still a suboptimal solution
+ *
+ * This function can fail if not memory is available, interrupting the
+ * execution of the program and exiting, hence the prefix "try".
  */
 void *try_calloc(size_t len, size_t size) {
     void *ptr = try_alloc(len * size);
@@ -64,6 +71,9 @@ void *try_calloc(size_t len, size_t size) {
 /*
  * Same of xmalloc but with realloc, resize a chunk of memory pointed by a
  * given pointer, again appends the new size in front of the byte array
+ *
+ * This function can fail if not memory is available, interrupting the
+ * execution of the program and exiting, hence the prefix "try".
  */
 void *try_realloc(void *ptr, size_t size) {
     if (!ptr)
@@ -126,6 +136,9 @@ size_t alloc_size(void *ptr) {
  * As strdup but using xmalloc instead of malloc, to track the number of bytes
  * allocated and to enable use of xfree on duplicated strings without having
  * to care when to use a normal free or a xfree
+ *
+ * This function can fail if not memory is available, interrupting the
+ * execution of the program and exiting, hence the prefix "try".
  */
 char *try_strdup(const char *s) {
     size_t len = strlen(s);

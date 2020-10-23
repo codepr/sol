@@ -371,11 +371,11 @@ static int connect_handler(struct io_event *e) {
         const char *will_topic = (const char *) c->payload.will_topic;
         const char *will_message = (const char *) c->payload.will_message;
         // TODO check for will_topic != NULL
-        struct topic *t = topic_get_or_create(&server, will_topic);
+        struct topic *t = topic_store_get_or_put(server.store, will_topic);
         if (!t)
             log_fatal("connect_handler failed: Out of memory");
-        if (!topic_exists(&server, t->name))
-            topic_put(&server, t);
+        if (!topic_store_contains(server.store, t->name))
+            topic_store_put(server.store, t);
         // I'm sure that the string will be NUL terminated by unpack function
         size_t msg_len = strlen(will_message);
         size_t tpc_len = strlen(will_topic);
@@ -451,7 +451,7 @@ static inline void add_wildcard(const char *topic, struct subscriber *s,
     subscription->topic = try_strdup(topic);
     subscription->multilevel = wildcard;
     INCREF(s, struct subscriber);
-    server.wildcards = list_push(server.wildcards, subscription);
+    topic_store_add_wildcard(server.store, subscription);
 }
 
 static void recursive_sub(struct trie_node *node, void *arg) {
@@ -509,7 +509,7 @@ static int subscribe_handler(struct io_event *e) {
             topic[s->tuples[i].topic_len + 1] = '\0';
         }
 
-        struct topic *t = topic_get_or_create(&server, topic);
+        struct topic *t = topic_store_get_or_put(server.store, topic);
         if (!t)
             log_fatal("subscribe_handler failed: Out of memory");
         /*
@@ -535,7 +535,7 @@ static int subscribe_handler(struct io_event *e) {
                 list_push(e->client->session->subscriptions, t);
                 if (wildcard == true) {
                     add_wildcard(topic, tmp, wildcard);
-                    trie_prefix_map(server.topics.root, topic, recursive_sub, tmp);
+                    topic_store_map(server.store, topic, recursive_sub, tmp);
                 }
             }
         } else {
@@ -599,8 +599,8 @@ static int unsubscribe_handler(struct io_event *e) {
 #endif
     struct topic *t = NULL;
     for (int i = 0; i < e->data.unsubscribe.tuples_len; ++i) {
-        t = topic_get(&server,
-                      (const char *) e->data.unsubscribe.tuples[i].topic);
+        t = topic_store_get(server.store,
+                            (const char *) e->data.unsubscribe.tuples[i].topic);
         if (t)
             topic_del_subscriber(t, c);
     }
@@ -659,13 +659,13 @@ static int publish_handler(struct io_event *e) {
      * Retrieve the topic from the global map, if it wasn't created before,
      * create a new one with the name selected
      */
-    struct topic *t = topic_get_or_create(&server, topic);
+    struct topic *t = topic_store_get_or_put(server.store, topic);
     if (!t)
         log_fatal("publish_handler failed: Out of memory");
 
     /* Check for # wildcards subscriptions */
-    if (list_size(server.wildcards) > 0) {
-        list_foreach(item, server.wildcards) {
+    if (topic_store_wildcards_empty(server.store)) {
+        topic_store_wildcards_foreach(item, server.store) {
             struct subscription *s = item->data;
             int matched = match_subscription(topic, s->topic, s->multilevel);
             if (matched == SOL_OK && !is_subscribed(t, s->subscriber->session)) {

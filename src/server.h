@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2019, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2020, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -112,22 +112,20 @@ extern struct sol_info info;
  * messages to push out and acks respectively.
  */
 struct server {
-    Trie topics; /* The main topics Trie structure */
-    struct memorypool *pool; /* A memory pool for clients allocation */
-    struct client *clients_map; /* Our clients map, it's a handle pointer for
-                                 * UTHASH APIs, must be set to NULL
-                                 */
-    struct client_session *sessions; /* The global session map, another UTHASH
-                                      * handle pointer, must be set to NULL
-                                      */
-    struct authentication *authentications; /* UTHASH handle pointer for
-                                             * authentications
-                                             */
-    List *wildcards; /* A list of wildcards subscriptions, as it's not
-                      * possible to know in advance what topics will match some
-                      * wildcard subscriptions
-                      */
-    SSL_CTX *ssl_ctx; /* Application TLS context */
+    // The main topics store
+    struct topic_store *store;
+    // A memory pool for clients allocation
+    struct memorypool *pool;
+    // Our clients map, it's a handle pointer for UTHASH APIs, must be set to
+    // NULL
+    struct client *clients_map;
+    // The global session map, another UTHASH handle pointer, must be set to
+    // NULL
+    struct client_session *sessions;
+    // UTHASH handle pointer for authentications
+    struct authentication *authentications;
+    // Application TLS context
+    SSL_CTX *ssl_ctx;
 };
 
 extern struct server server;

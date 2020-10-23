@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2019, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2020, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,15 +29,15 @@
 #include <errno.h>
 #include <unistd.h>
 #include <pthread.h>
+#include "ev.h"
 #include "network.h"
 #include "config.h"
-#include "sol_internal.h"
 #include "server.h"
 #include "memory.h"
 #include "logging.h"
 #include "handlers.h"
 #include "memorypool.h"
-#include "ev.h"
+#include "sol_internal.h"
 
 pthread_mutex_t mutex;
 
@@ -117,8 +117,6 @@ static void client_init(struct client *);
 
 static void client_deactivate(struct client *);
 
-static int wildcard_destructor(struct list_node *);
-
 // CALLBACKS for the eventloop
 static void accept_callback(struct ev_ctx *, void *);
 
@@ -140,10 +138,6 @@ static void publish_stats(struct ev_ctx *, void *);
  * concluded
  */
 static void inflight_msg_check(struct ev_ctx *, void *);
-
-static struct topic *topic_new(const char *);
-
-static void topic_init(struct topic *, const char *);
 
 /*
  * Statistics topics, published every N seconds defined by configuration
@@ -254,7 +248,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
         }
     };
 
-    publish_message(&p, topic_get(&server, (char *) p.publish.topic));
+    publish_message(&p, topic_store_get(server.store, (char *) p.publish.topic));
 
     // $SOL/broker/uptime/sol
     p.publish.topiclen = sys_topics[3].len;
@@ -262,7 +256,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     p.publish.payloadlen = strlen(sutime);
     p.publish.payload = (unsigned char *) &sutime;
 
-    publish_message(&p, topic_get(&server, (char *) p.publish.topic));
+    publish_message(&p, topic_store_get(server.store, (char *) p.publish.topic));
 
     // $SOL/broker/clients/connected
     p.publish.topiclen = sys_topics[4].len;
@@ -270,7 +264,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     p.publish.payloadlen = strlen(cclients);
     p.publish.payload = (unsigned char *) &cclients;
 
-    publish_message(&p, topic_get(&server, (char *) p.publish.topic));
+    publish_message(&p, topic_store_get(server.store, (char *) p.publish.topic));
 
     // $SOL/broker/bytes/sent
     p.publish.topiclen = sys_topics[6].len;
@@ -278,7 +272,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     p.publish.payloadlen = strlen(bsent);
     p.publish.payload = (unsigned char *) &bsent;
 
-    publish_message(&p, topic_get(&server, (char *) p.publish.topic));
+    publish_message(&p, topic_store_get(server.store, (char *) p.publish.topic));
 
     // $SOL/broker/messages/sent
     p.publish.topiclen = sys_topics[8].len;
@@ -286,7 +280,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     p.publish.payloadlen = strlen(msent);
     p.publish.payload = (unsigned char *) &msent;
 
-    publish_message(&p, topic_get(&server, (char *) p.publish.topic));
+    publish_message(&p, topic_store_get(server.store, (char *) p.publish.topic));
 
     // $SOL/broker/messages/received
     p.publish.topiclen = sys_topics[9].len;
@@ -294,7 +288,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     p.publish.payloadlen = strlen(mrecv);
     p.publish.payload = (unsigned char *) &mrecv;
 
-    publish_message(&p, topic_get(&server, (char *) p.publish.topic));
+    publish_message(&p, topic_store_get(server.store, (char *) p.publish.topic));
 
     // $SOL/broker/memory/used
     p.publish.topiclen = sys_topics[10].len;
@@ -302,7 +296,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     p.publish.payloadlen = strlen(mem);
     p.publish.payload = (unsigned char *) &mem;
 
-    publish_message(&p, topic_get(&server, (char *) p.publish.topic));
+    publish_message(&p, topic_store_get(server.store, (char *) p.publish.topic));
 }
 
 /*
@@ -407,16 +401,6 @@ static void client_init(struct client *client) {
 }
 
 /*
- * Auxiliary compare function to be passed in as comparator to a list_remove
- * call
- */
-static int subscription_cmp(const void *ptr_s1, const void *ptr_s2) {
-    struct subscription *s1 = ((struct list_node *) ptr_s1)->data;
-    const char *id = ptr_s2;
-    return STREQ(s1->subscriber->id, id, MQTT_CLIENT_ID_LEN);
-}
-
-/*
  * As we really don't want to completely de-allocate a client in favor of
  * making it reusable by another connection we simply deactivate it according
  * to its state (e.g. if it's a clean_session connected client or not) and we
@@ -440,7 +424,7 @@ static void client_deactivate(struct client *client) {
 #endif
     if (client->clean_session == true) {
         if (client->session) {
-            list_remove(server.wildcards, client->client_id, subscription_cmp);
+            topic_store_remove_wildcard(server.store, client->client_id);
             list_foreach(item, client->session->subscriptions) {
                 topic_del_subscriber(item->data, client);
             }
@@ -809,7 +793,7 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
             // Publish, if present, LWT message
             if (c->has_lwt == true) {
                 char *tname = (char *) c->session->lwt_msg.publish.topic;
-                struct topic *t = topic_get(&server, tname);
+                struct topic *t = topic_store_get(server.store, tname);
                 publish_message(&c->session->lwt_msg, t);
             }
             // Clean resources
@@ -936,21 +920,6 @@ void enqueue_event_write(const struct client *c) {
 }
 
 /*
- * Auxiliary function, destructor to be passed in to init a list structure,
- * this one is used to correctly destroy struct subscription items
- */
-static int wildcard_destructor(struct list_node *node) {
-    if (!node)
-        return -SOL_ERR;
-    struct subscription *s = node->data;
-    DECREF(s->subscriber, struct subscriber);
-    free_memory((char *) s->topic);
-    free_memory(s);
-    free_memory(node);
-    return SOL_OK;
-}
-
-/*
  * Main entry point for the server, to be called with an address and a port
  * to start listening
  */
@@ -959,7 +928,7 @@ int start_server(const char *addr, const char *port) {
     INIT_INFO;
 
     /* Initialize global Sol instance */
-    trie_init(&server.topics, NULL);
+    server.store = topic_store_new();
     server.authentications = NULL;
     server.pool = memorypool_new(BASE_CLIENTS_NUM, sizeof(struct client));
     if (!server.pool)
@@ -967,7 +936,6 @@ int start_server(const char *addr, const char *port) {
                   BASE_CLIENTS_NUM);
     server.clients_map = NULL;
     server.sessions = NULL;
-    server.wildcards = list_new(wildcard_destructor);
     pthread_mutex_init(&mutex, NULL);
 
     if (conf->allow_anonymous == false)
@@ -978,7 +946,7 @@ int start_server(const char *addr, const char *port) {
         struct topic *t = topic_new(try_strdup(sys_topics[i].name));
         if (!t)
             log_fatal("start_server failed: Out of memory");
-        topic_put(&server, t);
+        topic_store_put(server.store, t);
     }
 
     /* Start listening for new connections */
@@ -1014,7 +982,6 @@ int start_server(const char *addr, const char *port) {
 
     close(sfd);
     AUTH_DESTROY(server.authentications);
-    list_destroy(server.wildcards, 1);
 
     /* Destroy SSL context, if any present */
     if (conf->tls == true) {
@@ -1054,23 +1021,9 @@ void daemonize(void) {
  * =================================
  */
 
-static struct topic *topic_new(const char *name) {
-    if (!name)
-        return NULL;
-    struct topic *t = try_alloc(sizeof(*t));
-    topic_init(t, name);
-    return t;
-}
-
 static void subscriber_free(const struct ref *r) {
     struct subscriber *sub = container_of(r, struct subscriber, refcount);
     free_memory(sub);
-}
-
-static void topic_init(struct topic *t, const char *name) {
-    t->name = name;
-    t->subscribers = NULL;
-    t->retained_msg = NULL;
 }
 
 static void session_free(const struct ref *refcount) {
@@ -1130,55 +1083,6 @@ struct subscriber *subscriber_clone(const struct subscriber *s) {
     sub->refcount = (struct ref) { .count = 0, .free = subscriber_free };
     memcpy(sub->id, s->id, MQTT_CLIENT_ID_LEN);
     return sub;
-}
-
-struct subscriber *topic_add_subscriber(struct topic *t,
-                                        struct client_session *s,
-                                        unsigned char qos) {
-    struct subscriber *sub = subscriber_new(t, s, qos), *tmp;
-    HASH_FIND_STR(t->subscribers, sub->id, tmp);
-    if (!tmp)
-        HASH_ADD_STR(t->subscribers, id, sub);
-    return sub;
-}
-
-void topic_del_subscriber(struct topic *t, struct client *c) {
-    struct subscriber *sub = NULL;
-    HASH_FIND_STR(t->subscribers, c->client_id, sub);
-    if (sub) {
-        HASH_DEL(t->subscribers, sub);
-        DECREF(sub, struct subscriber);
-    }
-}
-
-void topic_put(struct server *server, struct topic *t) {
-    trie_insert(&server->topics, t->name, t);
-}
-
-void topic_del(struct server *server, const char *name) {
-    trie_delete(&server->topics, name);
-}
-
-bool topic_exists(const struct server *server, const char *name) {
-    struct topic *t = topic_get(server, name);
-    return t != NULL;
-}
-
-struct topic *topic_get(const struct server *server, const char *name) {
-    struct topic *ret_topic;
-    trie_find(&server->topics, name, (void *) &ret_topic);
-    return ret_topic;
-}
-
-struct topic *topic_get_or_create(struct server *server, const char *name) {
-    struct topic *t = topic_get(server, name);
-    if (t != NULL)
-        return t;
-    t = topic_new(try_strdup(name));
-    if (!t)
-        return NULL;
-    topic_put(server, t);
-    return t;
 }
 
 void inflight_msg_init(struct inflight_msg *imsg, struct mqtt_packet *p) {

@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2018, Andrea Giacomo Baldan
+ * Copyright (c) 2020, Andrea Giacomo Baldan
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,6 +28,7 @@
 #ifndef TRIE_H
 #define TRIE_H
 
+#include <stddef.h>
 #include <stdbool.h>
 #include "bst.h"
 #include "list.h"

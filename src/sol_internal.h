@@ -1,7 +1,7 @@
 /*
  * BSD 2-Clause License
  *
- * Copyright (c) 2019, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2020, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -32,6 +32,7 @@
 #include "pack.h"
 #include "list.h"
 #include "mqtt.h"
+#include "trie.h"
 #include "uthash.h"
 #include "network.h"
 
@@ -79,6 +80,18 @@ struct topic {
     const char *name;
     unsigned char *retained_msg;
     struct subscriber *subscribers; /* UTHASH handle pointer, must be NULL */
+};
+
+/*
+ * Topic store keep track of all topics and wildcards registered, using a
+ * trie as underlying data structure
+ */
+struct topic_store {
+    // The main topics Trie structure
+    Trie topics;
+    // A list of wildcards subscriptions, as it's not possible to know in
+    // advance what topics will match some wildcard subscriptions
+    List *wildcards;
 };
 
 /*
@@ -160,14 +173,15 @@ struct client {
     struct ev_ctx *ctx; /* An event context refrence mostly used to fire write events */
     int rc;  /* Return code of the message just handled */
     int status; /* Current status of the client (state machine) */
-    volatile atomic_int rpos; /* The nr of bytes to skip after a complete packet has
-                      * been read. This because according to MQTT, length is
-                      * encoded on multiple bytes according to it's size, using
-                      * continuation bit as a technique to encode it. We don't
-                      * want to decode the length two times when we already know
-                      * it, so we need an offset to know where the actual packet
-                      * will start
-                      */
+    volatile atomic_int rpos; /* The nr of bytes to skip after a complete
+                               * packet has * been read. This because according
+                               * to MQTT, length is encoded on multiple bytes
+                               * according to it's size, using continuation bit
+                               * as a technique to encode it. We don't want to
+                               * decode the length two times when we already
+                               * know it, so we need an offset to know where
+                               * the actual packet will start
+                               */
     volatile atomic_size_t read; /* The number of bytes already read */
     volatile atomic_size_t toread; /* The number of bytes that have to be read */
     unsigned char *rbuf; /* The reading buffer */
@@ -230,14 +244,27 @@ struct subscriber *subscriber_new(struct topic *,
 struct subscriber *subscriber_clone(const struct subscriber *);
 struct subscriber *topic_add_subscriber(struct topic *,
                                         struct client_session *, unsigned char);
+
+void topic_init(struct topic *, const char *);
+struct topic *topic_new(const char *);
 void topic_del_subscriber(struct topic *, struct client *);
-bool topic_exists(const struct server *, const char *);
-void topic_put(struct server *, struct topic *);
-void topic_del(struct server *, const char *);
+struct topic_store *topic_store_new(void);
 /* Find a topic by name and return it */
-struct topic *topic_get(const struct server *, const char *);
+struct topic *topic_store_get(const struct topic_store *, const char *);
 /* Get or create a new topic if it doesn't exists */
-struct topic *topic_get_or_create(struct server *, const char *);
+struct topic *topic_store_get_or_put(struct topic_store *, const char *);
+bool topic_store_contains(const struct topic_store *, const char *);
+void topic_store_put(struct topic_store *, struct topic *);
+void topic_store_del(struct topic_store *, const char *);
+void topic_store_add_wildcard(struct topic_store *, struct subscription *);
+void topic_store_remove_wildcard(struct topic_store *, char *);
+void topic_store_map(struct topic_store *, const char *,
+                     void (*fn)(struct trie_node *, void *), void *);
+bool topic_store_wildcards_empty(const struct topic_store *);
+
+#define topic_store_wildcards_foreach(item, store)  \
+    list_foreach(item, store->wildcards)
+
 unsigned next_free_mid(struct client_session *);
 void session_init(struct client_session *, const char *);
 struct client_session *client_session_alloc(const char *);
