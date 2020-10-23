@@ -49,6 +49,14 @@ static int pubrel_handler(struct io_event *);
 static int pubcomp_handler(struct io_event *);
 static int pingreq_handler(struct io_event *);
 
+static void session_init(struct client_session *, const char *);
+
+static struct client_session *client_session_alloc(const char *);
+
+static unsigned next_free_mid(struct client_session *);
+
+static void inflight_msg_init(struct inflight_msg *, struct mqtt_packet *);
+
 /* Command handler mapped usign their position paired with their type */
 static handler *handlers[15] = {
     NULL,
@@ -67,6 +75,58 @@ static handler *handlers[15] = {
     NULL,
     disconnect_handler
 };
+
+/*
+ * =========================
+ *  Internal module helpers
+ * =========================
+ */
+
+static void session_free(const struct ref *refcount) {
+    struct client_session *session =
+        container_of(refcount, struct client_session, refcount);
+    list_destroy(session->subscriptions, 0);
+    list_destroy(session->outgoing_msgs, 0);
+    if (has_inflight(session)) {
+        for (int i = 0; i < MAX_INFLIGHT_MSGS; ++i) {
+            if (session->i_msgs[i].packet)
+                DECREF(session->i_msgs[i].packet, struct mqtt_packet);
+        }
+    }
+    free_memory(session->i_acks);
+    free_memory(session->i_msgs);
+    free_memory(session);
+}
+
+static void session_init(struct client_session *session, const char *session_id) {
+    session->inflights = ATOMIC_VAR_INIT(0);
+    session->next_free_mid = 1;
+    session->subscriptions = list_new(NULL);
+    session->outgoing_msgs = list_new(NULL);
+    snprintf(session->session_id, MQTT_CLIENT_ID_LEN, "%s", session_id);
+    session->i_acks = try_calloc(MAX_INFLIGHT_MSGS, sizeof(time_t));
+    session->i_msgs = try_calloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
+    session->refcount = (struct ref) { session_free, 0 };
+}
+
+static struct client_session *client_session_alloc(const char *session_id) {
+    struct client_session *session = try_alloc(sizeof(*session));
+    session_init(session, session_id);
+    return session;
+}
+
+static inline unsigned next_free_mid(struct client_session *session) {
+    if (session->next_free_mid == MAX_INFLIGHT_MSGS)
+        session->next_free_mid = 1;
+    return session->next_free_mid++;
+}
+
+static inline void inflight_msg_init(struct inflight_msg *imsg,
+                                     struct mqtt_packet *p) {
+    imsg->seen = time(NULL);
+    imsg->packet = p;
+    imsg->qos = p->header.bits.qos;
+}
 
 /*
  * One of the two exposed functions of the module, it's also needed on server

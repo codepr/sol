@@ -237,7 +237,6 @@ extern pthread_mutex_t mutex;
 
 struct server;
 
-void inflight_msg_init(struct inflight_msg *, struct mqtt_packet *);
 bool is_subscribed(const struct topic *, const struct client_session *);
 struct subscriber *subscriber_new(struct topic *,
                                   struct client_session *, unsigned char);
@@ -265,9 +264,9 @@ bool topic_store_wildcards_empty(const struct topic_store *);
 #define topic_store_wildcards_foreach(item, store)  \
     list_foreach(item, store->wildcards)
 
-unsigned next_free_mid(struct client_session *);
-void session_init(struct client_session *, const char *);
-struct client_session *client_session_alloc(const char *);
+/* unsigned next_free_mid(struct client_session *); */
+/* void session_init(struct client_session *, const char *); */
+/* struct client_session *client_session_alloc(const char *); */
 
 #define has_inflight(session) ((session)->inflights > 0)
 #define inflight_msg_clear(msg) DECREF((msg)->packet, struct mqtt_packet)

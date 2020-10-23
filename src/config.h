@@ -63,7 +63,7 @@
 
 // Default parameters
 
-#define VERSION                     "0.18.2"
+#define VERSION                     "0.18.3"
 #define DEFAULT_SOCKET_FAMILY       INET
 #define DEFAULT_LOG_LEVEL           DEBUG
 #define DEFAULT_CONF_PATH           "/etc/sol/sol.conf"
