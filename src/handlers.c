@@ -604,8 +604,8 @@ static int subscribe_handler(struct io_event *e) {
              * the topic to the wildcards list as we can't know at this point
              * which topic it will match
              */
-            struct subscriber *sub =
-                subscriber_new(t, e->client->session, s->tuples[i].qos);
+            struct subscriber *sub = subscriber_new(e->client->session,
+                                                    s->tuples[i].qos);
             add_wildcard(topic, sub, wildcard);
         }
 #if THREADSNR > 0

@@ -84,7 +84,7 @@ void topic_destroy(struct topic *t) {
 struct subscriber *topic_add_subscriber(struct topic *t,
                                         struct client_session *s,
                                         unsigned char qos) {
-    struct subscriber *sub = subscriber_new(t, s, qos), *tmp;
+    struct subscriber *sub = subscriber_new(s, qos), *tmp;
     HASH_FIND_STR(t->subscribers, sub->id, tmp);
     if (!tmp)
         HASH_ADD_STR(t->subscribers, id, sub);
