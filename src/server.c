@@ -673,7 +673,7 @@ static void write_callback(struct ev_ctx *ctx, void *arg) {
     struct client *client = arg;
     int err = write_data(client);
     switch (err) {
-        case SOL_OK: // OK
+        case SOL_OK:
             /*
              * Rearm descriptor making it ready to receive input,
              * read_callback will be the callback to be used; also reset the
@@ -683,6 +683,12 @@ static void write_callback(struct ev_ctx *ctx, void *arg) {
             ev_fire_event(ctx, client->conn.fd, EV_READ, read_callback, client);
             break;
         case -ERREAGAIN:
+            /*
+             * We have an EAGAIN error, which is really just signaling that
+             * for some reasons the kernel is not ready to write more bytes at
+             * the moment and it would block, so we just want to re-try some
+             * time later, re-enqueuing a new write event
+             */
             enqueue_event_write(client);
             break;
         default:
@@ -779,6 +785,7 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
         case -ERRSOCKETERR:
         case -ERRPACKETERR:
         case -ERRMAXREQSIZE:
+            // TODO move to default branch
             /*
              * We got an unexpected error or a disconnection from the
              * client side, remove client from the global map and
@@ -794,7 +801,8 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
             if (c->has_lwt == true) {
                 char *tname = (char *) c->session->lwt_msg.publish.topic;
                 struct topic *t = topic_store_get(server.store, tname);
-                publish_message(&c->session->lwt_msg, t);
+                if (t)
+                    publish_message(&c->session->lwt_msg, t);
             }
             // Clean resources
             ev_del_fd(ctx, c->conn.fd);
@@ -814,6 +822,12 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
             info.nconnections--;
             break;
         case -ERREAGAIN:
+            /*
+             * We have an EAGAIN error, which is really just signaling that
+             * for some reasons the kernel is not ready to read more bytes at
+             * the moment and it would block, so we just want to re-try some
+             * time later, re-enqueuing a new read event
+             */
             ev_fire_event(ctx, c->conn.fd, EV_READ, read_callback, c);
             break;
     }
@@ -914,14 +928,20 @@ static void eventloop_start(void *args) {
  * ===================
  */
 
-/* Fire a write callback to reply after a client request */
+/*
+ * Fire a write callback to reply after a client request, under the hood it
+ * schedules an EV_WRITE event with a client pointer set to write carried
+ * contents out on the socket descriptor.
+ */
 void enqueue_event_write(const struct client *c) {
     ev_fire_event(c->ctx, c->conn.fd, EV_WRITE, write_callback, (void *) c);
 }
 
 /*
  * Main entry point for the server, to be called with an address and a port
- * to start listening
+ * to start listening. The function may fail only in the case of Out of memory
+ * error occurs or listen call fails, on the other cases it should just log
+ * unexpected errors.
  */
 int start_server(const char *addr, const char *port) {
 
@@ -929,7 +949,7 @@ int start_server(const char *addr, const char *port) {
 
     /* Initialize global Sol instance */
     server.store = topic_store_new();
-    server.authentications = NULL;
+    server.auths = NULL;
     server.pool = memorypool_new(BASE_CLIENTS_NUM, sizeof(struct client));
     if (!server.pool)
         log_fatal("Failed to allocate %d sized memory pool for clients",
@@ -939,7 +959,8 @@ int start_server(const char *addr, const char *port) {
     pthread_mutex_init(&mutex, NULL);
 
     if (conf->allow_anonymous == false)
-        config_read_passwd_file(conf->password_file, &server.authentications);
+        if (!config_read_passwd_file(conf->password_file, &server.auths))
+            log_error("Failed to read password file");
 
     /* Generate stats topics */
     for (int i = 0; i < SYS_TOPICS; i++) {
@@ -981,7 +1002,7 @@ int start_server(const char *addr, const char *port) {
 #endif
 
     close(sfd);
-    AUTH_DESTROY(server.authentications);
+    AUTH_DESTROY(server.auths);
     topic_store_destroy(server.store);
 
     /* Destroy SSL context, if any present */
@@ -997,7 +1018,7 @@ int start_server(const char *addr, const char *port) {
 }
 
 /*
- * Make the entire process a daemon
+ * Make the entire process a daemon running in background
  */
 void daemonize(void) {
 

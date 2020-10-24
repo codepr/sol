@@ -123,15 +123,31 @@ struct server {
     // NULL
     struct client_session *sessions;
     // UTHASH handle pointer for authentications
-    struct authentication *authentications;
+    struct authentication *auths;
     // Application TLS context
     SSL_CTX *ssl_ctx;
 };
 
 extern struct server server;
 
+/*
+ * Main entry point for the server, to be called with an address and a port
+ * to start listening. The function may fail only in the case of Out of memory
+ * error occurs or listen call fails, on the other cases it should just log
+ * unexpected errors.
+ */
 int start_server(const char *, const char *);
+
+/*
+ * Fire a write callback to reply after a client request, under the hood it
+ * schedules an EV_WRITE event with a client pointer set to write carried
+ * contents out on the socket descriptor.
+ */
 void enqueue_event_write(const struct client *);
+
+/*
+ * Make the entire process a daemon running in background
+ */
 void daemonize(void);
 
 #endif

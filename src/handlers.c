@@ -363,8 +363,7 @@ static int connect_handler(struct io_event *e) {
             goto bad_auth;
         else {
             struct authentication *auth = NULL;
-            HASH_FIND_STR(server.authentications,
-                          (char *) c->payload.username, auth);
+            HASH_FIND_STR(server.auths, (char *) c->payload.username, auth);
             if (!auth || !check_passwd((char *) c->payload.password, auth->salt))
                 goto bad_auth;
         }
