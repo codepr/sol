@@ -40,9 +40,9 @@
  */
 static char *test_list_new(void) {
     List *l = list_new(NULL);
-    ASSERT("[! list_new]: list not created", l != NULL);
+    ASSERT("list::list_new...FAIL", l != NULL);
     list_destroy(l, 0);
-    printf(" [list::list_new]: OK\n");
+    printf("list::list_new...OK\n");
     return 0;
 }
 
@@ -51,9 +51,9 @@ static char *test_list_new(void) {
  */
 static char *test_list_destroy(void) {
     List *l = list_new(NULL);
-    ASSERT("[! list_destroy]: list not created", l != NULL);
+    ASSERT("list::list_destroy...FAIL", l != NULL);
     list_destroy(l, 0);
-    printf(" [list::list_destroy]: OK\n");
+    printf("list::list_destroy...OK\n");
     return 0;
 }
 
@@ -64,9 +64,9 @@ static char *test_list_push(void) {
     List *l = list_new(NULL);
     char *x = "abc";
     list_push(l, x);
-    ASSERT("[! list_push]: item not pushed in", l->len == 1);
+    ASSERT("list::list_push...FAIL", l->len == 1);
     list_destroy(l, 0);
-    printf(" [list::list_push]: OK\n");
+    printf("list::list_push...OK\n");
     return 0;
 }
 
@@ -77,9 +77,9 @@ static char *test_list_push_back(void) {
     List *l = list_new(NULL);
     char *x = "abc";
     list_push_back(l, x);
-    ASSERT("[! list_push_back]: item not pushed in", l->len == 1);
+    ASSERT("list::list_push_back...FAIL", l->len == 1);
     list_destroy(l, 0);
-    printf(" [list::list_push_back]: OK\n");
+    printf("list::list_push_back...OK\n");
     return 0;
 }
 
@@ -100,12 +100,11 @@ static char *test_list_remove_node(void) {
     List *l = list_new(NULL);
     char *x = "abc";
     l = list_push(l, x);
-    ASSERT("[! list_remove_node :: list_push]: item not pushed in", l->len == 1);
     struct list_node *node = list_remove_node(l, x, compare_str);
-    ASSERT("[! list_remove_node]: item not removed", strcmp(node->data, x) == 0);
+    ASSERT("list::list_remove_node...FAIL", strcmp(node->data, x) == 0);
     free_memory(node);
     list_destroy(l, 0);
-    printf(" [list::list_remove_node]: OK\n");
+    printf("list::list_remove_node...OK\n");
     return 0;
 }
 
@@ -117,11 +116,10 @@ static char *test_list_iterator(void) {
     char *x = "abc";
     l = list_push(l, x);
     struct iterator *it = iter_new(l, list_iter_next);
-    ASSERT("[! list_iter_next]: next iterator didn't point to the right item",
-           strcmp(it->ptr, x) == 0);
+    ASSERT("list::list_iterator::list_iter_next...FAIL", strcmp(it->ptr, x) == 0);
     list_destroy(l, 0);
     iter_destroy(it);
-    printf(" [list::list_iterator]: OK\n");
+    printf("list::list_iterator...OK\n");
     return 0;
 }
 
@@ -130,9 +128,9 @@ static char *test_list_iterator(void) {
  */
 static char *test_trie_new(void) {
     struct Trie *trie = trie_new(NULL);
-    ASSERT("[! trie_new]: Trie not created", trie != NULL);
+    ASSERT("trie::trie_new...FAIL", trie != NULL);
     trie_destroy(trie);
-    printf(" [trie::trie_new]: OK\n");
+    printf("trie::trie_new...OK\n");
     return 0;
 }
 
@@ -142,9 +140,9 @@ static char *test_trie_new(void) {
 static char *test_trie_create_node(void) {
     struct trie_node *node = trie_create_node('a');
     size_t size = 0;
-    ASSERT("[! trie_create_node]: struct trie_node not created", node != NULL);
+    ASSERT("trie::trie_create_node...FAIL", node != NULL);
     trie_node_destroy(node, &size, NULL);
-    printf(" [trie::trie_create_node]: OK\n");
+    printf("trie::trie_create_node...OK\n");
     return 0;
 }
 
@@ -158,10 +156,9 @@ static char *test_trie_insert(void) {
     trie_insert(root, key, try_strdup(val));
     void *payload = NULL;
     bool found = trie_find(root, key, &payload);
-    ASSERT("[! trie_insert]: Trie insertion failed",
-           (found == true && payload != NULL));
+    ASSERT("trie::trie_insert...FAIL", (found == true && payload != NULL));
     trie_destroy(root);
-    printf(" [trie::trie_insert]: OK\n");
+    printf("trie::trie_insert...OK\n");
     return 0;
 }
 
@@ -175,10 +172,9 @@ static char *test_trie_find(void) {
     trie_insert(root, key, try_strdup(val));
     void *payload = NULL;
     bool found = trie_find(root, key, &payload);
-    ASSERT("[! trie_find]: Trie search failed",
-           (found == true && payload != NULL));
+    ASSERT("trie::trie_find...FAIL", (found == true && payload != NULL));
     trie_destroy(root);
-    printf(" [trie::trie_find]: OK\n");
+    printf("trie::trie_find...OK\n");
     return 0;
 }
 
@@ -201,16 +197,16 @@ static char *test_trie_delete(void) {
     trie_delete(root, key3);
     void *payload = NULL;
     bool found = trie_find(root, key1, &payload);
-    ASSERT("[! trie_delete]: Trie delete failed",
+    ASSERT("trie::trie_delete...FAIL",
            (found == false || payload == NULL));
     found = trie_find(root, key2, &payload);
-    ASSERT("[! trie_delete]: Trie delete failed",
+    ASSERT("trie::trie_delete...FAIL",
            (found == false || payload == NULL));
     found = trie_find(root, key3, &payload);
-    ASSERT("[! trie_delete]: Trie delete failed",
+    ASSERT("trie::trie_delete...FAIL",
            (found == false || payload == NULL));
     trie_destroy(root);
-    printf(" [trie::trie_delete]: OK\n");
+    printf("trie::trie_delete...OK\n");
     return 0;
 }
 
@@ -234,19 +230,19 @@ static char *test_trie_prefix_delete(void) {
     trie_prefix_delete(root, key1);
     void *payload = NULL;
     bool found = trie_find(root, key1, &payload);
-    ASSERT("[! trie_prefix_delete]: Trie prefix delete key1 failed",
+    ASSERT("trie::trie_prefix_delete...FAIL",
             (found == false || payload == NULL));
     found = trie_find(root, key2, &payload);
-    ASSERT("[! trie_prefix_delete]: Trie prefix delete key2 failed",
+    ASSERT("trie::trie_prefix_delete...FAIL",
             (found == false || payload == NULL));
     found = trie_find(root, key3, &payload);
-    ASSERT("[! trie_prefix_delete]: Trie prefix delete key3 failed",
+    ASSERT("trie::trie_prefix_delete...FAIL",
             (found == false || payload == NULL));
     found = trie_find(root, key4, &payload);
-    ASSERT("[! trie_prefix_delete]: Trie prefix delete key4 success",
+    ASSERT("trie::trie_prefix_delete...FAIL",
             (found == true || payload != NULL));
     trie_destroy(root);
-    printf(" [trie::trie_prefix_delete]: OK\n");
+    printf("trie::trie_prefix_delete...OK\n");
     return 0;
 }
 
@@ -268,13 +264,11 @@ static char *test_trie_prefix_count(void) {
     trie_insert(root, key3, try_strdup(val3));
     trie_insert(root, key4, try_strdup(val4));
     int count = trie_prefix_count(root, "hel");
-    ASSERT("[! trie_prefix_count]: Trie prefix count on prefix \"hel\" failed",
-            count == 4);
+    ASSERT("trie::trie_prefix_count...FAIL", count == 4);
     count = trie_prefix_count(root, "helloworld!");
-    ASSERT("[! trie_prefix_count]: Trie prefix count on prefix \"helloworld!\" failed",
-            count == 0);
+    ASSERT("trie::trie_prefix_count...FAIL", count == 0);
     trie_destroy(root);
-    printf(" [trie::trie_prefix_count]: OK\n");
+    printf("trie::trie_prefix_count...OK\n");
     return 0;
 }
 
