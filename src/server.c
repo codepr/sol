@@ -213,7 +213,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     (void)data;
 
     char cclients[21];
-    snprintf(cclients, 21, "%lu", info.nclients);
+    snprintf(cclients, 21, "%lu", info.active_connections);
 
     char bsent[21];
     snprintf(bsent, 21, "%lu", info.bytes_sent);
@@ -698,8 +698,8 @@ static void write_callback(struct ev_ctx *ctx, void *arg) {
             ev_del_fd(ctx, client->conn.fd);
             client_deactivate(client);
             // Update stats
-            info.nclients--;
-            info.nconnections--;
+            info.active_connections--;
+            info.total_connections--;
             break;
     }
 }
@@ -747,8 +747,8 @@ static void accept_callback(struct ev_ctx *ctx, void *data) {
         ev_register_event(ctx, fd, EV_READ, read_callback, c);
 
         /* Record the new client connected */
-        info.nclients++;
-        info.nconnections++;
+        info.active_connections++;
+        info.total_connections++;
 
         log_info("[%p] Connection from %s", (void *) pthread_self(), conn.ip);
     }
@@ -818,8 +818,8 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
             pthread_mutex_unlock(&mutex);
 #endif
             client_deactivate(c);
-            info.nclients--;
-            info.nconnections--;
+            info.active_connections--;
+            info.total_connections--;
             break;
         case -ERREAGAIN:
             /*
@@ -869,8 +869,8 @@ static void process_message(struct ev_ctx *ctx, struct client *c) {
             ev_del_fd(ctx, c->conn.fd);
             client_deactivate(io.client);
             // Update stats
-            info.nclients--;
-            info.nconnections--;
+            info.active_connections--;
+            info.total_connections--;
             break;
         case -ERRNOMEM:
             log_error(solerr(c->rc));

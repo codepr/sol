@@ -67,9 +67,9 @@ struct io_event {
 /* Global informations statistics structure */
 struct sol_info {
     /* Number of clients currently connected */
-    atomic_size_t nclients;
+    atomic_size_t active_connections;
     /* Total number of clients connected since the start */
-    atomic_size_t nconnections;
+    atomic_size_t total_connections;
     /* Total number of sent messages */
     atomic_size_t messages_sent;
     /* Total number of received messages */
@@ -79,7 +79,7 @@ struct sol_info {
     /* Seconds passed since the start */
     atomic_size_t uptime;
     /* Total number of requests served */
-    atomic_size_t nrequests;
+    atomic_size_t total_requests;
     /* Total number of bytes received */
     atomic_size_t bytes_sent;
     /* Total number of bytes sent out */
@@ -87,15 +87,15 @@ struct sol_info {
 };
 
 #define INIT_INFO do { \
-    info.nclients = ATOMIC_VAR_INIT(0);         \
-    info.nconnections = ATOMIC_VAR_INIT(0);     \
-    info.messages_sent = ATOMIC_VAR_INIT(0);    \
-    info.messages_recv = ATOMIC_VAR_INIT(0);    \
-    info.start_time = ATOMIC_VAR_INIT(0);       \
-    info.uptime = ATOMIC_VAR_INIT(0);           \
-    info.nrequests = ATOMIC_VAR_INIT(0);        \
-    info.bytes_sent = ATOMIC_VAR_INIT(0);       \
-    info.bytes_recv = ATOMIC_VAR_INIT(0);       \
+    info.active_connections = ATOMIC_VAR_INIT(0);   \
+    info.total_connections = ATOMIC_VAR_INIT(0);    \
+    info.messages_sent = ATOMIC_VAR_INIT(0);        \
+    info.messages_recv = ATOMIC_VAR_INIT(0);        \
+    info.start_time = ATOMIC_VAR_INIT(0);           \
+    info.uptime = ATOMIC_VAR_INIT(0);               \
+    info.total_requests = ATOMIC_VAR_INIT(0);       \
+    info.bytes_sent = ATOMIC_VAR_INIT(0);           \
+    info.bytes_recv = ATOMIC_VAR_INIT(0);           \
 } while (0)
 
 /*

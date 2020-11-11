@@ -81,6 +81,26 @@ enum packet_type {
 
 enum qos_level { AT_MOST_ONCE, AT_LEAST_ONCE, EXACTLY_ONCE };
 
+/*
+ * MQTT Fixed header, according to official docs it's comprised of a single
+ * byte carrying:
+ * - opcode (packet type)
+ * - dup flag
+ * - QoS
+ * - retain flag
+ * It's followed by the remaining_len of the packet, encoded onto 1 to 4
+ * bytes starting at bytes 2.
+ *
+ * |   Bit      |  7  |  6  |  5  |  4  |  3  |  2  |  1  |   0    |
+ * |------------|-----------------------|--------------------------|
+ * | Byte 1     |      MQTT type 3      | dup |    QoS    | retain |
+ * |------------|--------------------------------------------------|
+ * | Byte 2     |                                                  |
+ * |   .        |               Remaining Length                   |
+ * |   .        |                                                  |
+ * | Byte 5     |                                                  |
+ * |------------|--------------------------------------------------|
+ */
 union mqtt_header {
     u8 byte;
     struct {
@@ -91,6 +111,58 @@ union mqtt_header {
     } bits;
 };
 
+/*
+ * MQTT Connect packet, contains a variable header with some connect related
+ * flags:
+ * - clean session flag
+ * - will flag
+ * - will QoS (if will flag set to true)
+ * - will topic (if will flag set to true)
+ * - will retain flag (if will flag set to true)
+ * - password flag
+ * - username flag
+ *
+ * It's followed by all required fields according the flags set to true.
+ *
+ * |------------|--------------------------------------------------|
+ * | Byte 6     |             Protocol name len MSB                |
+ * | Byte 7     |             Protocol name len LSB                |  [UINT16]
+ * |------------|--------------------------------------------------|
+ * | Byte 8     |                                                  |
+ * |   .        |                'M' 'Q' 'T' 'T'                   |
+ * | Byte 12    |                                                  |
+ * |------------|--------------------------------------------------|
+ * | Byte 13    |                 Protocol level                   |
+ * |------------|--------------------------------------------------|
+ * |            |                 Connect flags                    |
+ * | Byte 14    |--------------------------------------------------|
+ * |            |  U  |  P  |  WR |     WQ    |  WF |  CS |    R   |
+ * |------------|--------------------------------------------------|
+ * | Byte 15    |                 Keepalive MSB                    |  [UINT16]
+ * | Byte 17    |                 Keepalive LSB                    |
+ * |------------|--------------------------------------------------|<-- Payload
+ * | Byte 18    |             Client ID length MSB                 |  [UINT16]
+ * | Byte 19    |             Client ID length LSB                 |
+ * |------------|--------------------------------------------------|
+ * | Byte 20    |                                                  |
+ * |   .        |                  Client ID                       |
+ * | Byte N     |                                                  |
+ * |------------|--------------------------------------------------|
+ * | Byte N+1   |              Username length MSB                 |
+ * | Byte N+2   |              Username length LSB                 |
+ * |------------|--------------------------------------------------|
+ * | Byte N+3   |                                                  |
+ * |   .        |                  Username                        |
+ * | Byte N+M   |                                                  |
+ * |------------|--------------------------------------------------|
+ * | Byte N+M+1 |              Password length MSB                 |
+ * | Byte N+M+2 |              Password length LSB                 |
+ * |------------|--------------------------------------------------|
+ * | Byte N+M+3 |                                                  |
+ * |   .        |                  Password                        |
+ * | Byte N+M+K |                                                  |
+ * |------------|--------------------------------------------------|
+ */
 struct mqtt_connect {
     union {
         u8 byte;
