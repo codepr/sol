@@ -431,8 +431,6 @@ static int connect_handler(struct io_event *e) {
         const char *will_message = (const char *) c->payload.will_message;
         // TODO check for will_topic != NULL
         struct topic *t = topic_store_get_or_put(server.store, will_topic);
-        if (!t)
-            log_fatal("connect_handler failed: Out of memory");
         if (!topic_store_contains(server.store, t->name))
             topic_store_put(server.store, t);
         // I'm sure that the string will be NUL terminated by unpack function
@@ -449,9 +447,6 @@ static int connect_handler(struct io_event *e) {
                 .payload = (unsigned char *) try_strdup(will_message)
             }
         };
-
-        if (!cc->session->lwt_msg.publish.topic || !cc->session->lwt_msg.publish.payload)
-            log_fatal("connect_handler failed: Out of memory");
 
         cc->session->lwt_msg.header.bits.qos = c->bits.will_qos;
         // We must store the retained message in the topic
@@ -569,8 +564,6 @@ static int subscribe_handler(struct io_event *e) {
         }
 
         struct topic *t = topic_store_get_or_put(server.store, topic);
-        if (!t)
-            log_fatal("subscribe_handler failed: Out of memory");
         /*
          * Let's explore two possible scenarios:
          * 1. Normal topic (no single level wildcard '+') which can end with
@@ -719,8 +712,6 @@ static int publish_handler(struct io_event *e) {
      * create a new one with the name selected
      */
     struct topic *t = topic_store_get_or_put(server.store, topic);
-    if (!t)
-        log_fatal("publish_handler failed: Out of memory");
 
     /* Check for # wildcards subscriptions */
     if (topic_store_wildcards_empty(server.store)) {

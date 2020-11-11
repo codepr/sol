@@ -107,8 +107,6 @@ struct topic *topic_store_get_or_put(struct topic_store *store,
     if (t != NULL)
         return t;
     t = topic_new(try_strdup(name));
-    if (!t)
-        return NULL;
     topic_store_put(store, t);
     return t;
 }
