@@ -78,8 +78,6 @@ struct sol_info {
     atomic_size_t start_time;
     /* Seconds passed since the start */
     atomic_size_t uptime;
-    /* Total number of requests served */
-    atomic_size_t total_requests;
     /* Total number of bytes received */
     atomic_size_t bytes_sent;
     /* Total number of bytes sent out */
@@ -93,7 +91,6 @@ struct sol_info {
     info.messages_recv = ATOMIC_VAR_INIT(0);        \
     info.start_time = ATOMIC_VAR_INIT(0);           \
     info.uptime = ATOMIC_VAR_INIT(0);               \
-    info.total_requests = ATOMIC_VAR_INIT(0);       \
     info.bytes_sent = ATOMIC_VAR_INIT(0);           \
     info.bytes_recv = ATOMIC_VAR_INIT(0);           \
 } while (0)
