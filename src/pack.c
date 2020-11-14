@@ -438,7 +438,6 @@ u8 *unpack_bytes(u8 **buf, usize len) {
     return dest;
 }
 
-
 u16 unpack_string16(u8 **buf, u8 **dest) {
     u16 len = unpack_integer(buf, 'H');
     *dest = unpack_bytes(buf, len);
