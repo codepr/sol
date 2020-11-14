@@ -59,6 +59,13 @@ static usize pack_mqtt_publish(const struct mqtt_packet *, u8 *);
 static const int MAX_LEN_BYTES = 4;
 
 /*
+ * MQTT v3.1.1 starts every connect packet with 7 bytes for storing the
+ * protocol name 'M' 'Q' 'T' 'T' and mqtt properties, for now we just wanna
+ * ignore those fields and skip them during packet decoding
+ */
+static const int SKIP_PROTOCOL_NAME = 7;
+
+/*
  * Unpack functions mapping unpacking_handlers positioned in the array based
  * on message type
  */
@@ -217,7 +224,7 @@ static int unpack_mqtt_connect(u8 *buf, struct mqtt_packet *pkt, usize len) {
      * For now we ignore checks on protocol name and reserved bits, just skip
      * to the 8th byte
      */
-    buf += 7;
+    buf += SKIP_PROTOCOL_NAME;
 
     u16 cid_len = 0;
 
@@ -237,26 +244,17 @@ static int unpack_mqtt_connect(u8 *buf, struct mqtt_packet *pkt, usize len) {
 
     /* Read the will topic and message if will is set on flags */
     if (pkt->connect.bits.will == 1) {
-
-        u16 will_topic_len = unpack_integer(&buf, 'H');
-        pkt->connect.payload.will_topic = unpack_bytes(&buf, will_topic_len);
-
-        u16 will_msg_len = unpack_integer(&buf, 'H');
-        pkt->connect.payload.will_message = unpack_bytes(&buf, will_msg_len);
-
+        unpack_string16(&buf, &pkt->connect.payload.will_topic);
+        unpack_string16(&buf, &pkt->connect.payload.will_message);
     }
 
     /* Read the username if username flag is set */
-    if (pkt->connect.bits.username == 1) {
-        u16 username_len = unpack_integer(&buf, 'H');
-        pkt->connect.payload.username = unpack_bytes(&buf, username_len);
-    }
+    if (pkt->connect.bits.username == 1)
+        unpack_string16(&buf, &pkt->connect.payload.username);
 
     /* Read the password if password flag is set */
-    if (pkt->connect.bits.password == 1) {
-        u16 password_len = unpack_integer(&buf, 'H');
-        pkt->connect.payload.password = unpack_bytes(&buf, password_len);
-    }
+    if (pkt->connect.bits.password == 1)
+        unpack_string16(&buf, &pkt->connect.payload.password);
 
     if (!pkt->connect.payload.will_topic
         || !pkt->connect.payload.will_message
@@ -303,9 +301,7 @@ static int unpack_mqtt_connect(u8 *buf, struct mqtt_packet *pkt, usize len) {
  */
 static int unpack_mqtt_publish(u8 *buf, struct mqtt_packet *pkt, usize len) {
     /* Read topic length and topic of the soon-to-be-published message */
-    u16 topic_len = unpack_integer(&buf, 'H');
-    pkt->publish.topiclen = topic_len;
-    pkt->publish.topic = unpack_bytes(&buf, topic_len);
+    pkt->publish.topiclen = unpack_string16(&buf, &pkt->publish.topic);
 
     if (!pkt->publish.topic)
         return -MQTT_ERR;
@@ -322,7 +318,7 @@ static int unpack_mqtt_publish(u8 *buf, struct mqtt_packet *pkt, usize len) {
      * Message len is calculated subtracting the length of the variable header
      * from the Remaining Length field that is in the Fixed Header
      */
-    message_len -= (sizeof(u16) + topic_len);
+    message_len -= (sizeof(u16) + pkt->publish.topiclen);
     pkt->publish.payloadlen = message_len;
     pkt->publish.payload = unpack_bytes(&buf, message_len);
 
@@ -351,19 +347,18 @@ static int unpack_mqtt_subscribe(u8 *buf, struct mqtt_packet *pkt, usize len) {
     usize i = 0;
     for (; len > 0; ++i) {
         /* Read length bytes of the first topic filter */
-        u16 topic_len = unpack_integer(&buf, 'H');
         len -= sizeof(u16);
 
         /* We have to make room for additional incoming tuples */
         subscribe.tuples = try_realloc(subscribe.tuples,
                                        (i+1) * sizeof(*subscribe.tuples));
-        subscribe.tuples[i].topic_len = topic_len;
-        subscribe.tuples[i].topic = unpack_bytes(&buf, topic_len);
+        subscribe.tuples[i].topic_len =
+            unpack_string16(&buf, &subscribe.tuples[i].topic);
 
         if (!subscribe.tuples[i].topic)
             goto err;
 
-        len -= topic_len;
+        len -= subscribe.tuples[i].topic_len;
         subscribe.tuples[i].qos = unpack_integer(&buf, 'B');
         len -= sizeof(u8);
     }
@@ -397,19 +392,18 @@ static int unpack_mqtt_unsubscribe(u8 *buf,
     for (; len > 0; ++i) {
 
         /* Read length bytes of the first topic filter */
-        u16 topic_len = unpack_integer(&buf, 'H');
         len -= sizeof(u16);
 
         /* We have to make room for additional incoming tuples */
         unsubscribe.tuples = try_realloc(unsubscribe.tuples,
                                          (i+1) * sizeof(*unsubscribe.tuples));
-        unsubscribe.tuples[i].topic_len = topic_len;
-        unsubscribe.tuples[i].topic = unpack_bytes(&buf, topic_len);
+        unsubscribe.tuples[i].topic_len =
+            unpack_string16(&buf, &unsubscribe.tuples[i].topic);
 
         if (!unsubscribe.tuples[i].topic)
             goto err;
 
-        len -= topic_len;
+        len -= unsubscribe.tuples[i].topic_len;
     }
 
     unsubscribe.tuples_len = i;
