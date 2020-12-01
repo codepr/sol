@@ -256,12 +256,6 @@ static int unpack_mqtt_connect(u8 *buf, struct mqtt_packet *pkt, usize len) {
     if (pkt->connect.bits.password == 1)
         unpack_string16(&buf, &pkt->connect.payload.password);
 
-    if (!pkt->connect.payload.will_topic
-        || !pkt->connect.payload.will_message
-        || !pkt->connect.payload.username
-        || !pkt->connect.payload.password)
-            return -MQTT_ERR;
-
     return MQTT_OK;
 }
 
@@ -306,21 +300,19 @@ static int unpack_mqtt_publish(u8 *buf, struct mqtt_packet *pkt, usize len) {
     if (!pkt->publish.topic)
         return -MQTT_ERR;
 
-    u64 message_len = len;
-
     /* Read packet id */
     if (pkt->header.bits.qos > AT_MOST_ONCE) {
         pkt->publish.pkt_id = unpack_integer(&buf, 'H');
-        message_len -= sizeof(u16);
+        len -= sizeof(u16);
     }
 
     /*
      * Message len is calculated subtracting the length of the variable header
      * from the Remaining Length field that is in the Fixed Header
      */
-    message_len -= (sizeof(u16) + pkt->publish.topiclen);
-    pkt->publish.payloadlen = message_len;
-    pkt->publish.payload = unpack_bytes(&buf, message_len);
+    len -= (sizeof(u16) + pkt->publish.topiclen);
+    pkt->publish.payloadlen = len;
+    pkt->publish.payload = unpack_bytes(&buf, len);
 
     if (!pkt->publish.payload)
         return -MQTT_ERR;
