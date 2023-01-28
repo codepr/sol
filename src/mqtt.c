@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2019, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -110,19 +110,19 @@ int mqtt_encode_length(u8 *buf, usize len) {
     int bytes = 0;
     u16 encoded = 0;
 
-	do {
+    do {
 
         if (bytes + 1 > MAX_LEN_BYTES)
             return bytes;
 
-		encoded = len % 128;
-		len /= 128;
+        encoded = len % 128;
+        len /= 128;
 
-		/* if there are more digits to encode, set the top bit of this digit */
-		if (len > 0)
-			encoded |= 128;
+        /* if there are more digits to encode, set the top bit of this digit */
+        if (len > 0)
+            encoded |= 128;
 
-		buf[bytes++] = encoded;
+        buf[bytes++] = encoded;
 
     } while (len > 0);
 
@@ -139,14 +139,14 @@ int mqtt_encode_length(u8 *buf, usize len) {
 usize mqtt_decode_length(u8 *buf, unsigned *pos) {
 
     u8 c;
-	u64 multiplier = 1LL;
-	u64 value = 0LL;
+    u64 multiplier = 1LL;
+    u64 value = 0LL;
     *pos = 0;
 
-	do {
+    do {
         c = *buf;
-		value += (c & 127) * multiplier;
-		multiplier *= 128;
+        value += (c & 127) * multiplier;
+        multiplier *= 128;
         ++buf;
         ++(*pos);
     } while ((c & 128) != 0);

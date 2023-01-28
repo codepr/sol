@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2020, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -120,9 +120,9 @@ int number_len(size_t number) {
 }
 
 unsigned long unix_time_ns(void) {
-	struct timeval time;
-	gettimeofday(&time, NULL);
-	return time.tv_sec * (int) 1e6 + time.tv_usec;
+    struct timeval time;
+    gettimeofday(&time, NULL);
+    return time.tv_sec * (int) 1e6 + time.tv_usec;
 }
 
 void generate_random_id(char *dest) {
