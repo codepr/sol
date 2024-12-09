@@ -25,10 +25,10 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <string.h>
-#include <stdlib.h>
-#include <stdatomic.h>
 #include "memory.h"
+#include <stdatomic.h>
+#include <stdlib.h>
+#include <string.h>
 
 static atomic_size_t memory = ATOMIC_VAR_INIT(0);
 
@@ -43,16 +43,17 @@ static atomic_size_t memory = ATOMIC_VAR_INIT(0);
  * This function can fail if not memory is available, interrupting the
  * execution of the program and exiting, hence the prefix "try".
  */
-void *try_alloc(size_t size) {
+void *try_alloc(size_t size)
+{
     void *ptr = malloc(size + sizeof(size_t));
     if (!ptr && size != 0) {
-        fprintf(stderr, "[%s:%ul] Out of memory (%lu bytes)\n",
-                __FILE__, __LINE__, size);
+        fprintf(stderr, "[%s:%ul] Out of memory (%lu bytes)\n", __FILE__,
+                __LINE__, size);
         exit(EXIT_FAILURE);
     }
     memory += size + sizeof(size_t);
-    *((size_t *) ptr) = size;
-    return (char *) ptr + sizeof(size_t);
+    *((size_t *)ptr) = size;
+    return (char *)ptr + sizeof(size_t);
 }
 
 /*
@@ -62,7 +63,8 @@ void *try_alloc(size_t size) {
  * This function can fail if not memory is available, interrupting the
  * execution of the program and exiting, hence the prefix "try".
  */
-void *try_calloc(size_t len, size_t size) {
+void *try_calloc(size_t len, size_t size)
+{
     void *ptr = try_alloc(len * size);
     memset(ptr, 0x00, len * size);
     return ptr;
@@ -75,25 +77,26 @@ void *try_calloc(size_t len, size_t size) {
  * This function can fail if not memory is available, interrupting the
  * execution of the program and exiting, hence the prefix "try".
  */
-void *try_realloc(void *ptr, size_t size) {
+void *try_realloc(void *ptr, size_t size)
+{
     if (!ptr)
         return try_alloc(size);
 
-    void *realptr = (char *) ptr - sizeof(size_t);
-    size_t curr_size = *((size_t *) realptr);
+    void *realptr    = (char *)ptr - sizeof(size_t);
+    size_t curr_size = *((size_t *)realptr);
     if (size == curr_size)
         return ptr;
 
     void *newptr = realloc(realptr, size + sizeof(size_t));
     if (!newptr && size != 0) {
-        fprintf(stderr, "[%s:%ul] Out of memory (%lu bytes)\n",
-                __FILE__, __LINE__, size);
+        fprintf(stderr, "[%s:%ul] Out of memory (%lu bytes)\n", __FILE__,
+                __LINE__, size);
         exit(EXIT_FAILURE);
     }
 
-    *((size_t *) newptr) = size;
+    *((size_t *)newptr) = size;
     memory += (-curr_size) + size + sizeof(size_t);
-    return (char *) newptr + sizeof(size_t);
+    return (char *)newptr + sizeof(size_t);
 }
 
 /*
@@ -102,15 +105,16 @@ void *try_realloc(void *ptr, size_t size) {
  * of memory pointed by `ptr`, this way it knows how many bytes will be
  * free'ed by the call
  */
-void free_memory(void *ptr) {
+void free_memory(void *ptr)
+{
     if (!ptr)
         return;
 
-    void *realptr = (char *) ptr - sizeof(size_t);
+    void *realptr = (char *)ptr - sizeof(size_t);
     if (!realptr)
         return;
 
-    size_t ptr_size = *((size_t *) realptr);
+    size_t ptr_size = *((size_t *)realptr);
     memory -= ptr_size + sizeof(size_t);
     free(realptr);
 }
@@ -120,15 +124,16 @@ void free_memory(void *ptr) {
  * 8 positions, the size of an unsigned long long in order to read the number
  * of allcated bytes
  */
-size_t alloc_size(void *ptr) {
+size_t alloc_size(void *ptr)
+{
     if (!ptr)
         return 0L;
 
-    void *realptr = (char *) ptr - sizeof(size_t);
+    void *realptr = (char *)ptr - sizeof(size_t);
     if (!realptr)
         return 0L;
 
-    size_t ptr_size = *((size_t *) realptr);
+    size_t ptr_size = *((size_t *)realptr);
     return ptr_size;
 }
 
@@ -140,13 +145,12 @@ size_t alloc_size(void *ptr) {
  * This function can fail if not memory is available, interrupting the
  * execution of the program and exiting, hence the prefix "try".
  */
-char *try_strdup(const char *s) {
+char *try_strdup(const char *s)
+{
     size_t len = strlen(s);
-    char *ds = try_alloc(len + 1);
+    char *ds   = try_alloc(len + 1);
     snprintf(ds, len + 1, "%s", s);
     return ds;
 }
 
-size_t memory_used(void) {
-    return memory;
-}
+size_t memory_used(void) { return memory; }

@@ -25,19 +25,19 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <fcntl.h>
-#include <errno.h>
-#include <unistd.h>
-#include <pthread.h>
-#include "ev.h"
-#include "network.h"
-#include "config.h"
 #include "server.h"
-#include "memory.h"
-#include "logging.h"
+#include "config.h"
+#include "ev.h"
 #include "handlers.h"
+#include "logging.h"
+#include "memory.h"
 #include "memorypool.h"
+#include "network.h"
 #include "sol_internal.h"
+#include <errno.h>
+#include <fcntl.h>
+#include <pthread.h>
+#include <unistd.h>
 
 pthread_mutex_t mutex;
 
@@ -156,46 +156,46 @@ struct sys_topic {
 
 /* Information topics mapping, accessed by publish_stats periodic routine */
 static const struct sys_topic sys_topics[SYS_TOPICS] = {
-    { "$SOL/broker/clients/", 20 },
-    { "$SOL/broker/messages/", 21 },
-    { "$SOL/broker/uptime/", 19 },
-    { "$SOL/broker/uptime/sol", 22 },
-    { "$SOL/broker/clients/connected/", 30 },
-    { "$SOL/broker/clients/disconnected/", 34 },
-    { "$SOL/broker/bytes/sent/", 23 },
-    { "$SOL/broker/bytes/received/", 27 },
-    { "$SOL/broker/messages/sent/", 26 },
-    { "$SOL/broker/messages/received/", 30 },
-    { "$SOL/broker/memory/used", 23 }
-};
+    {"$SOL/broker/clients/", 20},
+    {"$SOL/broker/messages/", 21},
+    {"$SOL/broker/uptime/", 19},
+    {"$SOL/broker/uptime/sol", 22},
+    {"$SOL/broker/clients/connected/", 30},
+    {"$SOL/broker/clients/disconnected/", 34},
+    {"$SOL/broker/bytes/sent/", 23},
+    {"$SOL/broker/bytes/received/", 27},
+    {"$SOL/broker/messages/sent/", 26},
+    {"$SOL/broker/messages/received/", 30},
+    {"$SOL/broker/memory/used", 23}};
 
 /* Simple error_code to string function, to be refined */
-static const char *solerr(int rc) {
+static const char *solerr(int rc)
+{
     switch (rc) {
-        case -ERRCLIENTDC:
-            return "Client disconnected";
-        case -ERRSOCKETERR:
-            return strerror(errno);
-        case -ERRPACKETERR:
-            return "Error reading packet";
-        case -ERRMAXREQSIZE:
-            return "Packet sent exceeds max size accepted";
-        case -ERREAGAIN:
-            return "Socket FD EAGAIN";
-        case -ERRNOMEM:
-            return "Out of memory";
-        case MQTT_UNACCEPTABLE_PROTOCOL_VERSION:
-            return "[MQTT] Unknown protocol version";
-        case MQTT_IDENTIFIER_REJECTED:
-            return "[MQTT] Wrong identifier";
-        case MQTT_SERVER_UNAVAILABLE:
-            return "[MQTT] Server unavailable";
-        case MQTT_BAD_USERNAME_OR_PASSWORD:
-            return "[MQTT] Bad username or password";
-        case MQTT_NOT_AUTHORIZED:
-            return "[MQTT] Not authorized";
-        default:
-            return "Unknown error";
+    case -ERRCLIENTDC:
+        return "Client disconnected";
+    case -ERRSOCKETERR:
+        return strerror(errno);
+    case -ERRPACKETERR:
+        return "Error reading packet";
+    case -ERRMAXREQSIZE:
+        return "Packet sent exceeds max size accepted";
+    case -ERREAGAIN:
+        return "Socket FD EAGAIN";
+    case -ERRNOMEM:
+        return "Out of memory";
+    case MQTT_UNACCEPTABLE_PROTOCOL_VERSION:
+        return "[MQTT] Unknown protocol version";
+    case MQTT_IDENTIFIER_REJECTED:
+        return "[MQTT] Wrong identifier";
+    case MQTT_SERVER_UNAVAILABLE:
+        return "[MQTT] Server unavailable";
+    case MQTT_BAD_USERNAME_OR_PASSWORD:
+        return "[MQTT] Bad username or password";
+    case MQTT_NOT_AUTHORIZED:
+        return "[MQTT] Not authorized";
+    default:
+        return "Unknown error";
     }
 }
 
@@ -209,7 +209,8 @@ static const char *solerr(int rc) {
  * Publish statistics periodic task, it will be called once every N config
  * defined seconds, it publishes some informations on predefined topics
  */
-static void publish_stats(struct ev_ctx *ctx, void *data) {
+static void publish_stats(struct ev_ctx *ctx, void *data)
+{
     (void)data;
 
     char cclients[21];
@@ -237,64 +238,61 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
     snprintf(mem, 21, "%lld", memory);
 
     // $SOL/uptime
-    struct mqtt_packet p = {
-        .header = (union mqtt_header) { .byte = PUBLISH_B },
-        .publish = (struct mqtt_publish) {
-            .pkt_id = 0,
-            .topiclen = sys_topics[2].len,
-            .topic = (unsigned char *) sys_topics[2].name,
-            .payloadlen = strlen(utime),
-            .payload = (unsigned char *) &utime
-        }
-    };
+    struct mqtt_packet p = {.header  = (union mqtt_header){.byte = PUBLISH_B},
+                            .publish = (struct mqtt_publish){
+                                .pkt_id   = 0,
+                                .topiclen = sys_topics[2].len,
+                                .topic    = (unsigned char *)sys_topics[2].name,
+                                .payloadlen = strlen(utime),
+                                .payload    = (unsigned char *)&utime}};
 
     publish_message(&p, topic_store_get(server.store, sys_topics[2].name));
 
     // $SOL/broker/uptime/sol
-    p.publish.topiclen = sys_topics[3].len;
-    p.publish.topic = (unsigned char *) sys_topics[3].name;
+    p.publish.topiclen   = sys_topics[3].len;
+    p.publish.topic      = (unsigned char *)sys_topics[3].name;
     p.publish.payloadlen = strlen(sutime);
-    p.publish.payload = (unsigned char *) &sutime;
+    p.publish.payload    = (unsigned char *)&sutime;
 
     publish_message(&p, topic_store_get(server.store, sys_topics[3].name));
 
     // $SOL/broker/clients/connected
-    p.publish.topiclen = sys_topics[4].len;
-    p.publish.topic = (unsigned char *) sys_topics[4].name;
+    p.publish.topiclen   = sys_topics[4].len;
+    p.publish.topic      = (unsigned char *)sys_topics[4].name;
     p.publish.payloadlen = strlen(cclients);
-    p.publish.payload = (unsigned char *) &cclients;
+    p.publish.payload    = (unsigned char *)&cclients;
 
     publish_message(&p, topic_store_get(server.store, sys_topics[4].name));
 
     // $SOL/broker/bytes/sent
-    p.publish.topiclen = sys_topics[6].len;
-    p.publish.topic = (unsigned char *) sys_topics[6].name;
+    p.publish.topiclen   = sys_topics[6].len;
+    p.publish.topic      = (unsigned char *)sys_topics[6].name;
     p.publish.payloadlen = strlen(bsent);
-    p.publish.payload = (unsigned char *) &bsent;
+    p.publish.payload    = (unsigned char *)&bsent;
 
     publish_message(&p, topic_store_get(server.store, sys_topics[6].name));
 
     // $SOL/broker/messages/sent
-    p.publish.topiclen = sys_topics[8].len;
-    p.publish.topic = (unsigned char *) sys_topics[8].name;
+    p.publish.topiclen   = sys_topics[8].len;
+    p.publish.topic      = (unsigned char *)sys_topics[8].name;
     p.publish.payloadlen = strlen(msent);
-    p.publish.payload = (unsigned char *) &msent;
+    p.publish.payload    = (unsigned char *)&msent;
 
     publish_message(&p, topic_store_get(server.store, sys_topics[8].name));
 
     // $SOL/broker/messages/received
-    p.publish.topiclen = sys_topics[9].len;
-    p.publish.topic = (unsigned char *) sys_topics[9].name;
+    p.publish.topiclen   = sys_topics[9].len;
+    p.publish.topic      = (unsigned char *)sys_topics[9].name;
     p.publish.payloadlen = strlen(mrecv);
-    p.publish.payload = (unsigned char *) &mrecv;
+    p.publish.payload    = (unsigned char *)&mrecv;
 
     publish_message(&p, topic_store_get(server.store, sys_topics[9].name));
 
     // $SOL/broker/memory/used
-    p.publish.topiclen = sys_topics[10].len;
-    p.publish.topic = (unsigned char *) sys_topics[10].name;
+    p.publish.topiclen   = sys_topics[10].len;
+    p.publish.topic      = (unsigned char *)sys_topics[10].name;
     p.publish.payloadlen = strlen(mem);
-    p.publish.payload = (unsigned char *) &mem;
+    p.publish.payload    = (unsigned char *)&mem;
 
     publish_message(&p, topic_store_get(server.store, sys_topics[10].name));
 }
@@ -307,17 +305,19 @@ static void publish_stats(struct ev_ctx *ctx, void *data) {
  * unserialized, this way it's possible to set the DUP flag easily at the cost
  * of additional packing before re-sending it out
  */
-static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
-    (void) data;
-    (void) ctx;
-    size_t size = 0;
-    time_t now = time(NULL);
+static void inflight_msg_check(struct ev_ctx *ctx, void *data)
+{
+    (void)data;
+    (void)ctx;
+    size_t size           = 0;
+    time_t now            = time(NULL);
     struct mqtt_packet *p = NULL;
     struct client *c, *tmp;
 #if THREADSNR > 0
     pthread_mutex_lock(&mutex);
 #endif
-    HASH_ITER(hh, server.clients_map, c, tmp) {
+    HASH_ITER(hh, server.clients_map, c, tmp)
+    {
         if (!c || !c->connected || !c->session || !has_inflight(c->session))
             continue;
 #if THREADSNR > 0
@@ -326,10 +326,10 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
         for (int i = 1; i < MAX_INFLIGHT_MSGS; ++i) {
             // TODO remove 20 hardcoded value
             // Messages
-            if (c->session->i_msgs[i].packet
-                && (now - c->session->i_msgs[i].seen) > 20) {
+            if (c->session->i_msgs[i].packet &&
+                (now - c->session->i_msgs[i].seen) > 20) {
                 log_debug("Re-sending message to %s", c->client_id);
-                p = c->session->i_msgs[i].packet;
+                p                  = c->session->i_msgs[i].packet;
                 p->header.bits.qos = c->session->i_msgs[i].qos;
                 // Set DUP flag to 1
                 mqtt_set_dup(p);
@@ -342,8 +342,8 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
                 info.messages_sent++;
             }
             // ACKs
-            if (c->session->i_acks[i] > 0
-                && (now - c->session->i_acks[i]) > 20) {
+            if (c->session->i_acks[i] > 0 &&
+                (now - c->session->i_acks[i]) > 20) {
                 log_debug("Re-sending ack to %s", c->client_id);
                 struct mqtt_packet ack;
                 mqtt_ack(&ack, i);
@@ -378,25 +378,28 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data) {
  * (read and write) are not, they're lazily allocated with this function, meant
  * to be called on the accept callback
  */
-static void client_init(struct client *client) {
-    client->online = true;
-    client->connected = false;
+static void client_init(struct client *client)
+{
+    client->online        = true;
+    client->connected     = false;
     client->clean_session = true;
-    client->client_id[0] = '\0';
-    client->status = WAITING_HEADER;
-    client->rc = 0;
-    client->rpos = ATOMIC_VAR_INIT(0);
-    client->read = ATOMIC_VAR_INIT(0);
-    client->toread = ATOMIC_VAR_INIT(0);
+    client->client_id[0]  = '\0';
+    client->status        = WAITING_HEADER;
+    client->rc            = 0;
+    client->rpos          = ATOMIC_VAR_INIT(0);
+    client->read          = ATOMIC_VAR_INIT(0);
+    client->toread        = ATOMIC_VAR_INIT(0);
     if (!client->rbuf)
-        client->rbuf = try_calloc(conf->max_request_size, sizeof(unsigned char));
-    client->wrote = ATOMIC_VAR_INIT(0);
+        client->rbuf =
+            try_calloc(conf->max_request_size, sizeof(unsigned char));
+    client->wrote   = ATOMIC_VAR_INIT(0);
     client->towrite = ATOMIC_VAR_INIT(0);
     if (!client->wbuf)
-        client->wbuf = try_calloc(conf->max_request_size, sizeof(unsigned char));
+        client->wbuf =
+            try_calloc(conf->max_request_size, sizeof(unsigned char));
     client->last_seen = time(NULL);
-    client->has_lwt = false;
-    client->session = NULL;
+    client->has_lwt   = false;
+    client->session   = NULL;
     pthread_mutex_init(&client->mutex, NULL);
 }
 
@@ -406,12 +409,14 @@ static void client_init(struct client *client) {
  * to its state (e.g. if it's a clean_session connected client or not) and we
  * allow the clients memory pool to reclaim it
  */
-static void client_deactivate(struct client *client) {
+static void client_deactivate(struct client *client)
+{
 
 #if THREADSNR > 0
     pthread_mutex_lock(&client->mutex);
 #endif
-    if (client->online == false) return;
+    if (client->online == false)
+        return;
 
     client->rpos = client->toread = client->read = 0;
     client->wrote = client->towrite = 0;
@@ -425,7 +430,8 @@ static void client_deactivate(struct client *client) {
     if (client->clean_session == true) {
         if (client->session) {
             topic_store_remove_wildcard(server.store, client->client_id);
-            list_foreach(item, client->session->subscriptions) {
+            list_foreach(item, client->session->subscriptions)
+            {
                 topic_del_subscriber(item->data, client);
             }
             HASH_DEL(server.sessions, client->session);
@@ -438,7 +444,7 @@ static void client_deactivate(struct client *client) {
 #if THREADSNR > 0
     pthread_mutex_unlock(&mutex);
 #endif
-    client->connected = false;
+    client->connected    = false;
     client->client_id[0] = '\0';
 #if THREADSNR > 0
     pthread_mutex_unlock(&client->mutex);
@@ -461,9 +467,10 @@ static void client_deactivate(struct client *client) {
  *      read, to be read and reading position taking into account the bytes
  *      required to encode the packet length.
  */
-static ssize_t recv_packet(struct client *c) {
+static ssize_t recv_packet(struct client *c)
+{
 
-    ssize_t nread = 0;
+    ssize_t nread   = 0;
     unsigned opcode = 0, pos = 0;
     unsigned int pktlen = 0LL;
 
@@ -510,7 +517,7 @@ static ssize_t recv_packet(struct client *c) {
              * here
              */
             if (opcode > UNSUBSCRIBE) {
-                c->rpos = 2;
+                c->rpos   = 2;
                 c->toread = c->read;
                 goto exit;
             }
@@ -551,8 +558,8 @@ static ssize_t recv_packet(struct client *c) {
          * We've already tracked the bytes we read so far, we just need to
          * read toread-read bytes.
          */
-        c->rpos = pos + 1;
-        c->toread = pktlen + pos + 1;  // pos = bytes used to store length
+        c->rpos   = pos + 1;
+        c->toread = pktlen + pos + 1; // pos = bytes used to store length
 
         /* Looks like we got an ACK packet, we're done reading */
         if (pktlen <= 4)
@@ -584,7 +591,8 @@ exit:
  * hood it calls recv_packet and return an error code according to the outcome
  * of the operation
  */
-static inline int read_data(struct client *c) {
+static inline int read_data(struct client *c)
+{
 
     /*
      * We must read all incoming bytes till an entire packet is received. This
@@ -626,11 +634,13 @@ err:
  * EAGAIN (socket descriptor must be in non-blocking mode) error is raised,
  * meaning we cannot write anymore for the current cycle.
  */
-static inline int write_data(struct client *c) {
+static inline int write_data(struct client *c)
+{
 #if THREADSNR > 0
     pthread_mutex_lock(&c->mutex);
 #endif
-    ssize_t wrote = send_data(&c->conn, c->wbuf+c->wrote, c->towrite-c->wrote);
+    ssize_t wrote =
+        send_data(&c->conn, c->wbuf + c->wrote, c->towrite - c->wrote);
     if (errno != EAGAIN && errno != EWOULDBLOCK && wrote < 0)
         goto clientdc;
     c->wrote += wrote > 0 ? wrote : 0;
@@ -669,38 +679,38 @@ eagain:
  * epmtying the client buffer and rearming the socket descriptor for reading
  * after
  */
-static void write_callback(struct ev_ctx *ctx, void *arg) {
+static void write_callback(struct ev_ctx *ctx, void *arg)
+{
     struct client *client = arg;
-    int err = write_data(client);
+    int err               = write_data(client);
     switch (err) {
-        case SOL_OK:
-            /*
-             * Rearm descriptor making it ready to receive input,
-             * read_callback will be the callback to be used; also reset the
-             * read buffer status for the client.
-             */
-            client->status = WAITING_HEADER;
-            ev_fire_event(ctx, client->conn.fd, EV_READ, read_callback, client);
-            break;
-        case -ERREAGAIN:
-            /*
-             * We have an EAGAIN error, which is really just signaling that
-             * for some reasons the kernel is not ready to write more bytes at
-             * the moment and it would block, so we just want to re-try some
-             * time later, re-enqueuing a new write event
-             */
-            enqueue_event_write(client);
-            break;
-        default:
-            log_info("Closing connection with %s (%s): %s %i",
-                     client->client_id, client->conn.ip,
-                     solerr(client->rc), err);
-            ev_del_fd(ctx, client->conn.fd);
-            client_deactivate(client);
-            // Update stats
-            info.active_connections--;
-            info.total_connections--;
-            break;
+    case SOL_OK:
+        /*
+         * Rearm descriptor making it ready to receive input,
+         * read_callback will be the callback to be used; also reset the
+         * read buffer status for the client.
+         */
+        client->status = WAITING_HEADER;
+        ev_fire_event(ctx, client->conn.fd, EV_READ, read_callback, client);
+        break;
+    case -ERREAGAIN:
+        /*
+         * We have an EAGAIN error, which is really just signaling that
+         * for some reasons the kernel is not ready to write more bytes at
+         * the moment and it would block, so we just want to re-try some
+         * time later, re-enqueuing a new write event
+         */
+        enqueue_event_write(client);
+        break;
+    default:
+        log_info("Closing connection with %s (%s): %s %i", client->client_id,
+                 client->conn.ip, solerr(client->rc), err);
+        ev_del_fd(ctx, client->conn.fd);
+        client_deactivate(client);
+        // Update stats
+        info.active_connections--;
+        info.total_connections--;
+        break;
     }
 }
 
@@ -709,8 +719,9 @@ static void write_callback(struct ev_ctx *ctx, void *arg) {
  * and link it to the fd, ready to be set in EV_READ event, then schedule a
  * call to the read_callback to handle incoming streams of bytes
  */
-static void accept_callback(struct ev_ctx *ctx, void *data) {
-    int serverfd = *((int *) data);
+static void accept_callback(struct ev_ctx *ctx, void *data)
+{
+    int serverfd = *((int *)data);
     while (1) {
 
         /*
@@ -750,7 +761,7 @@ static void accept_callback(struct ev_ctx *ctx, void *data) {
         info.active_connections++;
         info.total_connections++;
 
-        log_info("[%p] Connection from %s", (void *) pthread_self(), conn.ip);
+        log_info("[%p] Connection from %s", (void *)pthread_self(), conn.ip);
     }
 }
 
@@ -759,7 +770,8 @@ static void accept_callback(struct ev_ctx *ctx, void *data) {
  * time a connected client has some data to be read, notified by the eventloop
  * context.
  */
-static void read_callback(struct ev_ctx *ctx, void *data) {
+static void read_callback(struct ev_ctx *ctx, void *data)
+{
     struct client *c = data;
     if (c->status == SENDING_DATA)
         return;
@@ -770,66 +782,67 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
      */
     int rc = read_data(c);
     switch (rc) {
-        case SOL_OK:
-            /*
-             * All is ok, raise an event to the worker poll EPOLL and
-             * link it with the IO event containing the decode payload
-             * ready to be processed
-             */
-            /* Record last action as of now */
-            c->last_seen = time(NULL);
-            c->status = SENDING_DATA;
-            process_message(ctx, c);
-            break;
-        case -ERRCLIENTDC:
-        case -ERRSOCKETERR:
-        case -ERRPACKETERR:
-        case -ERRMAXREQSIZE:
-            // TODO move to default branch
-            /*
-             * We got an unexpected error or a disconnection from the
-             * client side, remove client from the global map and
-             * free resources allocated such as io_event structure and
-             * paired payload
-             */
-            log_error("Closing connection with %s (%s): %s",
-                      c->client_id, c->conn.ip, solerr(rc));
+    case SOL_OK:
+        /*
+         * All is ok, raise an event to the worker poll EPOLL and
+         * link it with the IO event containing the decode payload
+         * ready to be processed
+         */
+        /* Record last action as of now */
+        c->last_seen = time(NULL);
+        c->status    = SENDING_DATA;
+        process_message(ctx, c);
+        break;
+    case -ERRCLIENTDC:
+    case -ERRSOCKETERR:
+    case -ERRPACKETERR:
+    case -ERRMAXREQSIZE:
+        // TODO move to default branch
+        /*
+         * We got an unexpected error or a disconnection from the
+         * client side, remove client from the global map and
+         * free resources allocated such as io_event structure and
+         * paired payload
+         */
+        log_error("Closing connection with %s (%s): %s", c->client_id,
+                  c->conn.ip, solerr(rc));
 #if THREADSNR > 0
-            pthread_mutex_lock(&mutex);
+        pthread_mutex_lock(&mutex);
 #endif
-            // Publish, if present, LWT message
-            if (c->has_lwt == true) {
-                char *tname = (char *) c->session->lwt_msg.publish.topic;
-                struct topic *t = topic_store_get(server.store, tname);
-                if (t)
-                    publish_message(&c->session->lwt_msg, t);
+        // Publish, if present, LWT message
+        if (c->has_lwt == true) {
+            char *tname     = (char *)c->session->lwt_msg.publish.topic;
+            struct topic *t = topic_store_get(server.store, tname);
+            if (t)
+                publish_message(&c->session->lwt_msg, t);
+        }
+        // Clean resources
+        ev_del_fd(ctx, c->conn.fd);
+        // Remove from subscriptions for now
+        if (c->session && list_size(c->session->subscriptions) > 0) {
+            list_foreach(item, c->session->subscriptions)
+            {
+                log_debug("Deleting %s from topic %s", c->client_id,
+                          ((struct topic *)item->data)->name);
+                topic_del_subscriber(item->data, c);
             }
-            // Clean resources
-            ev_del_fd(ctx, c->conn.fd);
-            // Remove from subscriptions for now
-            if (c->session && list_size(c->session->subscriptions) > 0) {
-                list_foreach(item, c->session->subscriptions) {
-                    log_debug("Deleting %s from topic %s",
-                              c->client_id, ((struct topic *) item->data)->name);
-                    topic_del_subscriber(item->data, c);
-                }
-            }
+        }
 #if THREADSNR > 0
-            pthread_mutex_unlock(&mutex);
+        pthread_mutex_unlock(&mutex);
 #endif
-            client_deactivate(c);
-            info.active_connections--;
-            info.total_connections--;
-            break;
-        case -ERREAGAIN:
-            /*
-             * We have an EAGAIN error, which is really just signaling that
-             * for some reasons the kernel is not ready to read more bytes at
-             * the moment and it would block, so we just want to re-try some
-             * time later, re-enqueuing a new read event
-             */
-            ev_fire_event(ctx, c->conn.fd, EV_READ, read_callback, c);
-            break;
+        client_deactivate(c);
+        info.active_connections--;
+        info.total_connections--;
+        break;
+    case -ERREAGAIN:
+        /*
+         * We have an EAGAIN error, which is really just signaling that
+         * for some reasons the kernel is not ready to read more bytes at
+         * the moment and it would block, so we just want to re-try some
+         * time later, re-enqueuing a new read event
+         */
+        ev_fire_event(ctx, c->conn.fd, EV_READ, read_callback, c);
+        break;
     }
 }
 
@@ -842,8 +855,9 @@ static void read_callback(struct ev_ctx *ctx, void *data) {
  * called and its outcome, it'll enqueue an event to write a reply or just
  * reset the client state to allow reading some more packets.
  */
-static void process_message(struct ev_ctx *ctx, struct client *c) {
-    struct io_event io = { .client = c };
+static void process_message(struct ev_ctx *ctx, struct client *c)
+{
+    struct io_event io = {.client = c};
     /*
      * Unpack received bytes into a mqtt_packet structure and execute the
      * correct handler based on the type of the operation.
@@ -852,34 +866,34 @@ static void process_message(struct ev_ctx *ctx, struct client *c) {
     c->toread = c->read = c->rpos = 0;
     c->rc = handle_command(io.data.header.bits.type, &io);
     switch (c->rc) {
-        case REPLY:
-        case MQTT_NOT_AUTHORIZED:
-        case MQTT_BAD_USERNAME_OR_PASSWORD:
-            /*
-             * Write out to client, after a request has been processed in
-             * worker thread routine. Just send out all bytes stored in the
-             * reply buffer to the reply file descriptor.
-             */
-            enqueue_event_write(c);
-            /* Free resource, ACKs will be free'd closing the server */
-            if (io.data.header.bits.type != PUBLISH)
-                mqtt_packet_destroy(&io.data);
-            break;
-        case -ERRCLIENTDC:
-            ev_del_fd(ctx, c->conn.fd);
-            client_deactivate(io.client);
-            // Update stats
-            info.active_connections--;
-            info.total_connections--;
-            break;
-        case -ERRNOMEM:
-            log_error(solerr(c->rc));
-            break;
-        default:
-            c->status = WAITING_HEADER;
-            if (io.data.header.bits.type != PUBLISH)
-                mqtt_packet_destroy(&io.data);
-            break;
+    case REPLY:
+    case MQTT_NOT_AUTHORIZED:
+    case MQTT_BAD_USERNAME_OR_PASSWORD:
+        /*
+         * Write out to client, after a request has been processed in
+         * worker thread routine. Just send out all bytes stored in the
+         * reply buffer to the reply file descriptor.
+         */
+        enqueue_event_write(c);
+        /* Free resource, ACKs will be free'd closing the server */
+        if (io.data.header.bits.type != PUBLISH)
+            mqtt_packet_destroy(&io.data);
+        break;
+    case -ERRCLIENTDC:
+        ev_del_fd(ctx, c->conn.fd);
+        client_deactivate(io.client);
+        // Update stats
+        info.active_connections--;
+        info.total_connections--;
+        break;
+    case -ERRNOMEM:
+        log_error(solerr(c->rc));
+        break;
+    default:
+        c->status = WAITING_HEADER;
+        if (io.data.header.bits.type != PUBLISH)
+            mqtt_packet_destroy(&io.data);
+        break;
     }
 }
 
@@ -887,8 +901,9 @@ static void process_message(struct ev_ctx *ctx, struct client *c) {
  * Eventloop stop callback, will be triggered by an EV_CLOSEFD event and stop
  * the running loop, unblocking the call.
  */
-static void stop_handler(struct ev_ctx *ctx, void *arg) {
-    (void) arg;
+static void stop_handler(struct ev_ctx *ctx, void *arg)
+{
+    (void)arg;
     ev_stop(ctx);
 }
 
@@ -899,22 +914,26 @@ static void stop_handler(struct ev_ctx *ctx, void *arg) {
  * processed by a worker thread, EPOLLOUT for bytes incoming from a worker
  * thread, ready to be delivered out.
  */
-static void eventloop_start(void *args) {
+static void eventloop_start(void *args)
+{
     struct listen_payload *loop_data = args;
     struct ev_ctx ctx;
     int sfd = loop_data->fd;
     ev_init(&ctx, EVENTLOOP_MAX_EVENTS);
     // Register stop event
 #ifdef __linux__
-    ev_register_event(&ctx, conf->run, EV_CLOSEFD|EV_READ, stop_handler, NULL);
+    ev_register_event(&ctx, conf->run, EV_CLOSEFD | EV_READ, stop_handler,
+                      NULL);
 #else
-    ev_register_event(&ctx, conf->run[1], EV_CLOSEFD|EV_READ, stop_handler, NULL);
+    ev_register_event(&ctx, conf->run[1], EV_CLOSEFD | EV_READ, stop_handler,
+                      NULL);
 #endif
     // Register listening FD with accept callback
     ev_register_event(&ctx, sfd, EV_READ, accept_callback, &sfd);
     // Register periodic tasks
     if (loop_data->cronjobs == true) {
-        ev_register_cron(&ctx, publish_stats, NULL, conf->stats_pub_interval, 0);
+        ev_register_cron(&ctx, publish_stats, NULL, conf->stats_pub_interval,
+                         0);
         ev_register_cron(&ctx, inflight_msg_check, NULL, 1, 0);
     }
     // Start the loop, blocking call
@@ -933,8 +952,9 @@ static void eventloop_start(void *args) {
  * schedules an EV_WRITE event with a client pointer set to write carried
  * contents out on the socket descriptor.
  */
-void enqueue_event_write(const struct client *c) {
-    ev_fire_event(c->ctx, c->conn.fd, EV_WRITE, write_callback, (void *) c);
+void enqueue_event_write(const struct client *c)
+{
+    ev_fire_event(c->ctx, c->conn.fd, EV_WRITE, write_callback, (void *)c);
 }
 
 /*
@@ -943,19 +963,20 @@ void enqueue_event_write(const struct client *c) {
  * error occurs or listen call fails, on the other cases it should just log
  * unexpected errors.
  */
-int start_server(const char *addr, const char *port) {
+int start_server(const char *addr, const char *port)
+{
 
     INIT_INFO;
 
     /* Initialize global Sol instance */
     server.store = topic_store_new();
     server.auths = NULL;
-    server.pool = memorypool_new(BASE_CLIENTS_NUM, sizeof(struct client));
+    server.pool  = memorypool_new(BASE_CLIENTS_NUM, sizeof(struct client));
     if (!server.pool)
         log_fatal("Failed to allocate %d sized memory pool for clients",
                   BASE_CLIENTS_NUM);
     server.clients_map = NULL;
-    server.sessions = NULL;
+    server.sessions    = NULL;
     pthread_mutex_init(&mutex, NULL);
 
     if (conf->allow_anonymous == false)
@@ -977,19 +998,20 @@ int start_server(const char *addr, const char *port) {
     if (conf->tls == true) {
         openssl_init();
         server.ssl_ctx = create_ssl_context();
-        load_certificates(server.ssl_ctx, conf->cafile,
-                          conf->certfile, conf->keyfile);
+        load_certificates(server.ssl_ctx, conf->cafile, conf->certfile,
+                          conf->keyfile);
     }
 
     log_info("Server start");
-    info.start_time = time(NULL);
+    info.start_time                  = time(NULL);
 
-    struct listen_payload loop_start = { sfd, ATOMIC_VAR_INIT(false) };
+    struct listen_payload loop_start = {sfd, ATOMIC_VAR_INIT(false)};
 
 #if THREADSNR > 0
     pthread_t thrs[THREADSNR];
     for (int i = 0; i < THREADSNR; ++i) {
-        pthread_create(&thrs[i], NULL, (void * (*) (void *)) &eventloop_start, &loop_start);
+        pthread_create(&thrs[i], NULL, (void *(*)(void *)) & eventloop_start,
+                       &loop_start);
     }
 #endif
     loop_start.cronjobs = true;
@@ -1020,7 +1042,8 @@ int start_server(const char *addr, const char *port) {
 /*
  * Make the entire process a daemon running in background
  */
-void daemonize(void) {
+void daemonize(void)
+{
 
     int fd;
 
@@ -1033,6 +1056,7 @@ void daemonize(void) {
         dup2(fd, STDIN_FILENO);
         dup2(fd, STDOUT_FILENO);
         dup2(fd, STDERR_FILENO);
-        if (fd > STDERR_FILENO) close(fd);
+        if (fd > STDERR_FILENO)
+            close(fd);
     }
 }

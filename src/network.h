@@ -29,12 +29,12 @@
 #ifndef NETWORK_H
 #define NETWORK_H
 
-#include <openssl/ssl.h>
 #include <arpa/inet.h>
+#include <openssl/ssl.h>
 
 // Socket families
-#define UNIX    0
-#define INET    1
+#define UNIX 0
+#define INET 1
 
 /*
  * Connection abstraction struct, provide a transparent interface for
@@ -58,10 +58,10 @@ struct connection {
     SSL *ssl;
     SSL_CTX *ctx;
     char ip[INET_ADDRSTRLEN + 6];
-    int (*accept) (struct connection *, int);
-    ssize_t (*send) (struct connection *, const unsigned char *, size_t);
-    ssize_t (*recv) (struct connection *, unsigned char *, size_t);
-    void (*close) (struct connection *);
+    int (*accept)(struct connection *, int);
+    ssize_t (*send)(struct connection *, const unsigned char *, size_t);
+    ssize_t (*recv)(struct connection *, unsigned char *, size_t);
+    void (*close)(struct connection *);
 };
 
 void connection_init(struct connection *, const SSL_CTX *);

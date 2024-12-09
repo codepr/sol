@@ -26,36 +26,37 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "memory.h"
 #include "iterator.h"
+#include "memory.h"
 
 /*
  * Create an iterator for the given iterable data structure, requires a next
  * function to define how the iterator next ptr should be updated
  */
-struct iterator *iter_new(void *iterable, void (*next)(struct iterator *)) {
+struct iterator *iter_new(void *iterable, void (*next)(struct iterator *))
+{
     struct iterator *i = try_alloc(sizeof(*i));
     iter_init(i, iterable, next);
     return i;
 }
 
 void iter_init(struct iterator *i, void *iterable,
-               void (*next)(struct iterator *)) {
-    i->index = 0;
+               void (*next)(struct iterator *))
+{
+    i->index    = 0;
     i->iterable = iterable;
-    i->ptr = NULL;
-    i->next = next;
+    i->ptr      = NULL;
+    i->next     = next;
     iter_next(i);
 }
 
-void iter_destroy(struct iterator *i) {
-    free_memory(i);
-}
+void iter_destroy(struct iterator *i) { free_memory(i); }
 
 /*
  * Advance the iterator ptr to the next item in the iterable collection
  */
-struct iterator *iter_next(struct iterator *i) {
+struct iterator *iter_next(struct iterator *i)
+{
     i->next(i);
     return i;
 }

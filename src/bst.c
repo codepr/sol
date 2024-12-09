@@ -29,59 +29,64 @@
 #include "bst.h"
 #include "memory.h"
 
-#define MAX(a, b) a > b ? a : b
-#define HEIGHT(n) !n ? 0 : n->height
+#define MAX(a, b)  a > b ? a : b
+#define HEIGHT(n)  !n ? 0 : n->height
 #define BALANCE(n) !n ? 0 : (HEIGHT(n->left)) - (HEIGHT(n->right))
 
-struct bst_node *bst_new(unsigned char key, const void *data) {
+struct bst_node *bst_new(unsigned char key, const void *data)
+{
     struct bst_node *node = try_alloc(sizeof(*node));
-    node->key = key;
-    node->height = 1;
-    node->left = NULL;
-    node->right = NULL;
-    node->data = (void *) data;
+    node->key             = key;
+    node->height          = 1;
+    node->left            = NULL;
+    node->right           = NULL;
+    node->data            = (void *)data;
     return node;
 }
 
-static struct bst_node *bst_rotate_right(struct bst_node *y) {
-    struct bst_node *x = y->left;
+static struct bst_node *bst_rotate_right(struct bst_node *y)
+{
+    struct bst_node *x  = y->left;
     struct bst_node *t2 = x->right;
 
-    x->right = y;
-    y->left = t2;
+    x->right            = y;
+    y->left             = t2;
 
-    y->height = MAX(HEIGHT(y->left), HEIGHT(y->right)) + 1;
-    x->height = MAX(HEIGHT(x->left), HEIGHT(x->right)) + 1;
+    y->height           = MAX(HEIGHT(y->left), HEIGHT(y->right)) + 1;
+    x->height           = MAX(HEIGHT(x->left), HEIGHT(x->right)) + 1;
 
     return x;
 }
 
-static struct bst_node *bst_rotate_left(struct bst_node *x) {
-    struct bst_node *y = x->left;
+static struct bst_node *bst_rotate_left(struct bst_node *x)
+{
+    struct bst_node *y  = x->left;
     struct bst_node *t2 = y->right;
 
-    y->right = x;
-    x->left = t2;
+    y->right            = x;
+    x->left             = t2;
 
-    x->height = MAX(HEIGHT(x->left), HEIGHT(x->right)) + 1;
-    y->height = MAX(HEIGHT(y->left), HEIGHT(y->right)) + 1;
+    x->height           = MAX(HEIGHT(x->left), HEIGHT(x->right)) + 1;
+    y->height           = MAX(HEIGHT(y->left), HEIGHT(y->right)) + 1;
 
     return y;
 }
 
-static struct bst_node *bst_min(const struct bst_node *node) {
+static struct bst_node *bst_min(const struct bst_node *node)
+{
     const struct bst_node *curr = node;
     while (curr->left)
         curr = curr->left;
-    return (struct bst_node *) curr;
+    return (struct bst_node *)curr;
 }
 
 /*
  * Insert a new node into the AVL tree, paying attention to maintain the tree
  * balanced in order to freeze the time-complexity to O(logN) for search
  */
-struct bst_node *bst_insert(struct bst_node *node,
-                            unsigned char key, const void *data) {
+struct bst_node *bst_insert(struct bst_node *node, unsigned char key,
+                            const void *data)
+{
 
     // Base case, an empty tree, just add the key to the root
     if (!node)
@@ -92,7 +97,7 @@ struct bst_node *bst_insert(struct bst_node *node,
      * to be inserted on the left subtree
      */
     if (key < node->key)
-        node->left = bst_insert(node->left,key,data);
+        node->left = bst_insert(node->left, key, data);
 
     /*
      * Recursive call: Same reasoning as the step before, but now the key is
@@ -122,7 +127,7 @@ struct bst_node *bst_insert(struct bst_node *node,
      * a negative value means the opposite, the tree is unbalanced on the right
      * subtree
      */
-    int balance = BALANCE(node);
+    int balance  = BALANCE(node);
 
     /*
      * Recursive calls done before assinged to nodes the result of the
@@ -148,7 +153,8 @@ struct bst_node *bst_insert(struct bst_node *node,
 }
 
 /* Return a node from the tree if present, otherwise return NULL. O(logN). */
-struct bst_node *bst_search(const struct bst_node *node, unsigned char key) {
+struct bst_node *bst_search(const struct bst_node *node, unsigned char key)
+{
 
     // Base: No nodes in the tree
     if (!node)
@@ -156,7 +162,7 @@ struct bst_node *bst_search(const struct bst_node *node, unsigned char key) {
 
     // Base: We found the node, just return it
     if (key == node->key)
-        return (struct bst_node *) node;
+        return (struct bst_node *)node;
 
     /*
      * Recursive call: The key is smaller than the current node, we have to
@@ -173,7 +179,8 @@ struct bst_node *bst_search(const struct bst_node *node, unsigned char key) {
         return bst_search(node->right, key);
 }
 
-struct bst_node *bst_delete(struct bst_node *node, unsigned char key) {
+struct bst_node *bst_delete(struct bst_node *node, unsigned char key)
+{
     if (!node)
         return node;
     if (key < node->key)
@@ -184,28 +191,28 @@ struct bst_node *bst_delete(struct bst_node *node, unsigned char key) {
         if (!node->left || !node->right) {
             struct bst_node *tmp = node->left ? node->left : node->right;
             if (!tmp) {
-                tmp = node;
+                tmp  = node;
                 node = NULL;
             } else
                 *node = *tmp;
             free_memory(tmp);
         } else {
             struct bst_node *tmp = bst_min(node->right);
-            node->key = tmp->key;
-            node->right = bst_delete(node->right, tmp->key);
+            node->key            = tmp->key;
+            node->right          = bst_delete(node->right, tmp->key);
         }
     }
 
     // If the tree had only one node then return
     if (!node)
-      return node;
+        return node;
 
     // STEP 2: UPDATE HEIGHT OF THE CURRENT NODE
     node->height = 1 + MAX((HEIGHT(node->left)), (HEIGHT(node->right)));
 
     // STEP 3: GET THE BALANCE FACTOR OF THIS NODE (to
     // check whether this node became unbalanced)
-    int balance = BALANCE(node);
+    int balance  = BALANCE(node);
 
     // If this node becomes unbalanced, then there are 4 cases
 
@@ -215,7 +222,7 @@ struct bst_node *bst_delete(struct bst_node *node, unsigned char key) {
 
     // Left Right Case
     if (balance > 1 && BALANCE(node->left) < 0) {
-        node->left =  bst_rotate_left(node->left);
+        node->left = bst_rotate_left(node->left);
         return bst_rotate_right(node);
     }
 

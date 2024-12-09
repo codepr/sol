@@ -28,10 +28,10 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#include <stdio.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdbool.h>
+#include <stdio.h>
 
 bool is_integer(const char *);
 int parse_int(const char *);
@@ -45,7 +45,7 @@ long get_fh_soft_limit(void);
 
 #define STREQ(s1, s2, len) strncasecmp(s1, s2, len) == 0 ? true : false
 
-#define container_of(ptr, type, field) \
+#define container_of(ptr, type, field)                                         \
     ((type *)((char *)(ptr) - offsetof(type, field)))
 
 #endif

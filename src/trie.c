@@ -25,33 +25,35 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "trie.h"
+#include "memory.h"
+#include "util.h"
 #include <assert.h>
 #include <string.h>
-#include "trie.h"
-#include "util.h"
-#include "memory.h"
 
 // Private functions declaration
 static void children_destroy(struct bst_node *, size_t *, trie_destructor *);
 static int trie_node_count(const struct trie_node *);
-static void trie_node_prefix_find(const struct trie_node *,
-                                  char *, int , List *);
+static void trie_node_prefix_find(const struct trie_node *, char *, int,
+                                  List *);
 
 /*
  * Check for children in a struct trie_node, if a node has no children is
  * considered free
  */
-bool trie_is_free_node(const struct trie_node *node) {
+bool trie_is_free_node(const struct trie_node *node)
+{
     return !node->children ? true : false;
 }
 
 struct trie_node *trie_node_find(const struct trie_node *node,
-                                 const char *prefix) {
+                                 const char *prefix)
+{
 
     if (!node)
         return NULL;
 
-    struct trie_node *retnode = (struct trie_node *) node;
+    struct trie_node *retnode = (struct trie_node *)node;
 
     // Move to the end of the prefix first
     for (; *prefix; ++prefix) {
@@ -69,58 +71,61 @@ struct trie_node *trie_node_find(const struct trie_node *node,
     return retnode;
 }
 
-static int trie_children_count(const struct bst_node *node) {
+static int trie_children_count(const struct bst_node *node)
+{
     if (!node)
         return 0;
-    return trie_node_count(node->data)
-        + trie_children_count(node->left)
-        + trie_children_count(node->right);
+    return trie_node_count(node->data) + trie_children_count(node->left) +
+           trie_children_count(node->right);
 }
 
-static int trie_node_count(const struct trie_node *node) {
+static int trie_node_count(const struct trie_node *node)
+{
     if (!node)
         return 0;
     return (node->data != NULL) + trie_children_count(node->children);
 }
 
 // Returns new trie node (initialized to NULL)
-struct trie_node *trie_create_node(char c) {
+struct trie_node *trie_create_node(char c)
+{
     struct trie_node *new_node = try_alloc(sizeof(*new_node));
-    new_node->chr = c;
-    new_node->data = NULL;
-    new_node->children = NULL;
+    new_node->chr              = c;
+    new_node->data             = NULL;
+    new_node->children         = NULL;
     return new_node;
 }
 
 // Returns new Trie, with a NULL root and 0 size
-Trie *trie_new(trie_destructor *destructor) {
+Trie *trie_new(trie_destructor *destructor)
+{
     Trie *trie = try_alloc(sizeof(*trie));
     trie_init(trie, destructor);
     return trie;
 }
 
-void trie_init(Trie *trie, trie_destructor *destructor) {
-    trie->root = trie_create_node('\0');
-    trie->size = 0;
+void trie_init(Trie *trie, trie_destructor *destructor)
+{
+    trie->root       = trie_create_node('\0');
+    trie->size       = 0;
     trie->destructor = destructor;
 }
 
-size_t trie_size(const Trie *trie) {
-    return trie->size;
-}
+size_t trie_size(const Trie *trie) { return trie->size; }
 
 /*
  * Insert a new key-value pair in the Trie structure, returning a pointer to
  * the new inserted data in order to simplify some operations as the addition
  * of expiring keys with a set TTL.
  */
-struct node_data *trie_insert(Trie *trie, const char *key, const void *data) {
+struct node_data *trie_insert(Trie *trie, const char *key, const void *data)
+{
 
     assert(trie && key);
 
-    struct trie_node *cursor = trie->root;
+    struct trie_node *cursor   = trie->root;
     struct trie_node *cur_node = NULL;
-    struct bst_node *tmp = NULL;
+    struct bst_node *tmp       = NULL;
 
     /*
      * If not present, inserts key into trie, if the key is prefix of trie
@@ -141,7 +146,7 @@ struct node_data *trie_insert(Trie *trie, const char *key, const void *data) {
         // No match, we add a new node and sort the list with the new added
         // link
         if (!tmp) {
-            cur_node = trie_create_node(*key);
+            cur_node         = trie_create_node(*key);
             cursor->children = bst_insert(cursor->children, *key, cur_node);
         } else {
             // Match found, no need to sort the list, the child already exists
@@ -158,12 +163,13 @@ struct node_data *trie_insert(Trie *trie, const char *key, const void *data) {
     if (!cursor->data)
         trie->size++;
 
-    cursor->data = (void *) data;
+    cursor->data = (void *)data;
 
     return cursor->data;
 }
 
-bool trie_delete(Trie *trie, const char *key) {
+bool trie_delete(Trie *trie, const char *key)
+{
 
     assert(trie && key);
 
@@ -182,7 +188,6 @@ bool trie_delete(Trie *trie, const char *key) {
                 return false;
 
             retnode = child->data;
-
         }
         if (trie->destructor) {
             bool ret = false;
@@ -208,14 +213,15 @@ bool trie_delete(Trie *trie, const char *key) {
  * case, by using an AVL tree, the real complexity is O(mlogk) with k the size
  * of the sub-trees for each children node
  */
-bool trie_find(const Trie *trie, const char *key, void **ret) {
+bool trie_find(const Trie *trie, const char *key, void **ret)
+{
 
     assert(trie && key);
 
     // Walk the trie till the end of the key
     struct trie_node *cursor = trie_node_find(trie->root, key);
 
-    *ret = (cursor && cursor->data) ? cursor->data : NULL;
+    *ret                     = (cursor && cursor->data) ? cursor->data : NULL;
 
     // Return false if no complete key found, true otherwise
     return !*ret ? false : true;
@@ -229,7 +235,8 @@ bool trie_find(const Trie *trie, const char *key, void **ret) {
  * helloworld
  * hello
  */
-void trie_prefix_delete(Trie *trie, const char *prefix) {
+void trie_prefix_delete(Trie *trie, const char *prefix)
+{
 
     assert(trie && prefix);
 
@@ -252,11 +259,12 @@ void trie_prefix_delete(Trie *trie, const char *prefix) {
     trie_delete(trie, prefix);
 }
 
-int trie_prefix_count(const Trie *trie, const char *prefix) {
+int trie_prefix_count(const Trie *trie, const char *prefix)
+{
 
     assert(trie && prefix);
 
-    int count = 0;
+    int count              = 0;
 
     // Walk the trie till the end of the key
     struct trie_node *node = trie_node_find(trie->root, prefix);
@@ -271,8 +279,9 @@ int trie_prefix_count(const Trie *trie, const char *prefix) {
     return count;
 }
 
-static void children_prefix_find(const struct bst_node *node,
-                                 char str[], int level, List *keys) {
+static void children_prefix_find(const struct bst_node *node, char str[],
+                                 int level, List *keys)
+{
     trie_node_prefix_find(node->data, str, level, keys);
     if (node->left)
         children_prefix_find(node->left, str, level, keys);
@@ -280,8 +289,9 @@ static void children_prefix_find(const struct bst_node *node,
         children_prefix_find(node->right, str, level, keys);
 }
 
-static void trie_node_prefix_find(const struct trie_node *node,
-                                  char str[], int level, List *keys) {
+static void trie_node_prefix_find(const struct trie_node *node, char str[],
+                                  int level, List *keys)
+{
     if (!node)
         return;
 
@@ -290,7 +300,7 @@ static void trie_node_prefix_find(const struct trie_node *node,
      * recursively for child node, caring for the size of the current string,
      * if exceed bounds, double the size of the string host
      */
-    if ((size_t) level == alloc_size(str))
+    if ((size_t)level == alloc_size(str))
         str = try_realloc(str, level * 2);
     str[level] = node->chr;
 
@@ -299,18 +309,19 @@ static void trie_node_prefix_find(const struct trie_node *node,
      * added and string is added to the keys list
      */
     if (node->data) {
-        str[level + 1] = '\0';
+        str[level + 1]    = '\0';
         struct kv_obj *kv = try_alloc(sizeof(*kv));
-        kv->key = try_strdup(str);
-        kv->data = node->data;
-        keys = list_push(keys, kv);
+        kv->key           = try_strdup(str);
+        kv->data          = node->data;
+        keys              = list_push(keys, kv);
     }
 
     if (node->children)
         children_prefix_find(node->children, str, level + 1, keys);
 }
 
-List *trie_prefix_find(const Trie *trie, const char *prefix) {
+List *trie_prefix_find(const Trie *trie, const char *prefix)
+{
 
     assert(trie && prefix);
 
@@ -321,10 +332,10 @@ List *trie_prefix_find(const Trie *trie, const char *prefix) {
     if (!node)
         return NULL;
 
-    List *keys = list_new(NULL);
+    List *keys  = list_new(NULL);
 
     // Check all possible sub-paths and add the resulting key to the result
-    char *str = try_alloc(32);
+    char *str   = try_alloc(32);
     size_t plen = strlen(prefix);
     strncpy(str, prefix, 32);
 
@@ -339,8 +350,9 @@ List *trie_prefix_find(const Trie *trie, const char *prefix) {
     return keys;
 }
 
-static void children_destroy(struct bst_node *node,
-                             size_t *len, trie_destructor *destructor) {
+static void children_destroy(struct bst_node *node, size_t *len,
+                             trie_destructor *destructor)
+{
     if (!node)
         return;
     trie_node_destroy(node->data, len, destructor);
@@ -352,8 +364,9 @@ static void children_destroy(struct bst_node *node,
 }
 
 /* Release memory of a node while updating size of the trie */
-void trie_node_destroy(struct trie_node *node,
-                       size_t *size, trie_destructor *destructor) {
+void trie_node_destroy(struct trie_node *node, size_t *size,
+                       trie_destructor *destructor)
+{
 
     // Base case
     if (!node)
@@ -376,7 +389,8 @@ void trie_node_destroy(struct trie_node *node,
     free_memory(node);
 }
 
-void trie_destroy(Trie *trie) {
+void trie_destroy(Trie *trie)
+{
     if (!trie)
         return;
     trie_node_destroy(trie->root, &(trie->size), trie->destructor);
@@ -388,7 +402,9 @@ void trie_destroy(Trie *trie) {
  * applying a defined function which take a struct trie_node as argument
  */
 static void trie_prefix_map_fn(struct bst_node *node,
-                               void (*fn)(struct trie_node *, void *), void *arg) {
+                               void (*fn)(struct trie_node *, void *),
+                               void *arg)
+{
     if (!node)
         return;
     trie_prefix_map(node->data, NULL, fn, arg);
@@ -405,7 +421,8 @@ static void trie_prefix_map_fn(struct bst_node *node,
  * additional arguments for optional extra data.
  */
 void trie_prefix_map(struct trie_node *n, const char *prefix,
-                     void (*fn)(struct trie_node *, void *), void *arg) {
+                     void (*fn)(struct trie_node *, void *), void *arg)
+{
 
     assert(n);
 

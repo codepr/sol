@@ -26,20 +26,21 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <netdb.h>
-#include <unistd.h>
+#include "network.h"
+#include "config.h"
+#include "memory.h"
+#include "server.h"
+#include "util.h"
 #include <fcntl.h>
-#include <sys/un.h>
+#include <netdb.h>
 #include <netinet/tcp.h>
 #include <openssl/err.h>
-#include "util.h"
-#include "memory.h"
-#include "config.h"
-#include "server.h"
-#include "network.h"
+#include <sys/un.h>
+#include <unistd.h>
 
 /* Set non-blocking socket */
-static int set_nonblocking(int fd) {
+static int set_nonblocking(int fd)
+{
     int flags, result;
     flags = fcntl(fd, F_GETFL, 0);
 
@@ -58,14 +59,15 @@ err:
     return -1;
 }
 
-static int set_cloexec(int fd) {
+static int set_cloexec(int fd)
+{
     int flags, result;
     flags = fcntl(fd, F_GETFL, 0);
 
     if (flags == -1)
         goto err;
 
-    result = fcntl(fd, F_SETFD, flags |FD_CLOEXEC);
+    result = fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
     if (result == -1)
         goto err;
 
@@ -81,11 +83,13 @@ err:
  * Set TCP_NODELAY flag to true, disabling Nagle's algorithm, no more waiting
  * for incoming packets on the buffer
  */
-static int set_tcpnodelay(int fd) {
-    return setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &(int) {1}, sizeof(int));
+static int set_tcpnodelay(int fd)
+{
+    return setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &(int){1}, sizeof(int));
 }
 
-static int create_and_bind_unix(const char *sockpath) {
+static int create_and_bind_unix(const char *sockpath)
+{
 
     struct sockaddr_un addr;
     int fd;
@@ -101,7 +105,7 @@ static int create_and_bind_unix(const char *sockpath) {
     strncpy(addr.sun_path, sockpath, sizeof(addr.sun_path) - 1);
     unlink(sockpath);
 
-    if (bind(fd, (struct sockaddr*) &addr, sizeof(addr)) == -1) {
+    if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
         perror("bind error");
         return -1;
     }
@@ -109,13 +113,12 @@ static int create_and_bind_unix(const char *sockpath) {
     return fd;
 }
 
-static int create_and_bind_tcp(const char *host, const char *port) {
+static int create_and_bind_tcp(const char *host, const char *port)
+{
 
-    struct addrinfo hints = {
-        .ai_family = AF_UNSPEC,
-        .ai_socktype = SOCK_STREAM,
-        .ai_flags = AI_PASSIVE
-    };
+    struct addrinfo hints = {.ai_family   = AF_UNSPEC,
+                             .ai_socktype = SOCK_STREAM,
+                             .ai_flags    = AI_PASSIVE};
 
     struct addrinfo *result, *rp;
     int sfd;
@@ -126,18 +129,19 @@ static int create_and_bind_tcp(const char *host, const char *port) {
     for (rp = result; rp != NULL; rp = rp->ai_next) {
         sfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 
-        if (sfd == -1) continue;
+        if (sfd == -1)
+            continue;
 
         /* set SO_REUSEADDR so the socket will be reusable after process kill */
-        if (setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR,
-                       &(int) { 1 }, sizeof(int)) < 0)
+        if (setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) <
+            0)
             perror("SO_REUSEADDR");
 
         if ((bind(sfd, rp->ai_addr, rp->ai_addrlen)) == 0) {
             /* Succesful bind */
             break;
         }
-        (void) close(sfd);
+        (void)close(sfd);
     }
 
     freeaddrinfo(result);
@@ -154,16 +158,18 @@ err:
 }
 
 /* Auxiliary function for binding a socket to listen on defined port */
-static int create_and_bind(const char *host, const char *port, int s_family) {
-    return s_family == UNIX ?
-        create_and_bind_unix(host) : create_and_bind_tcp(host, port);
+static int create_and_bind(const char *host, const char *port, int s_family)
+{
+    return s_family == UNIX ? create_and_bind_unix(host)
+                            : create_and_bind_tcp(host, port);
 }
 
 /*
  * Create a non-blocking socket and make it listen on the specfied address and
  * port
  */
-int make_listen(const char *host, const char *port, int s_family) {
+int make_listen(const char *host, const char *port, int s_family)
+{
 
     int sfd;
 
@@ -178,7 +184,7 @@ int make_listen(const char *host, const char *port, int s_family) {
 
     // Set TCP_NODELAY only for TCP sockets
     if (s_family == INET)
-        (void) set_tcpnodelay(sfd);
+        (void)set_tcpnodelay(sfd);
 
     if ((listen(sfd, conf->tcp_backlog)) == -1) {
         perror("listen");
@@ -192,41 +198,47 @@ int make_listen(const char *host, const char *port, int s_family) {
  * Accept a connection and set it NON_BLOCKING and CLOEXEC, optionally also set
  * TCP_NODELAY disabling Nagle's algorithm
  */
-static int accept_conn(int sfd, char *ip) {
+static int accept_conn(int sfd, char *ip)
+{
 
     int clientsock;
     struct sockaddr_in addr;
     socklen_t addrlen = sizeof(addr);
 
-    if ((clientsock = accept(sfd, (struct sockaddr *) &addr, &addrlen)) < 0) {
-        if (errno != EWOULDBLOCK && errno != EAGAIN) perror("accept");
+    if ((clientsock = accept(sfd, (struct sockaddr *)&addr, &addrlen)) < 0) {
+        if (errno != EWOULDBLOCK && errno != EAGAIN)
+            perror("accept");
         return -1;
     }
 
-    (void) set_nonblocking(clientsock);
-    (void) set_cloexec(clientsock);
+    (void)set_nonblocking(clientsock);
+    (void)set_cloexec(clientsock);
 
     // Set TCP_NODELAY only for TCP sockets
-    if (conf->socket_family == INET) (void) set_tcpnodelay(clientsock);
+    if (conf->socket_family == INET)
+        (void)set_tcpnodelay(clientsock);
 
     char ip_buff[INET_ADDRSTRLEN];
     if (inet_ntop(AF_INET, &addr.sin_addr, ip_buff, sizeof(ip_buff)) == NULL) {
-        if (close(clientsock) < 0) perror("close");
+        if (close(clientsock) < 0)
+            perror("close");
         return -1;
     }
 
     if (ip)
-        snprintf(ip, INET_ADDRSTRLEN+6, "%s:%i", ip_buff, ntohs(addr.sin_port));
+        snprintf(ip, INET_ADDRSTRLEN + 6, "%s:%i", ip_buff,
+                 ntohs(addr.sin_port));
 
     return clientsock;
 }
 
 /* Send all bytes contained in buf, updating sent bytes counter */
-ssize_t send_bytes(int fd, const unsigned char *buf, size_t len) {
+ssize_t send_bytes(int fd, const unsigned char *buf, size_t len)
+{
 
-    size_t total = 0;
+    size_t total     = 0;
     size_t bytesleft = len;
-    ssize_t n = 0;
+    ssize_t n        = 0;
 
     while (total < len) {
         n = send(fd, buf + total, bytesleft, MSG_NOSIGNAL);
@@ -252,12 +264,13 @@ err:
  * Receive a given number of bytes on the descriptor fd, storing the stream of
  * data into a 2 Mb capped buffer
  */
-ssize_t recv_bytes(int fd, unsigned char *buf, size_t bufsize) {
+ssize_t recv_bytes(int fd, unsigned char *buf, size_t bufsize)
+{
 
-    ssize_t n = 0;
+    ssize_t n     = 0;
     ssize_t total = 0;
 
-    while (total < (ssize_t) bufsize) {
+    while (total < (ssize_t)bufsize) {
 
         if ((n = recv(fd, buf, bufsize - total, 0)) < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -281,18 +294,18 @@ err:
     return -1;
 }
 
-void openssl_init() {
+void openssl_init()
+{
     SSL_library_init();
     ERR_load_crypto_strings();
     SSL_load_error_strings();
     OpenSSL_add_ssl_algorithms();
 }
 
-void openssl_cleanup() {
-    EVP_cleanup();
-}
+void openssl_cleanup() { EVP_cleanup(); }
 
-SSL_CTX *create_ssl_context() {
+SSL_CTX *create_ssl_context()
+{
 
     SSL_CTX *ctx;
 
@@ -310,7 +323,7 @@ SSL_CTX *create_ssl_context() {
         exit(EXIT_FAILURE);
     }
 
-    SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
+    SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
     SSL_CTX_set_options(ctx, SSL_OP_SINGLE_DH_USE);
 
     if (!(conf->tls_protocols & SOL_TLSv1))
@@ -339,23 +352,26 @@ SSL_CTX *create_ssl_context() {
     return ctx;
 }
 
-static int client_certificate_verify(int preverify_ok, X509_STORE_CTX *ctx) {
+static int client_certificate_verify(int preverify_ok, X509_STORE_CTX *ctx)
+{
 
-    (void) ctx;  // Unused
+    (void)ctx; // Unused
 
     /* Preverify should check expiry, revocation. */
     return preverify_ok;
 }
 
-void load_certificates(SSL_CTX *ctx, const char *ca,
-                       const char *cert, const char *key) {
+void load_certificates(SSL_CTX *ctx, const char *ca, const char *cert,
+                       const char *key)
+{
 
     if (SSL_CTX_load_verify_locations(ctx, ca, NULL) <= 0) {
         ERR_print_errors_fp(stderr);
         exit(EXIT_FAILURE);
     }
 
-    SSL_CTX_set_mode(ctx, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+    SSL_CTX_set_mode(ctx, SSL_MODE_ENABLE_PARTIAL_WRITE |
+                              SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
     SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, client_certificate_verify);
     SSL_CTX_set_ecdh_auto(ctx, 1);
 
@@ -364,19 +380,20 @@ void load_certificates(SSL_CTX *ctx, const char *ca,
         exit(EXIT_FAILURE);
     }
 
-    if (SSL_CTX_use_PrivateKey_file(ctx, key, SSL_FILETYPE_PEM) <= 0 ) {
+    if (SSL_CTX_use_PrivateKey_file(ctx, key, SSL_FILETYPE_PEM) <= 0) {
         ERR_print_errors_fp(stderr);
         exit(EXIT_FAILURE);
     }
 
     /* verify private key */
-    if (!SSL_CTX_check_private_key(ctx) ) {
+    if (!SSL_CTX_check_private_key(ctx)) {
         fprintf(stderr, "Private key does not match the public certificate\n");
         exit(EXIT_FAILURE);
     }
 }
 
-SSL *ssl_accept(SSL_CTX *ctx, int fd) {
+SSL *ssl_accept(SSL_CTX *ctx, int fd)
+{
     SSL *ssl = SSL_new(ctx);
     SSL_set_fd(ssl, fd);
     SSL_set_accept_state(ssl);
@@ -386,11 +403,12 @@ SSL *ssl_accept(SSL_CTX *ctx, int fd) {
     return ssl;
 }
 
-ssize_t ssl_send_bytes(SSL *ssl, const unsigned char *buf, size_t len) {
+ssize_t ssl_send_bytes(SSL *ssl, const unsigned char *buf, size_t len)
+{
 
-    size_t total = 0;
+    size_t total     = 0;
     size_t bytesleft = len;
-    ssize_t n = 0;
+    ssize_t n        = 0;
 
     ERR_clear_error();
 
@@ -399,9 +417,9 @@ ssize_t ssl_send_bytes(SSL *ssl, const unsigned char *buf, size_t len) {
             int err = SSL_get_error(ssl, n);
             if (err == SSL_ERROR_WANT_WRITE || SSL_ERROR_NONE)
                 continue;
-            if (err == SSL_ERROR_ZERO_RETURN
-                || (err == SSL_ERROR_SYSCALL && !errno))
-                return 0;  // Connection closed
+            if (err == SSL_ERROR_ZERO_RETURN ||
+                (err == SSL_ERROR_SYSCALL && !errno))
+                return 0; // Connection closed
             if (errno == EAGAIN || errno == EWOULDBLOCK)
                 break;
             else
@@ -419,22 +437,23 @@ err:
     return -1;
 }
 
-ssize_t ssl_recv_bytes(SSL *ssl, unsigned char *buf, size_t bufsize) {
+ssize_t ssl_recv_bytes(SSL *ssl, unsigned char *buf, size_t bufsize)
+{
 
-    ssize_t n = 0;
+    ssize_t n     = 0;
     ssize_t total = 0;
 
     ERR_clear_error();
 
-    while (total < (ssize_t) bufsize) {
+    while (total < (ssize_t)bufsize) {
 
         if ((n = SSL_read(ssl, buf, bufsize - total)) <= 0) {
             int err = SSL_get_error(ssl, n);
             if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_NONE)
                 continue;
-            if (err == SSL_ERROR_ZERO_RETURN
-                || (err == SSL_ERROR_SYSCALL && !errno))
-                return 0;  // Connection closed
+            if (err == SSL_ERROR_ZERO_RETURN ||
+                (err == SSL_ERROR_SYSCALL && !errno))
+                return 0; // Connection closed
             if (errno == EAGAIN || errno == EWOULDBLOCK)
                 break;
             else
@@ -460,69 +479,74 @@ err:
  * Main connection functions, meant to be set as function pointer to a struct
  * connection handle
  */
-static int conn_accept(struct connection *c, int fd) {
+static int conn_accept(struct connection *c, int fd)
+{
     int ret = accept_conn(fd, c->ip);
-    c->fd = ret;
+    c->fd   = ret;
     return ret;
 }
 
-static ssize_t conn_send(struct connection *c,
-                         const unsigned char *buf, size_t len) {
+static ssize_t conn_send(struct connection *c, const unsigned char *buf,
+                         size_t len)
+{
     return send_bytes(c->fd, buf, len);
 }
 
-static ssize_t conn_recv(struct connection *c,
-                         unsigned char *buf, size_t len) {
+static ssize_t conn_recv(struct connection *c, unsigned char *buf, size_t len)
+{
     return recv_bytes(c->fd, buf, len);
 }
 
-static void conn_close(struct connection *c) {
-    close(c->fd);
-}
+static void conn_close(struct connection *c) { close(c->fd); }
 
 // TLS version of the connection functions
 // XXX Not so neat, improve later
-static int conn_tls_accept(struct connection *c, int serverfd) {
+static int conn_tls_accept(struct connection *c, int serverfd)
+{
     int fd = accept_conn(serverfd, c->ip);
     if (fd < 0)
         return fd;
     c->ssl = ssl_accept(c->ctx, fd);
-    c->fd = fd;
+    c->fd  = fd;
     return fd;
 }
 
-static ssize_t conn_tls_send(struct connection *c,
-                             const unsigned char *buf, size_t len) {
+static ssize_t conn_tls_send(struct connection *c, const unsigned char *buf,
+                             size_t len)
+{
     return ssl_send_bytes(c->ssl, buf, len);
 }
 
-static ssize_t conn_tls_recv(struct connection *c,
-                             unsigned char *buf, size_t len) {
+static ssize_t conn_tls_recv(struct connection *c, unsigned char *buf,
+                             size_t len)
+{
     return ssl_recv_bytes(c->ssl, buf, len);
 }
 
-static void conn_tls_close(struct connection *c) {
+static void conn_tls_close(struct connection *c)
+{
     if (c->ssl)
         SSL_free(c->ssl);
     if (c->fd >= 0 && close(c->fd) < 0)
         perror("close");
 }
 
-void connection_init(struct connection *conn, const SSL_CTX *ssl_ctx) {
-    conn->fd = -1;
+void connection_init(struct connection *conn, const SSL_CTX *ssl_ctx)
+{
+    conn->fd  = -1;
     conn->ssl = NULL; // Will be filled in case of TLS connection on accept
-    conn->ctx = (SSL_CTX *) ssl_ctx;
+    conn->ctx = (SSL_CTX *)ssl_ctx;
     if (ssl_ctx) {
         // We need a TLS connection
         conn->accept = conn_tls_accept;
-        conn->send = conn_tls_send;
-        conn->recv = conn_tls_recv;
-        conn->close = conn_tls_close;
+        conn->send   = conn_tls_send;
+        conn->recv   = conn_tls_recv;
+        conn->close  = conn_tls_close;
     } else {
         conn->accept = conn_accept;
-        conn->send = conn_send;
-        conn->recv = conn_recv;
-        conn->close = conn_close;
+        conn->send   = conn_send;
+        conn->recv   = conn_recv;
+        conn->close  = conn_close;
     }
 }
 
@@ -534,7 +558,8 @@ void connection_init(struct connection *conn, const SSL_CTX *ssl_ctx) {
  * simply call accept, send, recv or close without actually worrying of the
  * type of the underlying communication.
  */
-struct connection *connection_new(const SSL_CTX *ssl_ctx) {
+struct connection *connection_new(const SSL_CTX *ssl_ctx)
+{
     struct connection *conn = try_alloc(sizeof(*conn));
     connection_init(conn, ssl_ctx);
     return conn;
@@ -545,18 +570,16 @@ struct connection *connection_new(const SSL_CTX *ssl_ctx) {
  * server module. They accept a connection structure as the first parameter
  * in order to leverage the previously set underlying function.
  */
-int accept_connection(struct connection *c, int fd) {
-    return c->accept(c, fd);
-}
+int accept_connection(struct connection *c, int fd) { return c->accept(c, fd); }
 
-ssize_t send_data(struct connection *c, const unsigned char *buf, size_t len) {
+ssize_t send_data(struct connection *c, const unsigned char *buf, size_t len)
+{
     return c->send(c, buf, len);
 }
 
-ssize_t recv_data(struct connection *c, unsigned char *buf, size_t len) {
+ssize_t recv_data(struct connection *c, unsigned char *buf, size_t len)
+{
     return c->recv(c, buf, len);
 }
 
-void close_connection(struct connection *c) {
-    c->close(c);
-}
+void close_connection(struct connection *c) { c->close(c); }

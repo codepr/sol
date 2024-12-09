@@ -27,8 +27,8 @@
 #ifndef TYPES_H
 #define TYPES_H
 
-#include <stdlib.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 // Unsigned integer types
 typedef uint8_t u8;

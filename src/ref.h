@@ -42,14 +42,16 @@ struct ref {
     volatile atomic_int count;
 };
 
-static inline void ref_inc(const struct ref *ref) {
-    ((struct ref *) ref)->count++;
+static inline void ref_inc(const struct ref *ref)
+{
+    ((struct ref *)ref)->count++;
 }
 
-static inline void ref_dec(const struct ref *ref) {
-    if (--((struct ref *) ref)->count == 0)
+static inline void ref_dec(const struct ref *ref)
+{
+    if (--((struct ref *)ref)->count == 0)
         ref->free(ref);
 }
 
-#define INCREF(ptr, type) ref_inc(&((type *) ptr)->refcount);
-#define DECREF(ptr, type) ref_dec(&((type *) ptr)->refcount);
+#define INCREF(ptr, type) ref_inc(&((type *)ptr)->refcount);
+#define DECREF(ptr, type) ref_dec(&((type *)ptr)->refcount);

@@ -25,19 +25,20 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <stdio.h>
-#include "mqtt.h"
-#include "config.h"
-#include "server.h"
-#include "memory.h"
-#include "logging.h"
 #include "handlers.h"
+#include "config.h"
+#include "logging.h"
+#include "memory.h"
+#include "mqtt.h"
+#include "server.h"
 #include "sol_internal.h"
+#include <stdio.h>
 
 /* Prototype for a command handler */
 typedef int handler(struct io_event *);
 
-/* Command handler, each one have responsibility over a defined command packet */
+/* Command handler, each one have responsibility over a defined command packet
+ */
 static int connect_handler(struct io_event *);
 static int disconnect_handler(struct io_event *);
 static int subscribe_handler(struct io_event *);
@@ -58,23 +59,21 @@ static unsigned next_free_mid(struct client_session *);
 static void inflight_msg_init(struct inflight_msg *, struct mqtt_packet *);
 
 /* Command handler mapped usign their position paired with their type */
-static handler *handlers[15] = {
-    NULL,
-    connect_handler,
-    NULL,
-    publish_handler,
-    puback_handler,
-    pubrec_handler,
-    pubrel_handler,
-    pubcomp_handler,
-    subscribe_handler,
-    NULL,
-    unsubscribe_handler,
-    NULL,
-    pingreq_handler,
-    NULL,
-    disconnect_handler
-};
+static handler *handlers[15] = {NULL,
+                                connect_handler,
+                                NULL,
+                                publish_handler,
+                                puback_handler,
+                                pubrec_handler,
+                                pubrel_handler,
+                                pubcomp_handler,
+                                subscribe_handler,
+                                NULL,
+                                unsubscribe_handler,
+                                NULL,
+                                pingreq_handler,
+                                NULL,
+                                disconnect_handler};
 
 /*
  * =========================
@@ -82,7 +81,8 @@ static handler *handlers[15] = {
  * =========================
  */
 
-static void session_free(const struct ref *refcount) {
+static void session_free(const struct ref *refcount)
+{
     struct client_session *session =
         container_of(refcount, struct client_session, refcount);
     list_destroy(session->subscriptions, 0);
@@ -98,34 +98,39 @@ static void session_free(const struct ref *refcount) {
     free_memory(session);
 }
 
-static void session_init(struct client_session *session, const char *session_id) {
-    session->inflights = ATOMIC_VAR_INIT(0);
+static void session_init(struct client_session *session, const char *session_id)
+{
+    session->inflights     = ATOMIC_VAR_INIT(0);
     session->next_free_mid = 1;
     session->subscriptions = list_new(NULL);
     session->outgoing_msgs = list_new(NULL);
     snprintf(session->session_id, MQTT_CLIENT_ID_LEN, "%s", session_id);
     session->i_acks = try_calloc(MAX_INFLIGHT_MSGS, sizeof(time_t));
-    session->i_msgs = try_calloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
-    session->refcount = (struct ref) { session_free, 0 };
+    session->i_msgs =
+        try_calloc(MAX_INFLIGHT_MSGS, sizeof(struct inflight_msg));
+    session->refcount = (struct ref){session_free, 0};
 }
 
-static struct client_session *client_session_alloc(const char *session_id) {
+static struct client_session *client_session_alloc(const char *session_id)
+{
     struct client_session *session = try_alloc(sizeof(*session));
     session_init(session, session_id);
     return session;
 }
 
-static inline unsigned next_free_mid(struct client_session *session) {
+static inline unsigned next_free_mid(struct client_session *session)
+{
     if (session->next_free_mid == MAX_INFLIGHT_MSGS)
         session->next_free_mid = 1;
     return session->next_free_mid++;
 }
 
 static inline void inflight_msg_init(struct inflight_msg *imsg,
-                                     struct mqtt_packet *p) {
-    imsg->seen = time(NULL);
+                                     struct mqtt_packet *p)
+{
+    imsg->seen   = time(NULL);
     imsg->packet = p;
-    imsg->qos = p->header.bits.qos;
+    imsg->qos    = p->header.bits.qos;
 }
 
 /*
@@ -136,12 +141,13 @@ static inline void inflight_msg_init(struct inflight_msg *imsg,
  * Returns the number of publish done or an error code in case of conditions
  * that requires de-allocation of the pkt argument occurs.
  */
-int publish_message(struct mqtt_packet *pkt, const struct topic *t) {
+int publish_message(struct mqtt_packet *pkt, const struct topic *t)
+{
 
     bool all_at_most_once = true;
-    size_t len = 0;
-    unsigned short mid = 0;
-    unsigned char qos = pkt->header.bits.qos;
+    size_t len            = 0;
+    unsigned short mid    = 0;
+    unsigned char qos     = pkt->header.bits.qos;
 #if THREADSNR > 0
     pthread_mutex_lock(&mutex);
 #endif
@@ -154,9 +160,10 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t) {
 
     // first run check
     struct subscriber *sub, *dummy;
-    HASH_ITER(hh, t->subscribers, sub, dummy) {
+    HASH_ITER(hh, t->subscribers, sub, dummy)
+    {
         struct client_session *s = sub->session;
-        struct client *sc = NULL;
+        struct client *sc        = NULL;
         HASH_FIND_STR(server.clients_map, s->session_id, sc);
         /*
          * Update QoS according to subscriber's one, following MQTT
@@ -179,7 +186,7 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t) {
          * message, proceed with the publish towards online subscriber.
          */
         if (pkt->header.bits.qos > AT_MOST_ONCE) {
-            mid = next_free_mid(s);
+            mid                 = next_free_mid(s);
             pkt->publish.pkt_id = mid;
             INCREF(pkt, struct mqtt_packet);
             /*
@@ -228,14 +235,11 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t) {
 
         info.messages_sent++;
 
-        log_debug("Sending PUBLISH to %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
-                  sc->client_id,
-                  pkt->header.bits.dup,
-                  pkt->header.bits.qos,
-                  pkt->header.bits.retain,
-                  pkt->publish.pkt_id,
-                  pkt->publish.topic,
-                  pkt->publish.payloadlen);
+        log_debug(
+            "Sending PUBLISH to %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
+            sc->client_id, pkt->header.bits.dup, pkt->header.bits.qos,
+            pkt->header.bits.retain, pkt->publish.pkt_id, pkt->publish.topic,
+            pkt->publish.payloadlen);
     }
 
     // add return code
@@ -254,12 +258,13 @@ exit:
  * Check if a topic match a wildcard subscription. It works with + and # as
  * well
  */
-static inline int match_subscription(const char *topic,
-                                     const char *wtopic, bool multilevel) {
+static inline int match_subscription(const char *topic, const char *wtopic,
+                                     bool multilevel)
+{
     size_t len = strlen(wtopic);
     int i = 0, j = 0;
-    bool found = false;
-    char *ptopic = (char *) topic;
+    bool found   = false;
+    char *ptopic = (char *)topic;
     /*
      * Cycle through the wildcard topic, char by char, seeking for '+' char and
      * at the same time assuring that every char is equal in the topic as well,
@@ -291,7 +296,8 @@ static inline int match_subscription(const char *topic,
     }
     if (!found && ptopic && multilevel == true)
         return SOL_OK;
-    if (ptopic && (ptopic[0] == '/' || ptopic[1] != '\0') && multilevel == false)
+    if (ptopic && (ptopic[0] == '/' || ptopic[1] != '\0') &&
+        multilevel == false)
         return -SOL_ERR;
     return SOL_OK;
 }
@@ -300,16 +306,13 @@ static inline int match_subscription(const char *topic,
  * Command handlers
  */
 
-static void set_connack(struct client *c, unsigned char rc, unsigned sp) {
+static void set_connack(struct client *c, unsigned char rc, unsigned sp)
+{
     unsigned char connect_flags = 0 | (sp & 0x1) << 0;
 
     struct mqtt_packet response = {
-        .header = { .byte = CONNACK_B },
-        .connack = (struct mqtt_connack) {
-            .byte = connect_flags,
-            .rc = rc
-        }
-    };
+        .header  = {.byte = CONNACK_B},
+        .connack = (struct mqtt_connack){.byte = connect_flags, .rc = rc}};
     mqtt_pack(&response, c->wbuf + c->towrite);
     c->towrite += MQTT_ACK_LEN;
 
@@ -327,7 +330,8 @@ static void set_connack(struct client *c, unsigned char rc, unsigned sp) {
         // TODO check for write buffer size exceed
         if (list_size(c->session->outgoing_msgs) > 0) {
             size_t len = 0;
-            list_foreach(item, c->session->outgoing_msgs) {
+            list_foreach(item, c->session->outgoing_msgs)
+            {
                 len = mqtt_size(item->data, NULL);
                 mqtt_pack(item->data, c->wbuf + c->towrite);
                 c->towrite += len;
@@ -338,11 +342,12 @@ static void set_connack(struct client *c, unsigned char rc, unsigned sp) {
     }
 }
 
-static int connect_handler(struct io_event *e) {
+static int connect_handler(struct io_event *e)
+{
 
     unsigned session_present = 0;
-    struct mqtt_connect *c = &e->data.connect;
-    struct client *cc = e->client;
+    struct mqtt_connect *c   = &e->data.connect;
+    struct client *cc        = e->client;
 
     if (cc->connected == true) {
         /*
@@ -363,8 +368,8 @@ static int connect_handler(struct io_event *e) {
             goto bad_auth;
         else {
             struct authentication *auth = NULL;
-            HASH_FIND_STR(server.auths, (char *) c->payload.username, auth);
-            if (!auth || !check_passwd((char *) c->payload.password, auth->salt))
+            HASH_FIND_STR(server.auths, (char *)c->payload.username, auth);
+            if (!auth || !check_passwd((char *)c->payload.password, auth->salt))
                 goto bad_auth;
         }
     }
@@ -381,7 +386,7 @@ static int connect_handler(struct io_event *e) {
      * the client to the sessions map if not already present
      */
     if (!c->payload.client_id[0])
-        generate_random_id((char *) c->payload.client_id);
+        generate_random_id((char *)c->payload.client_id);
     /*
      * Add the new connected client to the global map, if it is already
      * connected, kick him out accordingly to the MQTT v3.1.1 specs.
@@ -401,10 +406,8 @@ static int connect_handler(struct io_event *e) {
 
     cc->connected = true;
 
-    log_info("New client connected as %s (c%i, k%u)",
-             c->payload.client_id,
-             c->bits.clean_session,
-             c->payload.keepalive);
+    log_info("New client connected as %s (c%i, k%u)", c->payload.client_id,
+             c->bits.clean_session, c->payload.keepalive);
 
     /*
      * If no session was found or the client is a new connecting client or an
@@ -426,32 +429,30 @@ static int connect_handler(struct io_event *e) {
 
     // Add LWT topic and message if present
     if (c->bits.will) {
-        cc->has_lwt = true;
-        const char *will_topic = (const char *) c->payload.will_topic;
-        const char *will_message = (const char *) c->payload.will_message;
+        cc->has_lwt              = true;
+        const char *will_topic   = (const char *)c->payload.will_topic;
+        const char *will_message = (const char *)c->payload.will_message;
         // TODO check for will_topic != NULL
         struct topic *t = topic_store_get_or_put(server.store, will_topic);
         if (!topic_store_contains(server.store, t->name))
             topic_store_put(server.store, t);
         // I'm sure that the string will be NUL terminated by unpack function
-        size_t msg_len = strlen(will_message);
-        size_t tpc_len = strlen(will_topic);
+        size_t msg_len       = strlen(will_message);
+        size_t tpc_len       = strlen(will_topic);
 
-        cc->session->lwt_msg = (struct mqtt_packet) {
-            .header = (union mqtt_header) { .byte = PUBLISH_B },
-            .publish = (struct mqtt_publish) {
-                .pkt_id = 0,  // placeholder
-                .topiclen = tpc_len,
-                .topic = (unsigned char *) try_strdup(will_topic),
+        cc->session->lwt_msg = (struct mqtt_packet){
+            .header  = (union mqtt_header){.byte = PUBLISH_B},
+            .publish = (struct mqtt_publish){
+                .pkt_id     = 0, // placeholder
+                .topiclen   = tpc_len,
+                .topic      = (unsigned char *)try_strdup(will_topic),
                 .payloadlen = msg_len,
-                .payload = (unsigned char *) try_strdup(will_message)
-            }
-        };
+                .payload    = (unsigned char *)try_strdup(will_message)}};
 
         cc->session->lwt_msg.header.bits.qos = c->bits.will_qos;
         // We must store the retained message in the topic
         if (c->bits.will_retain == 1) {
-            size_t publen = mqtt_size(&cc->session->lwt_msg, NULL);
+            size_t publen          = mqtt_size(&cc->session->lwt_msg, NULL);
             unsigned char *payload = try_alloc(publen);
             mqtt_pack(&cc->session->lwt_msg, payload);
             // We got a ready-to-be-sent bytestring in the retained message
@@ -469,8 +470,8 @@ static int connect_handler(struct io_event *e) {
 
     set_connack(cc, MQTT_CONNECTION_ACCEPTED, session_present);
 
-    log_debug("Sending CONNACK to %s (%u, %u)",
-              cc->client_id, session_present, MQTT_CONNECTION_ACCEPTED);
+    log_debug("Sending CONNACK to %s (%u, %u)", cc->client_id, session_present,
+              MQTT_CONNECTION_ACCEPTED);
 
     return REPLY;
 
@@ -479,39 +480,42 @@ clientdc:
     return -ERRCLIENTDC;
 
 bad_auth:
-    log_debug("Sending CONNACK to %s (%u, %u)",
-              cc->client_id, session_present, MQTT_BAD_USERNAME_OR_PASSWORD);
+    log_debug("Sending CONNACK to %s (%u, %u)", cc->client_id, session_present,
+              MQTT_BAD_USERNAME_OR_PASSWORD);
     set_connack(cc, MQTT_BAD_USERNAME_OR_PASSWORD, session_present);
 
     return MQTT_BAD_USERNAME_OR_PASSWORD;
 
 not_authorized:
-    log_debug("Sending CONNACK to %s (%u, %u)",
-              cc->client_id, session_present, MQTT_NOT_AUTHORIZED);
+    log_debug("Sending CONNACK to %s (%u, %u)", cc->client_id, session_present,
+              MQTT_NOT_AUTHORIZED);
     set_connack(cc, MQTT_NOT_AUTHORIZED, session_present);
 
     return MQTT_NOT_AUTHORIZED;
 }
 
-static int disconnect_handler(struct io_event *e) {
+static int disconnect_handler(struct io_event *e)
+{
     log_debug("Received DISCONNECT from %s", e->client->client_id);
     return -ERRCLIENTDC;
 }
 
 static inline void add_wildcard(const char *topic, struct subscriber *s,
-                                bool wildcard) {
+                                bool wildcard)
+{
     struct subscription *subscription = try_alloc(sizeof(*subscription));
-    subscription->subscriber = s;
-    subscription->topic = try_strdup(topic);
-    subscription->multilevel = wildcard;
+    subscription->subscriber          = s;
+    subscription->topic               = try_strdup(topic);
+    subscription->multilevel          = wildcard;
     INCREF(s, struct subscriber);
     topic_store_add_wildcard(server.store, subscription);
 }
 
-static void recursive_sub(struct trie_node *node, void *arg) {
+static void recursive_sub(struct trie_node *node, void *arg)
+{
     if (!node || !node->data)
         return;
-    struct topic *t = node->data;
+    struct topic *t      = node->data;
     /*
      * We need to make a copy of the subscriber cause UTHASH needs a proper
      * handle to work correctly, otherwise we'll end up freeing the same
@@ -523,14 +527,15 @@ static void recursive_sub(struct trie_node *node, void *arg) {
         INCREF(s, struct subscriber);
         HASH_ADD_STR(t->subscribers, id, s);
     }
-    log_debug("Adding subscriber %s to topic %s",
-              s->session->session_id, t->name);
+    log_debug("Adding subscriber %s to topic %s", s->session->session_id,
+              t->name);
     list_push(s->session->subscriptions, t);
 }
 
-static int subscribe_handler(struct io_event *e) {
+static int subscribe_handler(struct io_event *e)
+{
 
-    bool wildcard = false;
+    bool wildcard            = false;
     struct mqtt_subscribe *s = &e->data.subscribe;
 
     /*
@@ -553,13 +558,14 @@ static int subscribe_handler(struct io_event *e) {
         snprintf(topic, s->tuples[i].topic_len + 1, "%s", s->tuples[i].topic);
 
         log_debug("\t%s (QoS %i)", topic, s->tuples[i].qos);
-        /* Recursive subscribe to all children topics if the topic ends with "/#" */
+        /* Recursive subscribe to all children topics if the topic ends with
+         * "/#" */
         if (topic[s->tuples[i].topic_len - 1] == '#' &&
             topic[s->tuples[i].topic_len - 2] == '/') {
             topic[s->tuples[i].topic_len - 1] = '\0';
-            wildcard = true;
+            wildcard                          = true;
         } else if (topic[s->tuples[i].topic_len - 1] != '/') {
-            topic[s->tuples[i].topic_len] = '/';
+            topic[s->tuples[i].topic_len]     = '/';
             topic[s->tuples[i].topic_len + 1] = '\0';
         }
 
@@ -596,8 +602,8 @@ static int subscribe_handler(struct io_event *e) {
              * the topic to the wildcards list as we can't know at this point
              * which topic it will match
              */
-            struct subscriber *sub = subscriber_new(e->client->session,
-                                                    s->tuples[i].qos);
+            struct subscriber *sub =
+                subscriber_new(e->client->session, s->tuples[i].qos);
             add_wildcard(topic, sub, wildcard);
         }
 #if THREADSNR > 0
@@ -617,9 +623,7 @@ static int subscribe_handler(struct io_event *e) {
         rcs[i] = s->tuples[i].qos;
     }
 
-    struct mqtt_packet pkt = {
-        .header = (union mqtt_header) { .byte = SUBACK_B }
-    };
+    struct mqtt_packet pkt = {.header = (union mqtt_header){.byte = SUBACK_B}};
     mqtt_suback(&pkt, s->pkt_id, rcs, s->tuples_len);
 
 #if THREADSNR > 0
@@ -639,7 +643,8 @@ static int subscribe_handler(struct io_event *e) {
     return REPLY;
 }
 
-static int unsubscribe_handler(struct io_event *e) {
+static int unsubscribe_handler(struct io_event *e)
+{
 
     struct client *c = e->client;
 
@@ -652,7 +657,7 @@ static int unsubscribe_handler(struct io_event *e) {
     struct topic *t = NULL;
     for (int i = 0; i < e->data.unsubscribe.tuples_len; ++i) {
         t = topic_store_get(server.store,
-                            (const char *) e->data.unsubscribe.tuples[i].topic);
+                            (const char *)e->data.unsubscribe.tuples[i].topic);
         if (t)
             topic_del_subscriber(t, c);
     }
@@ -673,21 +678,18 @@ static int unsubscribe_handler(struct io_event *e) {
     return REPLY;
 }
 
-static int publish_handler(struct io_event *e) {
+static int publish_handler(struct io_event *e)
+{
 
-    struct client *c = e->client;
-    union mqtt_header *hdr = &e->data.header;
-    struct mqtt_publish *p = &e->data.publish;
+    struct client *c        = e->client;
+    union mqtt_header *hdr  = &e->data.header;
+    struct mqtt_publish *p  = &e->data.publish;
     unsigned short orig_mid = p->pkt_id;
 
-    log_debug("Received PUBLISH from %s (d%i, q%u, r%i, m%u, %s, ... (%llu bytes))",
-              c->client_id,
-              hdr->bits.dup,
-              hdr->bits.qos,
-              hdr->bits.retain,
-              p->pkt_id,
-              p->topic,
-              p->payloadlen);
+    log_debug(
+        "Received PUBLISH from %s (d%i, q%u, r%i, m%u, %s, ... (%llu bytes))",
+        c->client_id, hdr->bits.dup, hdr->bits.qos, hdr->bits.retain, p->pkt_id,
+        p->topic, p->payloadlen);
 
     info.messages_recv++;
 
@@ -699,9 +701,9 @@ static int publish_handler(struct io_event *e) {
      * hierarchical level
      */
     if (p->topic[p->topiclen - 1] != '/')
-        snprintf(topic, p->topiclen + 2, "%s/", (const char *) p->topic);
+        snprintf(topic, p->topiclen + 2, "%s/", (const char *)p->topic);
     else
-        snprintf(topic, p->topiclen + 1, "%s", (const char *) p->topic);
+        snprintf(topic, p->topiclen + 1, "%s", (const char *)p->topic);
 
 #if THREADSNR > 0
     pthread_mutex_lock(&c->mutex);
@@ -715,10 +717,12 @@ static int publish_handler(struct io_event *e) {
 
     /* Check for # wildcards subscriptions */
     if (topic_store_wildcards_empty(server.store)) {
-        topic_store_wildcards_foreach(item, server.store) {
+        topic_store_wildcards_foreach(item, server.store)
+        {
             struct subscription *s = item->data;
             int matched = match_subscription(topic, s->topic, s->multilevel);
-            if (matched == SOL_OK && !is_subscribed(t, s->subscriber->session)) {
+            if (matched == SOL_OK &&
+                !is_subscribed(t, s->subscriber->session)) {
                 /*
                  * We need to make a copy of the subscriber cause UTHASH needs
                  * a proper handle to work correctly, otherwise we'll end up
@@ -737,7 +741,7 @@ static int publish_handler(struct io_event *e) {
 
     struct mqtt_packet *pkt = mqtt_packet_alloc(e->data.header.byte);
     // TODO must perform a deep copy here
-    pkt->publish = e->data.publish;
+    pkt->publish            = e->data.publish;
 
     if (hdr->bits.retain == 1) {
         t->retained_msg = try_alloc(mqtt_size(&e->data, NULL));
@@ -765,8 +769,8 @@ static int publish_handler(struct io_event *e) {
 #if THREADSNR > 0
     pthread_mutex_unlock(&c->mutex);
 #endif
-    log_debug("Sending %s to %s (m%u)",
-              ptype == PUBACK ? "PUBACK" : "PUBREC", c->client_id, orig_mid);
+    log_debug("Sending %s to %s (m%u)", ptype == PUBACK ? "PUBACK" : "PUBREC",
+              c->client_id, orig_mid);
     return REPLY;
 
 exit:
@@ -778,16 +782,17 @@ exit:
     return NOREPLY;
 }
 
-static int puback_handler(struct io_event *e) {
+static int puback_handler(struct io_event *e)
+{
     struct client *c = e->client;
-    unsigned pkt_id = e->data.ack.pkt_id;
+    unsigned pkt_id  = e->data.ack.pkt_id;
     log_debug("Received PUBACK from %s (m%u)", c->client_id, pkt_id);
 #if THREADSNR > 0
     pthread_mutex_lock(&c->mutex);
 #endif
     inflight_msg_clear(&c->session->i_msgs[pkt_id]);
     c->session->i_msgs[pkt_id].packet = NULL;
-    c->session->i_acks[pkt_id] = -1;
+    c->session->i_acks[pkt_id]        = -1;
     --c->session->inflights;
 #if THREADSNR > 0
     pthread_mutex_unlock(&c->mutex);
@@ -795,9 +800,10 @@ static int puback_handler(struct io_event *e) {
     return NOREPLY;
 }
 
-static int pubrec_handler(struct io_event *e) {
+static int pubrec_handler(struct io_event *e)
+{
     struct client *c = e->client;
-    unsigned pkt_id = e->data.ack.pkt_id;
+    unsigned pkt_id  = e->data.ack.pkt_id;
     log_debug("Received PUBREC from %s (m%u)", c->client_id, pkt_id);
 #if THREADSNR > 0
     pthread_mutex_lock(&c->mutex);
@@ -813,9 +819,10 @@ static int pubrec_handler(struct io_event *e) {
     return REPLY;
 }
 
-static int pubrel_handler(struct io_event *e) {
+static int pubrel_handler(struct io_event *e)
+{
     struct client *c = e->client;
-    unsigned pkt_id = e->data.ack.pkt_id;
+    unsigned pkt_id  = e->data.ack.pkt_id;
     log_debug("Received PUBREL from %s (m%u)", c->client_id, pkt_id);
 #if THREADSNR > 0
     pthread_mutex_lock(&c->mutex);
@@ -829,9 +836,10 @@ static int pubrel_handler(struct io_event *e) {
     return REPLY;
 }
 
-static int pubcomp_handler(struct io_event *e) {
+static int pubcomp_handler(struct io_event *e)
+{
     struct client *c = e->client;
-    unsigned pkt_id = e->data.ack.pkt_id;
+    unsigned pkt_id  = e->data.ack.pkt_id;
     log_debug("Received PUBCOMP from %s (m%u)", c->client_id, pkt_id);
 #if THREADSNR > 0
     pthread_mutex_lock(&c->mutex);
@@ -846,7 +854,8 @@ static int pubcomp_handler(struct io_event *e) {
     return NOREPLY;
 }
 
-static int pingreq_handler(struct io_event *e) {
+static int pingreq_handler(struct io_event *e)
+{
     log_debug("Received PINGREQ from %s", e->client->client_id);
     e->data.header.byte = PINGRESP_B;
 #if THREADSNR > 0
@@ -865,6 +874,7 @@ static int pingreq_handler(struct io_event *e) {
  * This is the only public API we expose from this module beside
  * publish_message. It just give access to handlers mapped by message type.
  */
-int handle_command(unsigned type, struct io_event *event) {
+int handle_command(unsigned type, struct io_event *event)
+{
     return handlers[type](event);
 }

@@ -28,55 +28,55 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include <stdbool.h>
 #include "uthash.h"
+#include <stdbool.h>
 
 // Eventloop backend check
 #ifdef __linux__
 #include <linux/version.h>
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 5, 44)
-#define EPOLL 1
+#define EPOLL             1
 #define EVENTLOOP_BACKEND "epoll"
 #elif LINUX_VERSION_CODE >= KERNEL_VERSION(2, 1, 23)
-#define POLL 1
+#define POLL              1
 #define EVENTLOOP_BACKEND "poll"
 #else
-#define SELECT 1
+#define SELECT            1
 #define EVENTLOOP_BACKEND "select"
 #endif
 
-#elif defined(__APPLE__) || defined(__FreeBSD__) \
-       || defined(__OpenBSD__) || defined (__NetBSD__)
-#define KQUEUE 1
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) ||    \
+    defined(__NetBSD__)
+#define KQUEUE            1
 #define EVENTLOOP_BACKEND "kqueue"
 #else
-#define SELECT 1
+#define SELECT            1
 #define EVENTLOOP_BACKEND "select"
 #endif // __linux__
 
 // TLS versions
 
-#define SOL_TLSv1       0x01
-#define SOL_TLSv1_1     0x02
-#define SOL_TLSv1_2     0x04
-#define SOL_TLSv1_3     0x08
+#define SOL_TLSv1                0x01
+#define SOL_TLSv1_1              0x02
+#define SOL_TLSv1_2              0x04
+#define SOL_TLSv1_3              0x08
 
 // Default parameters
 
-#define VERSION                     "0.18.5"
-#define DEFAULT_SOCKET_FAMILY       INET
-#define DEFAULT_LOG_LEVEL           DEBUG
-#define DEFAULT_CONF_PATH           "/etc/sol/sol.conf"
-#define DEFAULT_HOSTNAME            "127.0.0.1"
-#define DEFAULT_PORT                "1883"
-#define DEFAULT_MAX_MEMORY          "2GB"
-#define DEFAULT_MAX_REQUEST_SIZE    "512KB"
-#define DEFAULT_STATS_INTERVAL      "10s"
-#define DEFAULT_KEEPALIVE           "60s"
+#define VERSION                  "0.18.5"
+#define DEFAULT_SOCKET_FAMILY    INET
+#define DEFAULT_LOG_LEVEL        DEBUG
+#define DEFAULT_CONF_PATH        "/etc/sol/sol.conf"
+#define DEFAULT_HOSTNAME         "127.0.0.1"
+#define DEFAULT_PORT             "1883"
+#define DEFAULT_MAX_MEMORY       "2GB"
+#define DEFAULT_MAX_REQUEST_SIZE "512KB"
+#define DEFAULT_STATS_INTERVAL   "10s"
+#define DEFAULT_KEEPALIVE        "60s"
 #ifdef TLS1_3_VERSION
-#define DEFAULT_TLS_PROTOCOLS       (SOL_TLSv1_2 | SOL_TLSv1_3)
+#define DEFAULT_TLS_PROTOCOLS (SOL_TLSv1_2 | SOL_TLSv1_3)
 #else
-#define DEFAULT_TLS_PROTOCOLS       SOL_TLSv1_2
+#define DEFAULT_TLS_PROTOCOLS SOL_TLSv1_2
 #endif
 
 struct config {
@@ -142,15 +142,17 @@ struct authentication {
     UT_hash_handle hh; /* UTHASH handle, needed to use UTHASH macros */
 };
 
-#define AUTH_DESTROY(auth_map) do {             \
-    struct authentication *auth, *dummy;        \
-    HASH_ITER(hh, (auth_map), auth, dummy) {    \
-        HASH_DEL((auth_map), auth);             \
-        free_memory(auth->username);            \
-        free_memory(auth->salt);                \
-        free_memory(auth);                      \
-    }                                           \
-} while (0);
+#define AUTH_DESTROY(auth_map)                                                 \
+    do {                                                                       \
+        struct authentication *auth, *dummy;                                   \
+        HASH_ITER(hh, (auth_map), auth, dummy)                                 \
+        {                                                                      \
+            HASH_DEL((auth_map), auth);                                        \
+            free_memory(auth->username);                                       \
+            free_memory(auth->salt);                                           \
+            free_memory(auth);                                                 \
+        }                                                                      \
+    } while (0);
 
 void config_set_default(void);
 void config_print(void);

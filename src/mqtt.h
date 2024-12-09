@@ -32,12 +32,12 @@
 #include "types.h"
 
 // Packing/unpacking error codes
-#define MQTT_OK    0
-#define MQTT_ERR   1
+#define MQTT_OK                            0
+#define MQTT_ERR                           1
 
-#define MQTT_HEADER_LEN     2
-#define MQTT_ACK_LEN        4
-#define MQTT_CLIENT_ID_LEN  64  // including nul char
+#define MQTT_HEADER_LEN                    2
+#define MQTT_ACK_LEN                       4
+#define MQTT_CLIENT_ID_LEN                 64 // including nul char
 
 // Return codes for connect packet
 #define MQTT_CONNECTION_ACCEPTED           0x00
@@ -51,15 +51,15 @@
  * Stub bytes, useful for generic replies, these represent the first byte in
  * the fixed header
  */
-#define CONNACK_B  0x20
-#define PUBLISH_B  0x30
-#define PUBACK_B   0x40
-#define PUBREC_B   0x50
-#define PUBREL_B   0x62
-#define PUBCOMP_B  0x70
-#define SUBACK_B   0x90
-#define UNSUBACK_B 0xB0
-#define PINGRESP_B 0xD0
+#define CONNACK_B                          0x20
+#define PUBLISH_B                          0x30
+#define PUBACK_B                           0x40
+#define PUBREC_B                           0x50
+#define PUBREL_B                           0x62
+#define PUBCOMP_B                          0x70
+#define SUBACK_B                           0x90
+#define UNSUBACK_B                         0xB0
+#define PINGRESP_B                         0xD0
 
 /* Message types */
 enum packet_type {
@@ -298,7 +298,7 @@ usize mqtt_pack(const struct mqtt_packet *, u8 *);
  */
 void mqtt_ack(struct mqtt_packet *, u16);
 
-void mqtt_connack(struct mqtt_packet *, u8 , u8);
+void mqtt_connack(struct mqtt_packet *, u8, u8);
 
 void mqtt_suback(struct mqtt_packet *, u16, u8 *, u16);
 

@@ -34,11 +34,12 @@
  * The function expects a non-null pointer and can't fail, if a null topic
  * is passed, the function return prematurely.
  */
-void topic_init(struct topic *t, const char *name) {
+void topic_init(struct topic *t, const char *name)
+{
     if (!t)
         return;
-    t->name = name;
-    t->subscribers = NULL;
+    t->name         = name;
+    t->subscribers  = NULL;
     t->retained_msg = NULL;
 }
 
@@ -47,7 +48,8 @@ void topic_init(struct topic *t, const char *name) {
  * to it. The function can fail as a memory allocation is requested, if it
  * fails the program execution graceful crash.
  */
-struct topic *topic_new(const char *name) {
+struct topic *topic_new(const char *name)
+{
     struct topic *t = try_alloc(sizeof(*t));
     topic_init(t, name);
     return t;
@@ -56,17 +58,19 @@ struct topic *topic_new(const char *name) {
 /*
  * Deallocate the topic name, retained_msg and all its subscribers
  */
-void topic_destroy(struct topic *t) {
+void topic_destroy(struct topic *t)
+{
     if (!t)
         return;
-    free_memory((void *) t->name);
+    free_memory((void *)t->name);
     free_memory(t->retained_msg);
     if (!t->subscribers) {
         free_memory(t);
         return;
     }
     struct subscriber *sub, *dummy;
-    HASH_ITER(hh, t->subscribers, sub, dummy) {
+    HASH_ITER(hh, t->subscribers, sub, dummy)
+    {
         if (!sub)
             continue;
         HASH_DEL(t->subscribers, sub);
@@ -83,7 +87,8 @@ void topic_destroy(struct topic *t) {
  */
 struct subscriber *topic_add_subscriber(struct topic *t,
                                         struct client_session *s,
-                                        unsigned char qos) {
+                                        unsigned char qos)
+{
     struct subscriber *sub = subscriber_new(s, qos), *tmp;
     HASH_FIND_STR(t->subscribers, sub->id, tmp);
     if (!tmp)
@@ -99,7 +104,8 @@ struct subscriber *topic_add_subscriber(struct topic *t,
  * reserved to the struct subscriber.
  * The function can't fail.
  */
-void topic_del_subscriber(struct topic *t, struct client *c) {
+void topic_del_subscriber(struct topic *t, struct client *c)
+{
     struct subscriber *sub = NULL;
     HASH_FIND_STR(t->subscribers, c->client_id, sub);
     if (sub) {

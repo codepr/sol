@@ -26,19 +26,19 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <time.h>
-#include <stdatomic.h>
-#include "util.h"
-#include "pack.h"
 #include "list.h"
 #include "mqtt.h"
+#include "network.h"
+#include "pack.h"
 #include "trie.h"
 #include "uthash.h"
-#include "network.h"
+#include "util.h"
+#include <stdatomic.h>
+#include <time.h>
 
 /* Generic return codes without a defined purpose */
-#define SOL_OK              0
-#define SOL_ERR             1
+#define SOL_OK            0
+#define SOL_ERR           1
 
 /*
  * Error codes for packet reception, signaling respectively
@@ -50,20 +50,20 @@
  * - error sending/receiving data on a connected socket
  * - error OUT OF MEMORY
  */
-#define ERRCLIENTDC         1
-#define ERRPACKETERR        2
-#define ERRMAXREQSIZE       3
-#define ERREAGAIN           4
-#define ERRSOCKETERR        5
-#define ERRNOMEM            6
+#define ERRCLIENTDC       1
+#define ERRPACKETERR      2
+#define ERRMAXREQSIZE     3
+#define ERREAGAIN         4
+#define ERRSOCKETERR      5
+#define ERRNOMEM          6
 
 /*
  * Return code of handler functions, signaling if there's data payload to be
  * sent out or if the server just need to re-arm closure for reading incoming
  * bytes
  */
-#define REPLY               0
-#define NOREPLY             1
+#define REPLY             0
+#define NOREPLY           1
 
 /* The maximum number of pending/not acknowledged packets for each client */
 #define MAX_INFLIGHT_MSGS 65536
@@ -108,7 +108,8 @@ struct subscriber {
     unsigned char granted_qos; /* The QoS given by the server for each topic */
     char id[MQTT_CLIENT_ID_LEN]; /* Client ID key */
     UT_hash_handle hh; /* UTHASH handle, needed to use UTHASH macros */
-    struct ref refcount; /* Reference counting struct, to share the struct easily */
+    struct ref
+        refcount; /* Reference counting struct, to share the struct easily */
 };
 
 /*
@@ -117,8 +118,8 @@ struct subscriber {
  * subscription or not.
  */
 struct subscription {
-    bool multilevel; /* Flag for '#' subscriptions */
-    const char *topic; /* Topic name the subscription refers to */
+    bool multilevel;               /* Flag for '#' subscriptions */
+    const char *topic;             /* Topic name the subscription refers to */
     struct subscriber *subscriber; /* Reference to the subscriber */
 };
 
@@ -131,7 +132,8 @@ struct subscription {
  */
 struct inflight_msg {
     time_t seen; /* Timestamp of the last time we have seen this msg */
-    struct mqtt_packet *packet; /* The payload to be written out in case of timeout */
+    struct mqtt_packet
+        *packet;       /* The payload to be written out in case of timeout */
     unsigned char qos; /* The QoS at the time of the publish */
 };
 
@@ -170,36 +172,42 @@ enum client_status {
  * application, see https://troydhanson.github.io/uthash/userguide.html.
  */
 struct client {
-    struct ev_ctx *ctx; /* An event context refrence mostly used to fire write events */
-    int rc;  /* Return code of the message just handled */
+    struct ev_ctx
+        *ctx;   /* An event context refrence mostly used to fire write events */
+    int rc;     /* Return code of the message just handled */
     int status; /* Current status of the client (state machine) */
-    volatile atomic_int rpos; /* The nr of bytes to skip after a complete
-                               * packet has * been read. This because according
-                               * to MQTT, length is encoded on multiple bytes
-                               * according to it's size, using continuation bit
-                               * as a technique to encode it. We don't want to
-                               * decode the length two times when we already
-                               * know it, so we need an offset to know where
-                               * the actual packet will start
-                               */
+    volatile atomic_int rpos;    /* The nr of bytes to skip after a complete
+                                  * packet has * been read. This because according
+                                  * to MQTT, length is encoded on multiple bytes
+                                  * according to it's size, using continuation bit
+                                  * as a technique to encode it. We don't want to
+                                  * decode the length two times when we already
+                                  * know it, so we need an offset to know where
+                                  * the actual packet will start
+                                  */
     volatile atomic_size_t read; /* The number of bytes already read */
-    volatile atomic_size_t toread; /* The number of bytes that have to be read */
-    unsigned char *rbuf; /* The reading buffer */
+    volatile atomic_size_t
+        toread;                   /* The number of bytes that have to be read */
+    unsigned char *rbuf;          /* The reading buffer */
     volatile atomic_size_t wrote; /* The number of bytes already written */
     volatile atomic_size_t towrite; /* The number of bytes we have to write */
-    unsigned char *wbuf; /* The writing buffer */
-    char client_id[MQTT_CLIENT_ID_LEN]; /* The client ID according to MQTT specs */
+    unsigned char *wbuf;            /* The writing buffer */
+    char client_id[MQTT_CLIENT_ID_LEN]; /* The client ID according to MQTT specs
+                                         */
     struct connection conn; /* A connection structure, takes care of plain or
                              * TLS encrypted communication by using callbacks
                              */
     struct client_session *session; /* The session associated to the client */
     time_t last_seen; /* The timestamp of the last action performed */
-    bool online;  /* Just an online flag */
-    bool connected; /* States if the client has already processed a connection packet */
+    bool online;      /* Just an online flag */
+    bool connected;   /* States if the client has already processed a connection
+                         packet */
     bool has_lwt; /* States if the connection packet carried a LWT message */
-    bool clean_session; /* States if the connection packet was set to clean session */
-    pthread_mutex_t mutex; /* Inner lock for the client, this avoid race-conditions on shared parts */
-    UT_hash_handle hh; /* UTHASH handle, needed to use UTHASH macros */
+    bool clean_session;    /* States if the connection packet was set to clean
+                              session */
+    pthread_mutex_t mutex; /* Inner lock for the client, this avoid
+                              race-conditions on shared parts */
+    UT_hash_handle hh;     /* UTHASH handle, needed to use UTHASH macros */
 };
 
 /*
@@ -216,16 +224,23 @@ struct client {
  */
 struct client_session {
     unsigned next_free_mid; /* The next 'free' message ID */
-    List *subscriptions; /* All the clients subscriptions, stored as topic structs */
-    List *outgoing_msgs; /* Outgoing messages during disconnection time, stored as mqtt_packet pointers */
-    volatile atomic_ushort inflights; /* Just a counter stating the presence of inflight messages */
-    bool clean_session; /* Clean session flag */
-    char session_id[MQTT_CLIENT_ID_LEN]; /* The client_id the session refers to */
-    struct mqtt_packet lwt_msg; /* A possibly NULL LWT message, will be set on connection */
+    List *subscriptions;    /* All the clients subscriptions, stored as topic
+                               structs */
+    List *outgoing_msgs; /* Outgoing messages during disconnection time, stored
+                            as mqtt_packet pointers */
+    volatile atomic_ushort inflights; /* Just a counter stating the presence of
+                                         inflight messages */
+    bool clean_session;               /* Clean session flag */
+    char session_id[MQTT_CLIENT_ID_LEN]; /* The client_id the session refers to
+                                          */
+    struct mqtt_packet
+        lwt_msg;    /* A possibly NULL LWT message, will be set on connection */
     time_t *i_acks; /* Inflight ACKs that must be cleared */
-    struct inflight_msg *i_msgs; /* Inflight MSGs that must be sent out DUP in case of timeout */
+    struct inflight_msg *
+        i_msgs; /* Inflight MSGs that must be sent out DUP in case of timeout */
     UT_hash_handle hh; /* UTHASH handle, needed to use UTHASH macros */
-    struct ref refcount; /* Reference counting struct, to share the struct easily */
+    struct ref
+        refcount; /* Reference counting struct, to share the struct easily */
 };
 
 /*
@@ -286,8 +301,8 @@ void topic_destroy(struct topic *);
  * The function can fail as a memory allocation is requested, if it fails the
  * program execution graceful crash.
  */
-struct subscriber *topic_add_subscriber(struct topic *,
-                                        struct client_session *, unsigned char);
+struct subscriber *topic_add_subscriber(struct topic *, struct client_session *,
+                                        unsigned char);
 
 /*
  * Remove a subscriber from the topic, the subscriber to be removed refers to
@@ -366,9 +381,9 @@ void topic_store_map(struct topic_store *, const char *,
  */
 bool topic_store_wildcards_empty(const struct topic_store *);
 
-#define topic_store_wildcards_foreach(item, store)  \
+#define topic_store_wildcards_foreach(item, store)                             \
     list_foreach(item, store->wildcards)
 
-#define has_inflight(session) ((session)->inflights > 0)
+#define has_inflight(session)   ((session)->inflights > 0)
 
 #define inflight_msg_clear(msg) DECREF((msg)->packet, struct mqtt_packet)

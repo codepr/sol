@@ -49,10 +49,11 @@ void iter_init(struct iterator *, void *, void (*next)(struct iterator *));
 struct iterator *iter_next(struct iterator *);
 void iter_destroy(struct iterator *);
 
-#define FOREACH(it)  \
-    for (; it && it->ptr; it = iter_next(it))
+#define FOREACH(it) for (; it && it->ptr; it = iter_next(it))
 
-#define MAP(it, fn, arg) \
-    for (; it && it->ptr; it = iter_next(it)) { fn(it->ptr, arg); }
+#define MAP(it, fn, arg)                                                       \
+    for (; it && it->ptr; it = iter_next(it)) {                                \
+        fn(it->ptr, arg);                                                      \
+    }
 
 #endif

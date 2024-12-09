@@ -15,14 +15,15 @@
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
- * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
  */
 
 #ifndef LIST_H
@@ -49,7 +50,7 @@ typedef struct list {
 typedef int (*compare_func)(const void *, const void *);
 
 /* Create an empty list */
-List *list_new(int (*destructor)(struct list_node*));
+List *list_new(int (*destructor)(struct list_node *));
 
 /*
  * Release a list, accept a integer flag to control the depth of the free call
@@ -80,30 +81,34 @@ struct list_node *list_remove_node(List *, void *, compare_func);
 
 void list_iter_next(struct iterator *);
 
-#define list_foreach(ptr, list_ptr) \
-    for (struct list_node *(ptr) = (list_ptr)->head; (ptr); (ptr) = (ptr)->next)
+#define list_foreach(ptr, list_ptr)                                            \
+    for (struct list_node * (ptr) = (list_ptr)->head; (ptr);                   \
+         (ptr)                    = (ptr)->next)
 
 /*
  * Remove a node from the list based on a compare function that must be
  * previously defined and passed in as a function pointer, accept two void
  * *args, which generally means a node and his subsequent
  */
-#define list_remove(list, ptr, cmp) do {              \
-    struct list_node *prev = NULL, *tmp = NULL;             \
-    struct list_node *curr = (list)->head;                  \
-    while (curr != NULL) {                                  \
-        if ((cmp)(curr, (ptr))) {                           \
-            tmp = curr;                                     \
-            if (prev == NULL) (list)->head = curr->next;    \
-            else prev->next = curr->next;                   \
-            curr = curr->next;                              \
-            if ((list)->destructor)                         \
-                (list)->destructor(tmp);                    \
-            (list)->len--;                                  \
-        } else {                                            \
-            curr = curr->next;                              \
-        }                                                   \
-    }                                                       \
-} while (0);
+#define list_remove(list, ptr, cmp)                                            \
+    do {                                                                       \
+        struct list_node *prev = NULL, *tmp = NULL;                            \
+        struct list_node *curr = (list)->head;                                 \
+        while (curr != NULL) {                                                 \
+            if ((cmp)(curr, (ptr))) {                                          \
+                tmp = curr;                                                    \
+                if (prev == NULL)                                              \
+                    (list)->head = curr->next;                                 \
+                else                                                           \
+                    prev->next = curr->next;                                   \
+                curr = curr->next;                                             \
+                if ((list)->destructor)                                        \
+                    (list)->destructor(tmp);                                   \
+                (list)->len--;                                                 \
+            } else {                                                           \
+                curr = curr->next;                                             \
+            }                                                                  \
+        }                                                                      \
+    } while (0);
 
 #endif

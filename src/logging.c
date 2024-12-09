@@ -25,35 +25,39 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <time.h>
-#include <stdio.h>
-#include <stdarg.h>
-#include <string.h>
-#include <assert.h>
 #include "logging.h"
+#include <assert.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
 
 #define MAX_LOG_SIZE 120
 
-static FILE *fh = NULL;
+static FILE *fh          = NULL;
 static int logging_level = DEBUG;
 
-void sol_log_init(const char *file, int level) {
-    if (!file) return;
-    fh = fopen(file, "a+");
+void sol_log_init(const char *file, int level)
+{
+    if (!file)
+        return;
+    fh            = fopen(file, "a+");
     logging_level = level;
     if (!fh)
         printf("%lu * WARNING: Unable to open file %s\n",
-               (unsigned long) time(NULL), file);
+               (unsigned long)time(NULL), file);
 }
 
-void sol_log_close(void) {
+void sol_log_close(void)
+{
     if (fh) {
         fflush(fh);
         fclose(fh);
     }
 }
 
-void sol_log(int level, const char *fmt, ...) {
+void sol_log(int level, const char *fmt, ...)
+{
 
     if (level < logging_level)
         return;
@@ -73,12 +77,12 @@ void sol_log(int level, const char *fmt, ...) {
 
     // Open two handler, one for standard output and a second for the
     // persistent log file
-    FILE *fp = stdout;
+    FILE *fp              = stdout;
 
     if (!fp)
         return;
 
-    fprintf(fp, "%lu %s\n", (unsigned long) time(NULL), msg);
+    fprintf(fp, "%lu %s\n", (unsigned long)time(NULL), msg);
     if (fh)
-        fprintf(fh, "%lu %s\n", (unsigned long) time(NULL), msg);
+        fprintf(fh, "%lu %s\n", (unsigned long)time(NULL), msg);
 }

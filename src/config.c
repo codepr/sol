@@ -25,18 +25,18 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <ctype.h>
 #include <assert.h>
+#include <ctype.h>
 #ifdef __linux__
 #include <sys/eventfd.h>
 #else
 #include <unistd.h>
 #endif
-#include "util.h"
-#include "memory.h"
 #include "config.h"
-#include "network.h"
 #include "logging.h"
+#include "memory.h"
+#include "network.h"
+#include "util.h"
 
 /* The main configuration structure */
 static struct config config;
@@ -47,27 +47,30 @@ struct llevel {
     int loglevel;
 };
 
-static const struct llevel lmap[5] = {
-    {"DEBUG", DEBUG},
-    {"WARNING", WARNING},
-    {"ERROR", ERROR},
-    {"INFO", INFORMATION},
-    {"INFORMATION", INFORMATION}
-};
+static const struct llevel lmap[5] = {{"DEBUG", DEBUG},
+                                      {"WARNING", WARNING},
+                                      {"ERROR", ERROR},
+                                      {"INFO", INFORMATION},
+                                      {"INFORMATION", INFORMATION}};
 
-static inline void strip_spaces(char **str) {
-    if (!*str) return;
-    while (isspace(**str) && **str) ++(*str);
+static inline void strip_spaces(char **str)
+{
+    if (!*str)
+        return;
+    while (isspace(**str) && **str)
+        ++(*str);
 }
 
-static size_t read_memory_with_mul(const char *memory_string) {
+static size_t read_memory_with_mul(const char *memory_string)
+{
 
     /* Extract digit part */
     size_t num = parse_int(memory_string);
-    int mul = 1;
+    int mul    = 1;
 
     /* Move the pointer forward till the first non-digit char */
-    while (isdigit(*memory_string)) memory_string++;
+    while (isdigit(*memory_string))
+        memory_string++;
 
     /* Set multiplier */
     if (STREQ(memory_string, "kb", 2))
@@ -80,26 +83,28 @@ static size_t read_memory_with_mul(const char *memory_string) {
     return num * mul;
 }
 
-static size_t read_time_with_mul(const char *time_string) {
+static size_t read_time_with_mul(const char *time_string)
+{
 
     /* Extract digit part */
     size_t num = parse_int(time_string);
-    int mul = 1;
+    int mul    = 1;
 
     /* Move the pointer forward till the first non-digit char */
-    while (isdigit(*time_string)) time_string++;
+    while (isdigit(*time_string))
+        time_string++;
 
     /* Set multiplier */
     switch (*time_string) {
-        case 'm':
-            mul = 60;
-            break;
-        case 'd':
-            mul = 60 * 60 * 24;
-            break;
-        default:
-            mul = 1;
-            break;
+    case 'm':
+        mul = 60;
+        break;
+    case 'd':
+        mul = 60 * 60 * 24;
+        break;
+    default:
+        mul = 1;
+        break;
     }
 
     return num * mul;
@@ -107,36 +112,37 @@ static size_t read_time_with_mul(const char *time_string) {
 
 /* Format a memory in bytes to a more human-readable form, e.g. 64b or 18Kb
  * instead of huge numbers like 130230234 bytes */
-char *memory_to_string(size_t memory) {
+char *memory_to_string(size_t memory)
+{
 
-    int numlen = 0;
+    int numlen            = 0;
     int translated_memory = 0;
 
-    char *mstring = NULL;
+    char *mstring         = NULL;
 
     if (memory < 1024) {
         translated_memory = memory;
-        numlen = number_len(translated_memory);
+        numlen            = number_len(translated_memory);
         // +1 for 'b' +1 for nul terminating
-        mstring = try_alloc(numlen + 1);
+        mstring           = try_alloc(numlen + 1);
         snprintf(mstring, numlen + 1, "%db", translated_memory);
     } else if (memory < 1048576) {
         translated_memory = memory / 1024;
-        numlen = number_len(translated_memory);
+        numlen            = number_len(translated_memory);
         // +2 for 'Kb' +1 for nul terminating
-        mstring = try_alloc(numlen + 2);
+        mstring           = try_alloc(numlen + 2);
         snprintf(mstring, numlen + 2, "%dKb", translated_memory);
     } else if (memory < 1073741824) {
         translated_memory = memory / (1024 * 1024);
-        numlen = number_len(translated_memory);
+        numlen            = number_len(translated_memory);
         // +2 for 'Mb' +1 for nul terminating
-        mstring = try_alloc(numlen + 2);
+        mstring           = try_alloc(numlen + 2);
         snprintf(mstring, numlen + 2, "%dMb", translated_memory);
     } else {
         translated_memory = memory / (1024 * 1024 * 1024);
-        numlen = number_len(translated_memory);
+        numlen            = number_len(translated_memory);
         // +2 for 'Gb' +1 for nul terminating
-        mstring = try_alloc(numlen + 2);
+        mstring           = try_alloc(numlen + 2);
         snprintf(mstring, numlen + 2, "%dGb", translated_memory);
     }
 
@@ -145,43 +151,45 @@ char *memory_to_string(size_t memory) {
 
 /* Purely utility function, format a time in seconds to a more human-readable
  * form, e.g. 2m or 4h instead of huge numbers */
-char *time_to_string(size_t time) {
+char *time_to_string(size_t time)
+{
 
-    int numlen = 0;
+    int numlen          = 0;
     int translated_time = 0;
 
-    char *tstring = NULL;
+    char *tstring       = NULL;
 
     if (time < 60) {
         translated_time = time;
-        numlen = number_len(translated_time);
+        numlen          = number_len(translated_time);
         // +1 for 's' +1 for nul terminating
-        tstring = try_alloc(numlen + 1);
+        tstring         = try_alloc(numlen + 1);
         snprintf(tstring, numlen + 1, "%ds", translated_time);
     } else if (time < 60 * 60) {
         translated_time = time / 60;
-        numlen = number_len(translated_time);
+        numlen          = number_len(translated_time);
         // +1 for 'm' +1 for nul terminating
-        tstring = try_alloc(numlen + 1);
+        tstring         = try_alloc(numlen + 1);
         snprintf(tstring, numlen + 1, "%dm", translated_time);
     } else if (time < 60 * 60 * 24) {
         translated_time = time / (60 * 60);
-        numlen = number_len(translated_time);
+        numlen          = number_len(translated_time);
         // +1 for 'h' +1 for nul terminating
-        tstring = try_alloc(numlen + 1);
+        tstring         = try_alloc(numlen + 1);
         snprintf(tstring, numlen + 1, "%dh", translated_time);
     } else {
         translated_time = time / (60 * 60 * 24);
-        numlen = number_len(translated_time);
+        numlen          = number_len(translated_time);
         // +1 for 'd' +1 for nul terminating
-        tstring = try_alloc(numlen + 1);
+        tstring         = try_alloc(numlen + 1);
         snprintf(tstring, numlen + 1, "%dd", translated_time);
     }
 
     return tstring;
 }
 
-static int parse_config_tls_protocols(char *token) {
+static int parse_config_tls_protocols(char *token)
+{
     int protocols = 0;
     if (STREQ(token, "tlsv1_1", 7) == true)
         protocols |= SOL_TLSv1_1;
@@ -196,7 +204,8 @@ static int parse_config_tls_protocols(char *token) {
 
 /* Set configuration values based on what is read from the persistent
    configuration on disk */
-static void add_config_value(const char *key, const char *value) {
+static void add_config_value(const char *key, const char *value)
+{
 
     size_t klen = strlen(key);
     size_t vlen = strlen(value);
@@ -221,7 +230,7 @@ static void add_config_value(const char *key, const char *value) {
     } else if (STREQ("max_request_size", key, klen) == true) {
         config.max_request_size = read_memory_with_mul(value);
     } else if (STREQ("tcp_backlog", key, klen) == true) {
-        int tcp_backlog = parse_int(value);
+        int tcp_backlog    = parse_int(value);
         config.tcp_backlog = tcp_backlog <= SOMAXCONN ? tcp_backlog : SOMAXCONN;
     } else if (STREQ("stats_publish_interval", key, klen) == true) {
         config.stats_pub_interval = read_time_with_mul(value);
@@ -236,33 +245,41 @@ static void add_config_value(const char *key, const char *value) {
         strcpy(config.keyfile, value);
     } else if (STREQ("allow_anonymous", key, klen) == true) {
         // TODO add strict checks
-        if (STREQ(value, "false", 5) == true) config.allow_anonymous = false;
-        else config.allow_anonymous = true;
+        if (STREQ(value, "false", 5) == true)
+            config.allow_anonymous = false;
+        else
+            config.allow_anonymous = true;
     } else if (STREQ("password_file", key, klen) == true) {
         strcpy(config.password_file, value);
     } else if (STREQ("tls_protocols", key, klen) == true) {
-        if (vlen == 0) return;
+        if (vlen == 0)
+            return;
         config.tls_protocols = 0;
-        char *token = strtok((char *) value, ",");
+        char *token          = strtok((char *)value, ",");
         if (!token) {
-            config.tls_protocols = parse_config_tls_protocols((char *) value);
+            config.tls_protocols = parse_config_tls_protocols((char *)value);
         } else {
             while (token) {
-                config.tls_protocols |= parse_config_tls_protocols((char *) token);
+                config.tls_protocols |=
+                    parse_config_tls_protocols((char *)token);
                 token = strtok(NULL, ",");
             }
         }
     }
 }
 
-static inline void unpack_bytes(char **str, char *dest) {
+static inline void unpack_bytes(char **str, char *dest)
+{
 
-    if (!str || !dest) return;
+    if (!str || !dest)
+        return;
 
-    while (!isspace(**str) && **str) *dest++ = *(*str)++;
+    while (!isspace(**str) && **str)
+        *dest++ = *(*str)++;
 }
 
-int config_load(const char *configpath) {
+int config_load(const char *configpath)
+{
 
     assert(configpath);
 
@@ -286,13 +303,15 @@ int config_load(const char *configpath) {
         linenr++;
 
         // Skip comments or empty lines
-        if (line[0] == '#') continue;
+        if (line[0] == '#')
+            continue;
 
         // Remove whitespaces if any before the key
         pline = line;
         strip_spaces(&pline);
 
-        if (*pline == '\0') continue;
+        if (*pline == '\0')
+            continue;
 
         // Read key
         pkey = key;
@@ -304,7 +323,8 @@ int config_load(const char *configpath) {
         // Ignore eventually incomplete configuration, but notify it
         if (line[0] == '\0') {
             log_warning("WARNING: Incomplete configuration '%s' at line %d. "
-                        "Fallback to default.", key, linenr);
+                        "Fallback to default.",
+                        key, linenr);
             continue;
         }
 
@@ -320,15 +340,16 @@ int config_load(const char *configpath) {
     return true;
 }
 
-void config_set_default(void) {
+void config_set_default(void)
+{
 
     // Set the global pointer
-    conf = &config;
+    conf                 = &config;
 
     // Set default values
-    config.version = VERSION;
+    config.version       = VERSION;
     config.socket_family = DEFAULT_SOCKET_FAMILY;
-    config.loglevel = DEFAULT_LOG_LEVEL;
+    config.loglevel      = DEFAULT_LOG_LEVEL;
     memset(config.logpath, 0x00, 0xFFF);
     strcpy(config.hostname, DEFAULT_HOSTNAME);
     strcpy(config.port, DEFAULT_PORT);
@@ -337,19 +358,20 @@ void config_set_default(void) {
 #else
     pipe(config.run);
 #endif
-    config.max_memory = read_memory_with_mul(DEFAULT_MAX_MEMORY);
-    config.max_request_size = read_memory_with_mul(DEFAULT_MAX_REQUEST_SIZE);
-    config.tcp_backlog = SOMAXCONN;
+    config.max_memory         = read_memory_with_mul(DEFAULT_MAX_MEMORY);
+    config.max_request_size   = read_memory_with_mul(DEFAULT_MAX_REQUEST_SIZE);
+    config.tcp_backlog        = SOMAXCONN;
     config.stats_pub_interval = read_time_with_mul(DEFAULT_STATS_INTERVAL);
-    config.keepalive = read_time_with_mul(DEFAULT_KEEPALIVE);
-    config.tls = false;
-    config.tls_protocols = DEFAULT_TLS_PROTOCOLS;
-    config.allow_anonymous = true;
+    config.keepalive          = read_time_with_mul(DEFAULT_KEEPALIVE);
+    config.tls                = false;
+    config.tls_protocols      = DEFAULT_TLS_PROTOCOLS;
+    config.allow_anonymous    = true;
 }
 
-void config_print_tls_versions(void) {
+void config_print_tls_versions(void)
+{
     char protocols[64] = {0};
-    int pos = 0;
+    int pos            = 0;
     if (config.tls_protocols & SOL_TLSv1) {
         strncpy(protocols, "TLSv1, ", 64);
         pos += 7;
@@ -370,10 +392,11 @@ void config_print_tls_versions(void) {
     log_info("\tTLS: %s", protocols);
 }
 
-void config_print(void) {
+void config_print(void)
+{
     if (config.loglevel < WARNING) {
         const char *sfamily = config.socket_family == UNIX ? "UNIX" : "TCP";
-        const char *llevel = NULL;
+        const char *llevel  = NULL;
         for (int i = 0; i < 4; i++) {
             if (lmap[i].loglevel == config.loglevel)
                 llevel = lmap[i].lname;
@@ -388,7 +411,8 @@ void config_print(void) {
             log_info("\tPort: %s", config.port);
             log_info("\tTcp backlog: %d", config.tcp_backlog);
             log_info("\tKeepalive: %d", config.keepalive);
-            if (config.tls == true) config_print_tls_versions();
+            if (config.tls == true)
+                config_print_tls_versions();
             log_info("\tFile handles soft limit: %li", get_fh_soft_limit());
         }
         const char *human_rsize = memory_to_string(config.max_request_size);
@@ -400,12 +424,13 @@ void config_print(void) {
         const char *human_memory = memory_to_string(config.max_memory);
         log_info("Max memory: %s", human_memory);
         log_info("Event loop backend: %s", EVENTLOOP_BACKEND);
-        free_memory((char *) human_memory);
-        free_memory((char *) human_rsize);
+        free_memory((char *)human_memory);
+        free_memory((char *)human_rsize);
     }
 }
 
-bool config_read_passwd_file(const char *path, struct authentication **auth_map) {
+bool config_read_passwd_file(const char *path, struct authentication **auth_map)
+{
 
     assert(path);
 
@@ -427,9 +452,10 @@ bool config_read_passwd_file(const char *path, struct authentication **auth_map)
         linenr++;
 
         pline = line;
-        if (*pline == '\0') continue;
+        if (*pline == '\0')
+            continue;
 
-        int i = 0;
+        int i  = 0;
         puname = line;
         while (*puname != ':')
             username[i++] = *puname++;
@@ -439,8 +465,8 @@ bool config_read_passwd_file(const char *path, struct authentication **auth_map)
             password[i++] = *puname++;
 
         struct authentication *auth = try_alloc(sizeof(*auth));
-        auth->username = try_strdup(username);
-        auth->salt = try_strdup(password);
+        auth->username              = try_strdup(username);
+        auth->salt                  = try_strdup(password);
         HASH_ADD_STR(*auth_map, username, auth);
     }
 

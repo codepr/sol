@@ -34,14 +34,15 @@ void sol_log_init(const char *, int);
 void sol_log_close(void);
 void sol_log(int, const char *, ...);
 
-#define log(...) sol_log( __VA_ARGS__ )
-#define log_debug(...) log(DEBUG, __VA_ARGS__)
+#define log(...)         sol_log(__VA_ARGS__)
+#define log_debug(...)   log(DEBUG, __VA_ARGS__)
 #define log_warning(...) log(WARNING, __VA_ARGS__)
-#define log_error(...) log(ERROR, __VA_ARGS__)
-#define log_info(...) log(INFORMATION, __VA_ARGS__)
-#define log_fatal(...) do {      \
-    log(FATAL, __VA_ARGS__);     \
-    exit(EXIT_FAILURE);             \
-} while(0);
+#define log_error(...)   log(ERROR, __VA_ARGS__)
+#define log_info(...)    log(INFORMATION, __VA_ARGS__)
+#define log_fatal(...)                                                         \
+    do {                                                                       \
+        log(FATAL, __VA_ARGS__);                                               \
+        exit(EXIT_FAILURE);                                                    \
+    } while (0);
 
 #endif

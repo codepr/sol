@@ -29,28 +29,28 @@
 #define SERVER_H
 
 #include "mqtt.h"
+#include "network.h"
 #include "pack.h"
 #include "trie.h"
-#include "network.h"
 
 /*
  * Number of worker threads to be created. Each one will host his own ev_ctx
  * loop. This doesn't take into account the main thread, so to know the total
  * number of running loops +1 must be added to the THREADSNR value.
  */
-#define THREADSNR 2
+#define THREADSNR            2
 
 /*
  * Epoll default settings for concurrent events monitored and timeout, -1
  * means no timeout at all, blocking undefinitely
  */
-#define EVENTLOOP_MAX_EVENTS    1024
-#define EVENTLOOP_TIMEOUT       -1
+#define EVENTLOOP_MAX_EVENTS 1024
+#define EVENTLOOP_TIMEOUT    -1
 
 /* Initial memory allocation for clients on server start-up, it should be
  * equal to ~40 MB, read and write buffers are initialized lazily
  */
-#define BASE_CLIENTS_NUM  1024 * 128
+#define BASE_CLIENTS_NUM     1024 * 128
 
 /*
  * IO event strucuture, it's the main information that will be communicated
@@ -84,16 +84,17 @@ struct sol_info {
     atomic_size_t bytes_recv;
 };
 
-#define INIT_INFO do { \
-    info.active_connections = ATOMIC_VAR_INIT(0);   \
-    info.total_connections = ATOMIC_VAR_INIT(0);    \
-    info.messages_sent = ATOMIC_VAR_INIT(0);        \
-    info.messages_recv = ATOMIC_VAR_INIT(0);        \
-    info.start_time = ATOMIC_VAR_INIT(0);           \
-    info.uptime = ATOMIC_VAR_INIT(0);               \
-    info.bytes_sent = ATOMIC_VAR_INIT(0);           \
-    info.bytes_recv = ATOMIC_VAR_INIT(0);           \
-} while (0)
+#define INIT_INFO                                                              \
+    do {                                                                       \
+        info.active_connections = ATOMIC_VAR_INIT(0);                          \
+        info.total_connections  = ATOMIC_VAR_INIT(0);                          \
+        info.messages_sent      = ATOMIC_VAR_INIT(0);                          \
+        info.messages_recv      = ATOMIC_VAR_INIT(0);                          \
+        info.start_time         = ATOMIC_VAR_INIT(0);                          \
+        info.uptime             = ATOMIC_VAR_INIT(0);                          \
+        info.bytes_sent         = ATOMIC_VAR_INIT(0);                          \
+        info.bytes_recv         = ATOMIC_VAR_INIT(0);                          \
+    } while (0)
 
 /*
  * General informations of the broker, all fields will be published

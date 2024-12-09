@@ -15,30 +15,32 @@
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
- * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <stdlib.h>
-#include <string.h>
-#include "unit.h"
 #include "structures_test.h"
-#include "../src/util.h"
-#include "../src/trie.h"
+#include "../src/iterator.h"
 #include "../src/list.h"
 #include "../src/memory.h"
-#include "../src/iterator.h"
+#include "../src/trie.h"
+#include "../src/util.h"
+#include "unit.h"
+#include <stdlib.h>
+#include <string.h>
 
 /*
  * Tests the init feature of the list
  */
-static char *test_list_new(void) {
+static char *test_list_new(void)
+{
     List *l = list_new(NULL);
     ASSERT("list::list_new...FAIL", l != NULL);
     list_destroy(l, 0);
@@ -49,7 +51,8 @@ static char *test_list_new(void) {
 /*
  * Tests the free feature of the list
  */
-static char *test_list_destroy(void) {
+static char *test_list_destroy(void)
+{
     List *l = list_new(NULL);
     ASSERT("list::list_destroy...FAIL", l != NULL);
     list_destroy(l, 0);
@@ -60,7 +63,8 @@ static char *test_list_destroy(void) {
 /*
  * Tests the push feature of the list
  */
-static char *test_list_push(void) {
+static char *test_list_push(void)
+{
     List *l = list_new(NULL);
     char *x = "abc";
     list_push(l, x);
@@ -73,7 +77,8 @@ static char *test_list_push(void) {
 /*
  * Tests the push_back feature of the list
  */
-static char *test_list_push_back(void) {
+static char *test_list_push_back(void)
+{
     List *l = list_new(NULL);
     char *x = "abc";
     list_push_back(l, x);
@@ -83,10 +88,10 @@ static char *test_list_push_back(void) {
     return 0;
 }
 
+static int compare_str(const void *arg1, const void *arg2)
+{
 
-static int compare_str(const void *arg1, const void *arg2) {
-
-    const char *tn1 = ((struct list_node *) arg1)->data;
+    const char *tn1 = ((struct list_node *)arg1)->data;
     const char *tn2 = arg2;
 
     if (strcmp(tn1, tn2) == 0)
@@ -95,11 +100,11 @@ static int compare_str(const void *arg1, const void *arg2) {
     return -1;
 }
 
-
-static char *test_list_remove_node(void) {
-    List *l = list_new(NULL);
-    char *x = "abc";
-    l = list_push(l, x);
+static char *test_list_remove_node(void)
+{
+    List *l                = list_new(NULL);
+    char *x                = "abc";
+    l                      = list_push(l, x);
     struct list_node *node = list_remove_node(l, x, compare_str);
     ASSERT("list::list_remove_node...FAIL", strcmp(node->data, x) == 0);
     free_memory(node);
@@ -111,12 +116,14 @@ static char *test_list_remove_node(void) {
 /*
  * Tests the list iterator
  */
-static char *test_list_iterator(void) {
-    List *l = list_new(NULL);
-    char *x = "abc";
-    l = list_push(l, x);
+static char *test_list_iterator(void)
+{
+    List *l             = list_new(NULL);
+    char *x             = "abc";
+    l                   = list_push(l, x);
     struct iterator *it = iter_new(l, list_iter_next);
-    ASSERT("list::list_iterator::list_iter_next...FAIL", strcmp(it->ptr, x) == 0);
+    ASSERT("list::list_iterator::list_iter_next...FAIL",
+           strcmp(it->ptr, x) == 0);
     list_destroy(l, 0);
     iter_destroy(it);
     printf("list::list_iterator...OK\n");
@@ -126,7 +133,8 @@ static char *test_list_iterator(void) {
 /*
  * Tests the creation of a ringbuffer
  */
-static char *test_trie_new(void) {
+static char *test_trie_new(void)
+{
     struct Trie *trie = trie_new(NULL);
     ASSERT("trie::trie_new...FAIL", trie != NULL);
     trie_destroy(trie);
@@ -137,9 +145,10 @@ static char *test_trie_new(void) {
 /*
  * Tests the creation of a new node
  */
-static char *test_trie_create_node(void) {
+static char *test_trie_create_node(void)
+{
     struct trie_node *node = trie_create_node('a');
-    size_t size = 0;
+    size_t size            = 0;
     ASSERT("trie::trie_create_node...FAIL", node != NULL);
     trie_node_destroy(node, &size, NULL);
     printf("trie::trie_create_node...OK\n");
@@ -149,13 +158,14 @@ static char *test_trie_create_node(void) {
 /*
  * Tests the insertion on the trie
  */
-static char *test_trie_insert(void) {
+static char *test_trie_insert(void)
+{
     struct Trie *root = trie_new(NULL);
-    const char *key = "hello";
-    char *val = "world";
+    const char *key   = "hello";
+    char *val         = "world";
     trie_insert(root, key, try_strdup(val));
     void *payload = NULL;
-    bool found = trie_find(root, key, &payload);
+    bool found    = trie_find(root, key, &payload);
     ASSERT("trie::trie_insert...FAIL", (found == true && payload != NULL));
     trie_destroy(root);
     printf("trie::trie_insert...OK\n");
@@ -165,13 +175,14 @@ static char *test_trie_insert(void) {
 /*
  * Tests the search on the trie
  */
-static char *test_trie_find(void) {
+static char *test_trie_find(void)
+{
     struct Trie *root = trie_new(NULL);
-    const char *key = "hello";
-    char *val = "world";
+    const char *key   = "hello";
+    char *val         = "world";
     trie_insert(root, key, try_strdup(val));
     void *payload = NULL;
-    bool found = trie_find(root, key, &payload);
+    bool found    = trie_find(root, key, &payload);
     ASSERT("trie::trie_find...FAIL", (found == true && payload != NULL));
     trie_destroy(root);
     printf("trie::trie_find...OK\n");
@@ -181,14 +192,15 @@ static char *test_trie_find(void) {
 /*
  * Tests the delete on the trie
  */
-static char *test_trie_delete(void) {
+static char *test_trie_delete(void)
+{
     struct Trie *root = trie_new(NULL);
-    const char *key1 = "hello";
-    const char *key2 = "hel";
-    const char *key3 = "del";
-    char *val1 = "world";
-    char *val2 = "world";
-    char *val3 = "world";
+    const char *key1  = "hello";
+    const char *key2  = "hel";
+    const char *key3  = "del";
+    char *val1        = "world";
+    char *val2        = "world";
+    char *val3        = "world";
     trie_insert(root, key1, try_strdup(val1));
     trie_insert(root, key2, try_strdup(val2));
     trie_insert(root, key3, try_strdup(val3));
@@ -196,15 +208,12 @@ static char *test_trie_delete(void) {
     trie_delete(root, key2);
     trie_delete(root, key3);
     void *payload = NULL;
-    bool found = trie_find(root, key1, &payload);
-    ASSERT("trie::trie_delete...FAIL",
-           (found == false || payload == NULL));
+    bool found    = trie_find(root, key1, &payload);
+    ASSERT("trie::trie_delete...FAIL", (found == false || payload == NULL));
     found = trie_find(root, key2, &payload);
-    ASSERT("trie::trie_delete...FAIL",
-           (found == false || payload == NULL));
+    ASSERT("trie::trie_delete...FAIL", (found == false || payload == NULL));
     found = trie_find(root, key3, &payload);
-    ASSERT("trie::trie_delete...FAIL",
-           (found == false || payload == NULL));
+    ASSERT("trie::trie_delete...FAIL", (found == false || payload == NULL));
     trie_destroy(root);
     printf("trie::trie_delete...OK\n");
     return 0;
@@ -213,34 +222,35 @@ static char *test_trie_delete(void) {
 /*
  * Tests the prefix delete on the trie
  */
-static char *test_trie_prefix_delete(void) {
+static char *test_trie_prefix_delete(void)
+{
     struct Trie *root = trie_new(NULL);
-    const char *key1 = "hello";
-    const char *key2 = "helloworld";
-    const char *key3 = "hellot";
-    const char *key4 = "hel";
-    char *val1 = "world";
-    char *val2 = "world";
-    char *val3 = "world";
-    char *val4 = "world";
+    const char *key1  = "hello";
+    const char *key2  = "helloworld";
+    const char *key3  = "hellot";
+    const char *key4  = "hel";
+    char *val1        = "world";
+    char *val2        = "world";
+    char *val3        = "world";
+    char *val4        = "world";
     trie_insert(root, key1, try_strdup(val1));
     trie_insert(root, key2, try_strdup(val2));
     trie_insert(root, key3, try_strdup(val3));
     trie_insert(root, key4, try_strdup(val4));
     trie_prefix_delete(root, key1);
     void *payload = NULL;
-    bool found = trie_find(root, key1, &payload);
+    bool found    = trie_find(root, key1, &payload);
     ASSERT("trie::trie_prefix_delete...FAIL",
-            (found == false || payload == NULL));
+           (found == false || payload == NULL));
     found = trie_find(root, key2, &payload);
     ASSERT("trie::trie_prefix_delete...FAIL",
-            (found == false || payload == NULL));
+           (found == false || payload == NULL));
     found = trie_find(root, key3, &payload);
     ASSERT("trie::trie_prefix_delete...FAIL",
-            (found == false || payload == NULL));
+           (found == false || payload == NULL));
     found = trie_find(root, key4, &payload);
     ASSERT("trie::trie_prefix_delete...FAIL",
-            (found == true || payload != NULL));
+           (found == true || payload != NULL));
     trie_destroy(root);
     printf("trie::trie_prefix_delete...OK\n");
     return 0;
@@ -249,16 +259,17 @@ static char *test_trie_prefix_delete(void) {
 /*
  * Tests the prefix count on the trie
  */
-static char *test_trie_prefix_count(void) {
+static char *test_trie_prefix_count(void)
+{
     struct Trie *root = trie_new(NULL);
-    const char *key1 = "hello";
-    const char *key2 = "helloworld";
-    const char *key3 = "hellot";
-    const char *key4 = "hel";
-    char *val1 = "world";
-    char *val2 = "world";
-    char *val3 = "world";
-    char *val4 = "world";
+    const char *key1  = "hello";
+    const char *key2  = "helloworld";
+    const char *key3  = "hellot";
+    const char *key4  = "hel";
+    char *val1        = "world";
+    char *val2        = "world";
+    char *val3        = "world";
+    char *val4        = "world";
     trie_insert(root, key1, try_strdup(val1));
     trie_insert(root, key2, try_strdup(val2));
     trie_insert(root, key3, try_strdup(val3));
@@ -275,7 +286,8 @@ static char *test_trie_prefix_count(void) {
 /*
  * All datastructure tests
  */
-char *structures_test() {
+char *structures_test()
+{
 
     RUN_TEST(test_list_new);
     RUN_TEST(test_list_destroy);
