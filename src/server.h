@@ -29,9 +29,7 @@
 #define SERVER_H
 
 #include "mqtt.h"
-#include "network.h"
-#include "pack.h"
-#include "trie.h"
+#include <openssl/ssl.h>
 
 /*
  * Number of worker threads to be created. Each one will host his own ev_ctx

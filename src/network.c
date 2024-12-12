@@ -29,8 +29,6 @@
 #include "network.h"
 #include "config.h"
 #include "memory.h"
-#include "server.h"
-#include "util.h"
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/tcp.h>
@@ -294,7 +292,7 @@ err:
     return -1;
 }
 
-void openssl_init()
+void openssl_init(void)
 {
     SSL_library_init();
     ERR_load_crypto_strings();
@@ -302,9 +300,9 @@ void openssl_init()
     OpenSSL_add_ssl_algorithms();
 }
 
-void openssl_cleanup() { EVP_cleanup(); }
+void openssl_cleanup(void) { EVP_cleanup(); }
 
-SSL_CTX *create_ssl_context()
+SSL_CTX *create_ssl_context(void)
 {
 
     SSL_CTX *ctx;

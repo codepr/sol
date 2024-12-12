@@ -22,6 +22,12 @@ set(LICENSE "BSD2 license")
 add_executable(sol ${SOURCES})
 add_executable(sol_test ${TEST})
 
+if (APPLE)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -I/opt/homebrew/opt/openssl@3/include")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I/opt/homebrew/opt/openssl@3/include")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -L/opt/homebrew/opt/openssl@3/lib")
+endif (APPLE)
+
 if (DEBUG)
     message(STATUS "Configuring build for debug")
     TARGET_LINK_LIBRARIES(sol pthread ssl crypto crypt)
@@ -31,10 +37,16 @@ if (DEBUG)
     -fsanitize=undefined -fno-omit-frame-pointer -pg")
 else (DEBUG)
     message(STATUS "Configuring build for production")
+if (APPLE)
+    TARGET_LINK_LIBRARIES(sol pthread ssl crypto)
+    TARGET_LINK_LIBRARIES(sol_test pthread ssl crypto)
+else (APPLE)
     TARGET_LINK_LIBRARIES(sol pthread ssl crypto crypt)
     TARGET_LINK_LIBRARIES(sol_test pthread ssl crypto crypt)
+endif (APPLE)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wunused -Werror -pedantic \
     -Wno-unused-result -std=c11 -O3")
+
 endif (DEBUG)
 
 add_custom_command(

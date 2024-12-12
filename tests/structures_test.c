@@ -31,7 +31,6 @@
 #include "../src/list.h"
 #include "../src/memory.h"
 #include "../src/trie.h"
-#include "../src/util.h"
 #include "unit.h"
 #include <stdlib.h>
 #include <string.h>
@@ -286,7 +285,7 @@ static char *test_trie_prefix_count(void)
 /*
  * All datastructure tests
  */
-char *structures_test()
+char *structures_test(void)
 {
 
     RUN_TEST(test_list_new);

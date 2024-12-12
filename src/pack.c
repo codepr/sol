@@ -27,31 +27,9 @@
 
 #include "pack.h"
 #include "memory.h"
-#include "util.h"
 #include <ctype.h>
 #include <stdarg.h>
 #include <string.h>
-
-/* Host-to-network (native endian to big endian) */
-void htonll(u8 *block, u64 num)
-{
-    block[0] = num >> 56 & 0xFF;
-    block[1] = num >> 48 & 0xFF;
-    block[2] = num >> 40 & 0xFF;
-    block[3] = num >> 32 & 0xFF;
-    block[4] = num >> 24 & 0xFF;
-    block[5] = num >> 16 & 0xFF;
-    block[6] = num >> 8 & 0xFF;
-    block[7] = num >> 0 & 0xFF;
-}
-
-/* Network-to-host (big endian to native endian) */
-u64 ntohll(const u8 *block)
-{
-    return (u64)block[0] << 56 | (u64)block[1] << 48 | (u64)block[2] << 40 |
-           (u64)block[3] << 32 | (u64)block[4] << 24 | (u64)block[5] << 16 |
-           (u64)block[6] << 8 | (u64)block[7] << 0;
-}
 
 // Beej'us network guide functions
 

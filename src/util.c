@@ -26,11 +26,11 @@
  */
 
 #include "util.h"
-#include "config.h"
 #include "memory.h"
 #include "mqtt.h"
 #include <assert.h>
-#include <crypt.h>
+#include <string.h>
+// #include <crypt.h>
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdatomic.h>
@@ -38,6 +38,7 @@
 #include <sys/resource.h>
 #include <sys/time.h>
 #include <time.h>
+#include <unistd.h>
 
 #define SOL_PREFIX "sol"
 

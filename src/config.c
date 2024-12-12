@@ -442,14 +442,11 @@ bool config_read_passwd_file(const char *path, struct authentication **auth_map)
     }
 
     char line[0xFFF], username[0xFF], password[0xFFF];
-    int linenr = 0;
     char *pline, *puname;
 
     while (fgets(line, 0xFFF, fh) != NULL) {
         memset(username, 0x00, 0xFF);
         memset(password, 0x00, 0xFFF);
-
-        linenr++;
 
         pline = line;
         if (*pline == '\0')

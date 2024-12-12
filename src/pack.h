@@ -30,10 +30,6 @@
 
 #include "types.h"
 
-void htonll(u8 *, u64);
-
-u64 ntohll(const u8 *);
-
 /* Reading data on const u8 pointer */
 
 // bytes -> int16_t

@@ -28,6 +28,7 @@
 #define TYPES_H
 
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 // Unsigned integer types
