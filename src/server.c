@@ -313,16 +313,10 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data)
     time_t now            = time(NULL);
     struct mqtt_packet *p = NULL;
     struct client *c, *tmp;
-#if THREADSNR > 0
-    pthread_mutex_lock(&mutex);
-#endif
     HASH_ITER(hh, server.clients_map, c, tmp)
     {
         if (!c || !c->connected || !c->session || !has_inflight(c->session))
             continue;
-#if THREADSNR > 0
-        pthread_mutex_lock(&c->mutex);
-#endif
         for (int i = 1; i < MAX_INFLIGHT_MSGS; ++i) {
             // TODO remove 20 hardcoded value
             // Messages
@@ -358,13 +352,7 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data)
                 info.messages_sent++;
             }
         }
-#if THREADSNR > 0
-        pthread_mutex_unlock(&c->mutex);
-#endif
     }
-#if THREADSNR > 0
-    pthread_mutex_unlock(&mutex);
-#endif
 }
 
 /*
@@ -374,9 +362,9 @@ static void inflight_msg_check(struct ev_ctx *ctx, void *data)
  */
 
 /*
- * All clients are pre-allocated at the start of the server, but their buffers
- * (read and write) are not, they're lazily allocated with this function, meant
- * to be called on the accept callback
+ * All clients are pre-allocated at the start of the server, but their
+ * buffers (read and write) are not, they're lazily allocated with this
+ * function, meant to be called on the accept callback
  */
 static void client_init(struct client *client)
 {
@@ -405,16 +393,13 @@ static void client_init(struct client *client)
 
 /*
  * As we really don't want to completely de-allocate a client in favor of
- * making it reusable by another connection we simply deactivate it according
- * to its state (e.g. if it's a clean_session connected client or not) and we
- * allow the clients memory pool to reclaim it
+ * making it reusable by another connection we simply deactivate it
+ * according to its state (e.g. if it's a clean_session connected client or
+ * not) and we allow the clients memory pool to reclaim it
  */
 static void client_deactivate(struct client *client)
 {
 
-#if THREADSNR > 0
-    pthread_mutex_lock(&client->mutex);
-#endif
     if (client->online == false)
         return;
 
@@ -424,9 +409,6 @@ static void client_deactivate(struct client *client)
 
     client->online = false;
 
-#if THREADSNR > 0
-    pthread_mutex_lock(&mutex);
-#endif
     if (client->clean_session == true) {
         if (client->session) {
             topic_store_remove_wildcard(server.store, client->client_id);
@@ -441,15 +423,8 @@ static void client_deactivate(struct client *client)
             HASH_DEL(server.clients_map, client);
         memorypool_free(server.pool, client);
     }
-#if THREADSNR > 0
-    pthread_mutex_unlock(&mutex);
-#endif
     client->connected    = false;
     client->client_id[0] = '\0';
-#if THREADSNR > 0
-    pthread_mutex_unlock(&client->mutex);
-    pthread_mutex_destroy(&client->mutex);
-#endif
 }
 
 /*
@@ -462,8 +437,8 @@ static void client_deactivate(struct client *client)
  * final parsed packet.
  *
  * - c: A struct client pointer, contains the FD of the requesting client
- *      as well as his SSL context in case of TLS communication. Also it store
- *      the reading buffer to be used for incoming byte-streams, tracking
+ *      as well as his SSL context in case of TLS communication. Also it
+ * store the reading buffer to be used for incoming byte-streams, tracking
  *      read, to be read and reading position taking into account the bytes
  *      required to encode the packet length.
  */
@@ -478,8 +453,8 @@ static ssize_t recv_packet(struct client *c)
     if (c->status == WAITING_HEADER) {
 
         /*
-         * Read the first two bytes, the first should contain the message type
-         * code
+         * Read the first two bytes, the first should contain the message
+         * type code
          */
         nread = recv_data(&c->conn, c->rbuf + c->read, 2 - c->read);
 
@@ -495,10 +470,11 @@ static ssize_t recv_packet(struct client *c)
     }
 
     /*
-     * We have already read the packet HEADER, thus we know what packet we're
-     * dealing with, we're between bytes 2-4, as after the 1st byte, the
-     * remaining 3 can be all used to store the packet length, or, in case of
-     * ACK type packet or PINGREQ/PINGRESP and DISCONNECT, the entire packet
+     * We have already read the packet HEADER, thus we know what packet
+     * we're dealing with, we're between bytes 2-4, as after the 1st byte,
+     * the remaining 3 can be all used to store the packet length, or, in
+     * case of ACK type packet or PINGREQ/PINGRESP and DISCONNECT, the
+     * entire packet
      */
     if (c->status == WAITING_LENGTH) {
 
@@ -538,9 +514,9 @@ static ssize_t recv_packet(struct client *c)
             return -ERREAGAIN;
 
         /*
-         * Read remaining length bytes which starts at byte 2 and can be long to
-         * 4 bytes based on the size stored, so byte 2-5 is dedicated to the
-         * packet length.
+         * Read remaining length bytes which starts at byte 2 and can be
+         * long to 4 bytes based on the size stored, so byte 2-5 is
+         * dedicated to the packet length.
          */
         pktlen = mqtt_decode_length(c->rbuf + 1, &pos);
 
@@ -569,8 +545,8 @@ static ssize_t recv_packet(struct client *c)
     }
 
     /*
-     * Last status, we have access to the length of the packet and we know for
-     * sure that it's not a PINGREQ/PINGRESP/DISCONNECT packet.
+     * Last status, we have access to the length of the packet and we know
+     * for sure that it's not a PINGREQ/PINGRESP/DISCONNECT packet.
      */
     nread = recv_data(&c->conn, c->rbuf + c->read, c->toread - c->read);
 
@@ -587,29 +563,29 @@ exit:
 }
 
 /*
- * Handle incoming requests, after being accepted or after a reply, under the
- * hood it calls recv_packet and return an error code according to the outcome
- * of the operation
+ * Handle incoming requests, after being accepted or after a reply, under
+ * the hood it calls recv_packet and return an error code according to the
+ * outcome of the operation
  */
 static inline int read_data(struct client *c)
 {
 
     /*
-     * We must read all incoming bytes till an entire packet is received. This
-     * is achieved by following the MQTT protocol specifications, which
-     * send the size of the remaining packet as the second byte. By knowing it
-     * we know if the packet is ready to be deserialized and used.
+     * We must read all incoming bytes till an entire packet is received.
+     * This is achieved by following the MQTT protocol specifications, which
+     * send the size of the remaining packet as the second byte. By knowing
+     * it we know if the packet is ready to be deserialized and used.
      */
     int err = recv_packet(c);
 
     /*
      * Looks like we got a client disconnection or If a not correct packet
-     * received, we must free the buffer and reset the handler to the request
-     * again, setting EPOLL to EPOLLIN
+     * received, we must free the buffer and reset the handler to the
+     * request again, setting EPOLL to EPOLLIN
      *
-     * TODO: Set a error_handler for ERRMAXREQSIZE instead of dropping client
-     *       connection, explicitly returning an informative error code to the
-     *       client connected.
+     * TODO: Set a error_handler for ERRMAXREQSIZE instead of dropping
+     * client connection, explicitly returning an informative error code to
+     * the client connected.
      */
     if (err < 0)
         goto err;
@@ -629,20 +605,17 @@ err:
 }
 
 /*
- * Write stream of bytes to a client represented by a connection object, till
- * all bytes to be written is exhausted, tracked by towrite field or if an
- * EAGAIN (socket descriptor must be in non-blocking mode) error is raised,
- * meaning we cannot write anymore for the current cycle.
+ * Write stream of bytes to a client represented by a connection object,
+ * till all bytes to be written is exhausted, tracked by towrite field or if
+ * an EAGAIN (socket descriptor must be in non-blocking mode) error is
+ * raised, meaning we cannot write anymore for the current cycle.
  */
 static inline int write_data(struct client *c)
 {
-#if THREADSNR > 0
-    pthread_mutex_lock(&c->mutex);
-#endif
     ssize_t wrote =
         send_data(&c->conn, c->wbuf + c->wrote, c->towrite - c->wrote);
     if (errno != EAGAIN && errno != EWOULDBLOCK && wrote < 0)
-        goto clientdc;
+        goto e_client_dc;
     c->wrote += wrote > 0 ? wrote : 0;
     if (c->wrote < c->towrite && errno == EAGAIN)
         goto eagain;
@@ -650,21 +623,12 @@ static inline int write_data(struct client *c)
     info.bytes_sent += c->towrite;
     // Reset client written bytes track fields
     c->towrite = c->wrote = 0;
-#if THREADSNR > 0
-    pthread_mutex_unlock(&c->mutex);
-#endif
     return SOL_OK;
 
-clientdc:
-#if THREADSNR > 0
-    pthread_mutex_unlock(&c->mutex);
-#endif
+e_client_dc:
     return -ERRSOCKETERR;
 
 eagain:
-#if THREADSNR > 0
-    pthread_mutex_unlock(&c->mutex);
-#endif
     return -ERREAGAIN;
 }
 
@@ -675,9 +639,9 @@ eagain:
  */
 
 /*
- * Callback dedicated to client replies, try to send as much data as possible
- * epmtying the client buffer and rearming the socket descriptor for reading
- * after
+ * Callback dedicated to client replies, try to send as much data as
+ * possible epmtying the client buffer and rearming the socket descriptor
+ * for reading after
  */
 static void write_callback(struct ev_ctx *ctx, void *arg)
 {
@@ -743,14 +707,8 @@ static void accept_callback(struct ev_ctx *ctx, void *data)
          * Create a client structure to handle his context
          * connection
          */
-#if THREADSNR > 0
-        pthread_mutex_lock(&mutex);
-#endif
         struct client *c = memorypool_alloc(server.pool);
-#if THREADSNR > 0
-        pthread_mutex_unlock(&mutex);
-#endif
-        c->conn = conn;
+        c->conn          = conn;
         client_init(c);
         c->ctx = ctx;
 
@@ -767,8 +725,8 @@ static void accept_callback(struct ev_ctx *ctx, void *data)
 
 /*
  * Reading packet callback, it's the main function that will be called every
- * time a connected client has some data to be read, notified by the eventloop
- * context.
+ * time a connected client has some data to be read, notified by the
+ * eventloop context.
  */
 static void read_callback(struct ev_ctx *ctx, void *data)
 {
@@ -806,9 +764,6 @@ static void read_callback(struct ev_ctx *ctx, void *data)
          */
         log_error("Closing connection with %s (%s): %s", c->client_id,
                   c->conn.ip, solerr(rc));
-#if THREADSNR > 0
-        pthread_mutex_lock(&mutex);
-#endif
         // Publish, if present, LWT message
         if (c->has_lwt == true) {
             char *tname     = (char *)c->session->lwt_msg.publish.topic;
@@ -827,9 +782,6 @@ static void read_callback(struct ev_ctx *ctx, void *data)
                 topic_del_subscriber(item->data, c);
             }
         }
-#if THREADSNR > 0
-        pthread_mutex_unlock(&mutex);
-#endif
         client_deactivate(c);
         info.active_connections--;
         info.total_connections--;
@@ -847,13 +799,13 @@ static void read_callback(struct ev_ctx *ctx, void *data)
 }
 
 /*
- * This function is called only if the client has sent a full stream of bytes
- * consisting of a complete packet as expected by the MQTT protocol and by the
- * declared length of the packet.
- * It uses eventloop APIs to react accordingly to the packet type received,
- * validating it before proceed to call handlers. Depending on the handler
- * called and its outcome, it'll enqueue an event to write a reply or just
- * reset the client state to allow reading some more packets.
+ * This function is called only if the client has sent a full stream of
+ * bytes consisting of a complete packet as expected by the MQTT protocol
+ * and by the declared length of the packet. It uses eventloop APIs to react
+ * accordingly to the packet type received, validating it before proceed to
+ * call handlers. Depending on the handler called and its outcome, it'll
+ * enqueue an event to write a reply or just reset the client state to allow
+ * reading some more packets.
  */
 static void process_message(struct ev_ctx *ctx, struct client *c)
 {
@@ -898,8 +850,8 @@ static void process_message(struct ev_ctx *ctx, struct client *c)
 }
 
 /*
- * Eventloop stop callback, will be triggered by an EV_CLOSEFD event and stop
- * the running loop, unblocking the call.
+ * Eventloop stop callback, will be triggered by an EV_CLOSEFD event and
+ * stop the running loop, unblocking the call.
  */
 static void stop_handler(struct ev_ctx *ctx, void *arg)
 {
@@ -937,7 +889,8 @@ static void eventloop_start(void *args)
         ev_register_cron(&ctx, inflight_msg_check, NULL, 1, 0);
     }
     // Start the loop, blocking call
-    ev_run(&ctx);
+    if (ev_run(&ctx) < 0)
+        log_error("Event loop: %s", strerror(errno));
     ev_destroy(&ctx);
 }
 
@@ -959,9 +912,9 @@ void enqueue_event_write(const struct client *c)
 
 /*
  * Main entry point for the server, to be called with an address and a port
- * to start listening. The function may fail only in the case of Out of memory
- * error occurs or listen call fails, on the other cases it should just log
- * unexpected errors.
+ * to start listening. The function may fail only in the case of Out of
+ * memory error occurs or listen call fails, on the other cases it should
+ * just log unexpected errors.
  */
 int start_server(const char *addr, const char *port)
 {
@@ -1007,21 +960,9 @@ int start_server(const char *addr, const char *port)
 
     struct listen_payload loop_start = {sfd, ATOMIC_VAR_INIT(false)};
 
-#if THREADSNR > 0
-    pthread_t thrs[THREADSNR];
-    for (int i = 0; i < THREADSNR; ++i) {
-        pthread_create(&thrs[i], NULL, (void *(*)(void *)) & eventloop_start,
-                       &loop_start);
-    }
-#endif
-    loop_start.cronjobs = true;
+    loop_start.cronjobs              = true;
     // start eventloop, could be spread on multiple threads
     eventloop_start(&loop_start);
-
-#if THREADSNR > 0
-    for (int i = 0; i < THREADSNR; ++i)
-        pthread_join(thrs[i], NULL);
-#endif
 
     close(sfd);
     AUTH_DESTROY(server.auths);

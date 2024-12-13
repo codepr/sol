@@ -29,10 +29,8 @@
 #include "list.h"
 #include "mqtt.h"
 #include "network.h"
-#include "pack.h"
 #include "trie.h"
 #include "uthash.h"
-#include "util.h"
 #include <stdatomic.h>
 #include <time.h>
 

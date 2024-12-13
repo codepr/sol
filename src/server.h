@@ -32,13 +32,6 @@
 #include <openssl/ssl.h>
 
 /*
- * Number of worker threads to be created. Each one will host his own ev_ctx
- * loop. This doesn't take into account the main thread, so to know the total
- * number of running loops +1 must be added to the THREADSNR value.
- */
-#define THREADSNR            2
-
-/*
  * Epoll default settings for concurrent events monitored and timeout, -1
  * means no timeout at all, blocking undefinitely
  */

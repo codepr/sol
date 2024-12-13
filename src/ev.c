@@ -38,7 +38,6 @@
 #include "config.h"
 #include "ev.h"
 #include "memory.h"
-#include "util.h"
 
 #if defined(EPOLL)
 
@@ -540,11 +539,9 @@ static int ev_api_get_event_type(struct ev_ctx *ctx, int idx)
 static int ev_api_poll(struct ev_ctx *ctx, time_t timeout)
 {
     struct kqueue_api *k_api = ctx->api;
-    struct timespec ts_timeout;
-    ts_timeout.tv_sec  = timeout;
-    ts_timeout.tv_nsec = 0;
-    int err =
-        kevent(k_api->fd, NULL, 0, k_api->events, ctx->maxevents, &ts_timeout);
+    const struct timespec ts = {.tv_sec  = timeout < 0 ? 0 : timeout,
+                                .tv_nsec = 0};
+    int err = kevent(k_api->fd, NULL, 0, k_api->events, ctx->maxevents, &ts);
     if (err < 0)
         return -EV_ERR;
     return err;
@@ -750,9 +747,6 @@ int ev_run(struct ev_ctx *ctx)
          */
         n = ev_poll(ctx, -1);
         if (n < 0) {
-            /* Signals to all threads. Ignore it for now */
-            if (errno == EINTR)
-                continue;
             /* Error occured, break the loop */
             break;
         }

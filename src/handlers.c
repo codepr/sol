@@ -32,6 +32,7 @@
 #include "mqtt.h"
 #include "server.h"
 #include "sol_internal.h"
+#include "util.h"
 #include <stdio.h>
 
 /* Prototype for a command handler */
@@ -148,10 +149,7 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t)
     size_t len            = 0;
     unsigned short mid    = 0;
     unsigned char qos     = pkt->header.bits.qos;
-#if THREADSNR > 0
-    pthread_mutex_lock(&mutex);
-#endif
-    int count = HASH_COUNT(t->subscribers);
+    int count             = HASH_COUNT(t->subscribers);
 
     if (count == 0) {
         INCREF(pkt, struct mqtt_packet);
@@ -205,9 +203,6 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t)
                 }
                 continue;
             }
-#if THREADSNR > 0
-            pthread_mutex_lock(&sc->mutex);
-#endif
             /*
              * The subscriber client is marked as online, so we proceed to
              * set the inflight messages according to the QoS level required
@@ -216,19 +211,10 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t)
             inflight_msg_init(&sc->session->i_msgs[mid], pkt);
             sc->session->i_acks[mid] = time(NULL);
             ++sc->session->inflights;
-#if THREADSNR > 0
-            pthread_mutex_unlock(&sc->mutex);
-#endif
             all_at_most_once = false;
         }
-#if THREADSNR > 0
-        pthread_mutex_lock(&sc->mutex);
-#endif
         mqtt_pack(pkt, sc->wbuf + sc->towrite);
         sc->towrite += len;
-#if THREADSNR > 0
-        pthread_mutex_unlock(&sc->mutex);
-#endif
 
         // Schedule a write for the current subscriber on the next event cycle
         enqueue_event_write(sc);
@@ -248,9 +234,6 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t)
 
 exit:
 
-#if THREADSNR > 0
-    pthread_mutex_unlock(&mutex);
-#endif
     return count;
 }
 
@@ -356,7 +339,7 @@ static int connect_handler(struct io_event *e)
          */
         log_info("Received double CONNECT from %s, disconnecting client",
                  c->payload.client_id);
-        goto clientdc;
+        goto e_client_dc;
     }
 
     /*
@@ -365,12 +348,12 @@ static int connect_handler(struct io_event *e)
      */
     if (conf->allow_anonymous == false) {
         if (c->bits.username == 0 || c->bits.password == 0)
-            goto bad_auth;
+            goto e_bad_auth;
         else {
             struct authentication *auth = NULL;
             HASH_FIND_STR(server.auths, (char *)c->payload.username, auth);
             if (!auth || !check_passwd((char *)c->payload.password, auth->salt))
-                goto bad_auth;
+                goto e_bad_auth;
         }
     }
 
@@ -379,7 +362,7 @@ static int connect_handler(struct io_event *e)
      * know who you are
      */
     if (!c->payload.client_id[0] && c->bits.clean_session == false)
-        goto not_authorized;
+        goto e_not_authorized;
 
     /*
      * Check for client ID, if not present generate a random ID, otherwise add
@@ -393,9 +376,6 @@ static int connect_handler(struct io_event *e)
      */
     snprintf(cc->client_id, MQTT_CLIENT_ID_LEN, "%s", c->payload.client_id);
 
-#if THREADSNR > 0
-    pthread_mutex_lock(&mutex);
-#endif
     // First we check if a session is present
     HASH_FIND_STR(server.sessions, cc->client_id, cc->session);
     if (cc->session && c->bits.clean_session == true)
@@ -423,9 +403,6 @@ static int connect_handler(struct io_event *e)
 
     // Let's track client on the global map to be used on publish
     HASH_ADD_STR(server.clients_map, client_id, cc);
-#if THREADSNR > 0
-    pthread_mutex_unlock(&mutex);
-#endif
 
     // Add LWT topic and message if present
     if (c->bits.will) {
@@ -475,18 +452,18 @@ static int connect_handler(struct io_event *e)
 
     return REPLY;
 
-clientdc:
+e_client_dc:
 
     return -ERRCLIENTDC;
 
-bad_auth:
+e_bad_auth:
     log_debug("Sending CONNACK to %s (%u, %u)", cc->client_id, session_present,
               MQTT_BAD_USERNAME_OR_PASSWORD);
     set_connack(cc, MQTT_BAD_USERNAME_OR_PASSWORD, session_present);
 
     return MQTT_BAD_USERNAME_OR_PASSWORD;
 
-not_authorized:
+e_not_authorized:
     log_debug("Sending CONNACK to %s (%u, %u)", cc->client_id, session_present,
               MQTT_NOT_AUTHORIZED);
     set_connack(cc, MQTT_NOT_AUTHORIZED, session_present);
@@ -576,10 +553,6 @@ static int subscribe_handler(struct io_event *e)
          *    multilevel wildcard '#'
          * 2. A topic contaning one or more single level wildcard '+'
          */
-#if THREADSNR > 0
-        pthread_mutex_lock(&c->mutex);
-        pthread_mutex_lock(&mutex);
-#endif
         if (!index(topic, '+')) {
             struct subscriber *tmp;
             HASH_FIND_STR(t->subscribers, c->client_id, tmp);
@@ -606,9 +579,6 @@ static int subscribe_handler(struct io_event *e)
                 subscriber_new(e->client->session, s->tuples[i].qos);
             add_wildcard(topic, sub, wildcard);
         }
-#if THREADSNR > 0
-        pthread_mutex_unlock(&mutex);
-#endif
 
         // Retained message? Publish it
         // TODO move after SUBACK response
@@ -617,24 +587,15 @@ static int subscribe_handler(struct io_event *e)
             memcpy(c->wbuf + c->towrite, t->retained_msg, len);
             c->towrite += len;
         }
-#if THREADSNR > 0
-        pthread_mutex_unlock(&c->mutex);
-#endif
         rcs[i] = s->tuples[i].qos;
     }
 
     struct mqtt_packet pkt = {.header = (union mqtt_header){.byte = SUBACK_B}};
     mqtt_suback(&pkt, s->pkt_id, rcs, s->tuples_len);
 
-#if THREADSNR > 0
-    pthread_mutex_lock(&c->mutex);
-#endif
     size_t len = mqtt_size(&pkt, NULL);
     mqtt_pack(&pkt, c->wbuf + c->towrite);
     c->towrite += len;
-#if THREADSNR > 0
-    pthread_mutex_unlock(&c->mutex);
-#endif
 
     log_debug("Sending SUBACK to %s", c->client_id);
 
@@ -650,10 +611,6 @@ static int unsubscribe_handler(struct io_event *e)
 
     log_debug("Received UNSUBSCRIBE from %s", c->client_id);
 
-#if THREADSNR > 0
-    pthread_mutex_lock(&c->mutex);
-    pthread_mutex_lock(&mutex);
-#endif
     struct topic *t = NULL;
     for (int i = 0; i < e->data.unsubscribe.tuples_len; ++i) {
         t = topic_store_get(server.store,
@@ -661,15 +618,8 @@ static int unsubscribe_handler(struct io_event *e)
         if (t)
             topic_del_subscriber(t, c);
     }
-#if THREADSNR > 0
-    pthread_mutex_unlock(&mutex);
-#endif
-
     mqtt_pack_mono(c->wbuf + c->towrite, UNSUBACK, e->data.unsubscribe.pkt_id);
     c->towrite += MQTT_ACK_LEN;
-#if THREADSNR > 0
-    pthread_mutex_unlock(&c->mutex);
-#endif
 
     log_debug("Sending UNSUBACK to %s", c->client_id);
 
@@ -705,10 +655,6 @@ static int publish_handler(struct io_event *e)
     else
         snprintf(topic, p->topiclen + 1, "%s", (const char *)p->topic);
 
-#if THREADSNR > 0
-    pthread_mutex_lock(&c->mutex);
-    pthread_mutex_lock(&mutex);
-#endif
     /*
      * Retrieve the topic from the global map, if it wasn't created before,
      * create a new one with the name selected
@@ -735,10 +681,6 @@ static int publish_handler(struct io_event *e)
             }
         }
     }
-#if THREADSNR > 0
-    pthread_mutex_unlock(&mutex);
-#endif
-
     struct mqtt_packet *pkt = mqtt_packet_alloc(e->data.header.byte);
     // TODO must perform a deep copy here
     pkt->publish            = e->data.publish;
@@ -747,9 +689,6 @@ static int publish_handler(struct io_event *e)
         t->retained_msg = try_alloc(mqtt_size(&e->data, NULL));
         mqtt_pack(&e->data, t->retained_msg);
     }
-#if THREADSNR > 0
-    pthread_mutex_unlock(&c->mutex);
-#endif
 
     if (publish_message(pkt, t) == 0)
         DECREF(pkt, struct mqtt_packet);
@@ -760,15 +699,9 @@ static int publish_handler(struct io_event *e)
 
     int ptype = qos == EXACTLY_ONCE ? PUBREC : PUBACK;
 
-#if THREADSNR > 0
-    pthread_mutex_lock(&c->mutex);
-#endif
     mqtt_ack(&e->data, ptype == PUBACK ? PUBACK_B : PUBREC_B);
     mqtt_pack_mono(c->wbuf + c->towrite, ptype, orig_mid);
     c->towrite += MQTT_ACK_LEN;
-#if THREADSNR > 0
-    pthread_mutex_unlock(&c->mutex);
-#endif
     log_debug("Sending %s to %s (m%u)", ptype == PUBACK ? "PUBACK" : "PUBREC",
               c->client_id, orig_mid);
     return REPLY;
@@ -787,16 +720,10 @@ static int puback_handler(struct io_event *e)
     struct client *c = e->client;
     unsigned pkt_id  = e->data.ack.pkt_id;
     log_debug("Received PUBACK from %s (m%u)", c->client_id, pkt_id);
-#if THREADSNR > 0
-    pthread_mutex_lock(&c->mutex);
-#endif
     inflight_msg_clear(&c->session->i_msgs[pkt_id]);
     c->session->i_msgs[pkt_id].packet = NULL;
     c->session->i_acks[pkt_id]        = -1;
     --c->session->inflights;
-#if THREADSNR > 0
-    pthread_mutex_unlock(&c->mutex);
-#endif
     return NOREPLY;
 }
 
@@ -805,14 +732,8 @@ static int pubrec_handler(struct io_event *e)
     struct client *c = e->client;
     unsigned pkt_id  = e->data.ack.pkt_id;
     log_debug("Received PUBREC from %s (m%u)", c->client_id, pkt_id);
-#if THREADSNR > 0
-    pthread_mutex_lock(&c->mutex);
-#endif
     mqtt_pack_mono(c->wbuf + c->towrite, PUBREL, pkt_id);
     c->towrite += MQTT_ACK_LEN;
-#if THREADSNR > 0
-    pthread_mutex_unlock(&c->mutex);
-#endif
     // Update inflight acks table
     c->session->i_acks[pkt_id] = time(NULL);
     log_debug("Sending PUBREL to %s (m%u)", c->client_id, pkt_id);
@@ -824,14 +745,8 @@ static int pubrel_handler(struct io_event *e)
     struct client *c = e->client;
     unsigned pkt_id  = e->data.ack.pkt_id;
     log_debug("Received PUBREL from %s (m%u)", c->client_id, pkt_id);
-#if THREADSNR > 0
-    pthread_mutex_lock(&c->mutex);
-#endif
     mqtt_pack_mono(c->wbuf + c->towrite, PUBCOMP, pkt_id);
     c->towrite += MQTT_ACK_LEN;
-#if THREADSNR > 0
-    pthread_mutex_unlock(&c->mutex);
-#endif
     log_debug("Sending PUBCOMP to %s (m%u)", c->client_id, pkt_id);
     return REPLY;
 }
@@ -841,16 +756,10 @@ static int pubcomp_handler(struct io_event *e)
     struct client *c = e->client;
     unsigned pkt_id  = e->data.ack.pkt_id;
     log_debug("Received PUBCOMP from %s (m%u)", c->client_id, pkt_id);
-#if THREADSNR > 0
-    pthread_mutex_lock(&c->mutex);
-#endif
     c->session->i_acks[pkt_id] = -1;
     inflight_msg_clear(&c->session->i_msgs[pkt_id]);
     c->session->i_msgs[pkt_id].packet = NULL;
     --c->session->inflights;
-#if THREADSNR > 0
-    pthread_mutex_unlock(&c->mutex);
-#endif
     return NOREPLY;
 }
 
@@ -858,14 +767,8 @@ static int pingreq_handler(struct io_event *e)
 {
     log_debug("Received PINGREQ from %s", e->client->client_id);
     e->data.header.byte = PINGRESP_B;
-#if THREADSNR > 0
-    pthread_mutex_lock(&e->client->mutex);
-#endif
     mqtt_pack(&e->data, e->client->wbuf + e->client->towrite);
     e->client->towrite += MQTT_HEADER_LEN;
-#if THREADSNR > 0
-    pthread_mutex_unlock(&e->client->mutex);
-#endif
     log_debug("Sending PINGRESP to %s", e->client->client_id);
     return REPLY;
 }

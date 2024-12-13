@@ -30,6 +30,7 @@
 #include "memory.h"
 #include "sol_internal.h"
 #include "trie.h"
+#include "util.h"
 
 static int wildcard_destructor(struct list_node *);
 

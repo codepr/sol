@@ -27,6 +27,7 @@
 
 #include "memory.h"
 #include "sol_internal.h"
+#include "util.h"
 
 static void subscriber_destroy(const struct ref *);
 
