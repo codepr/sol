@@ -39,8 +39,6 @@
 #include <pthread.h>
 #include <unistd.h>
 
-pthread_mutex_t mutex;
-
 /*
  * Auxiliary structure to be used as init argument for eventloop, fd is the
  * listening socket we want to share between multiple instances, cronjobs is
@@ -49,7 +47,7 @@ pthread_mutex_t mutex;
  */
 struct listen_payload {
     int fd;
-    atomic_bool cronjobs;
+    bool cronjobs;
 };
 
 /* Seconds in a Sol, easter egg */
@@ -374,21 +372,20 @@ static void client_init(struct client *client)
     client->client_id[0]  = '\0';
     client->status        = WAITING_HEADER;
     client->rc            = 0;
-    client->rpos          = ATOMIC_VAR_INIT(0);
-    client->read          = ATOMIC_VAR_INIT(0);
-    client->toread        = ATOMIC_VAR_INIT(0);
+    client->rpos          = 0;
+    client->read          = 0;
+    client->toread        = 0;
     if (!client->rbuf)
         client->rbuf =
             try_calloc(conf->max_request_size, sizeof(unsigned char));
-    client->wrote   = ATOMIC_VAR_INIT(0);
-    client->towrite = ATOMIC_VAR_INIT(0);
+    client->wrote   = 0;
+    client->towrite = 0;
     if (!client->wbuf)
         client->wbuf =
             try_calloc(conf->max_request_size, sizeof(unsigned char));
     client->last_seen = time(NULL);
     client->has_lwt   = false;
     client->session   = NULL;
-    pthread_mutex_init(&client->mutex, NULL);
 }
 
 /*
@@ -930,7 +927,6 @@ int start_server(const char *addr, const char *port)
                   BASE_CLIENTS_NUM);
     server.clients_map = NULL;
     server.sessions    = NULL;
-    pthread_mutex_init(&mutex, NULL);
 
     if (conf->allow_anonymous == false)
         if (!config_read_passwd_file(conf->password_file, &server.auths))
@@ -958,7 +954,7 @@ int start_server(const char *addr, const char *port)
     log_info("Server start");
     info.start_time                  = time(NULL);
 
-    struct listen_payload loop_start = {sfd, ATOMIC_VAR_INIT(false)};
+    struct listen_payload loop_start = {sfd, false};
 
     loop_start.cronjobs              = true;
     // start eventloop, could be spread on multiple threads
@@ -973,8 +969,6 @@ int start_server(const char *addr, const char *port)
         SSL_CTX_free(server.ssl_ctx);
         openssl_cleanup();
     }
-    pthread_mutex_destroy(&mutex);
-
     log_info("Sol v%s exiting", VERSION);
 
     return SOL_OK;

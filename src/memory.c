@@ -26,11 +26,10 @@
  */
 
 #include "memory.h"
-#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
-static atomic_size_t memory = ATOMIC_VAR_INIT(0);
+static size_t memory = 0;
 
 /*
  * Custom malloc function, allocate a defined size of bytes plus

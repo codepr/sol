@@ -101,7 +101,7 @@ static void session_free(const struct ref *refcount)
 
 static void session_init(struct client_session *session, const char *session_id)
 {
-    session->inflights     = ATOMIC_VAR_INIT(0);
+    session->inflights     = 0;
     session->next_free_mid = 1;
     session->subscriptions = list_new(NULL);
     session->outgoing_msgs = list_new(NULL);

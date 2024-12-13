@@ -33,7 +33,6 @@
 // #include <crypt.h>
 #include <ctype.h>
 #include <stdarg.h>
-#include <stdatomic.h>
 #include <stdlib.h>
 #include <sys/resource.h>
 #include <sys/time.h>

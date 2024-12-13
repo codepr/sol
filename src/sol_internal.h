@@ -31,7 +31,6 @@
 #include "network.h"
 #include "trie.h"
 #include "uthash.h"
-#include <stdatomic.h>
 #include <time.h>
 
 /* Generic return codes without a defined purpose */
@@ -174,22 +173,21 @@ struct client {
         *ctx;   /* An event context refrence mostly used to fire write events */
     int rc;     /* Return code of the message just handled */
     int status; /* Current status of the client (state machine) */
-    volatile atomic_int rpos;    /* The nr of bytes to skip after a complete
-                                  * packet has * been read. This because according
-                                  * to MQTT, length is encoded on multiple bytes
-                                  * according to it's size, using continuation bit
-                                  * as a technique to encode it. We don't want to
-                                  * decode the length two times when we already
-                                  * know it, so we need an offset to know where
-                                  * the actual packet will start
-                                  */
-    volatile atomic_size_t read; /* The number of bytes already read */
-    volatile atomic_size_t
-        toread;                   /* The number of bytes that have to be read */
-    unsigned char *rbuf;          /* The reading buffer */
-    volatile atomic_size_t wrote; /* The number of bytes already written */
-    volatile atomic_size_t towrite; /* The number of bytes we have to write */
-    unsigned char *wbuf;            /* The writing buffer */
+    int rpos;   /* The nr of bytes to skip after a complete
+                 * packet has * been read. This because for
+                 * MQTT, length is encoded on multiple bytes
+                 * according to it's size, using a continuation bit
+                 * as a technique to encode it. We don't want to
+                 * decode the length two times when we already
+                 * know it, so we need an offset to know where
+                 * the actual packet will start
+                 */
+    size_t read;         /* The number of bytes already read */
+    size_t toread;       /* The number of bytes that have to be read */
+    unsigned char *rbuf; /* The reading buffer */
+    size_t wrote;        /* The number of bytes already written */
+    size_t towrite;      /* The number of bytes we have to write */
+    unsigned char *wbuf; /* The writing buffer */
     char client_id[MQTT_CLIENT_ID_LEN]; /* The client ID according to MQTT specs
                                          */
     struct connection conn; /* A connection structure, takes care of plain or
@@ -201,11 +199,9 @@ struct client {
     bool connected;   /* States if the client has already processed a connection
                          packet */
     bool has_lwt; /* States if the connection packet carried a LWT message */
-    bool clean_session;    /* States if the connection packet was set to clean
-                              session */
-    pthread_mutex_t mutex; /* Inner lock for the client, this avoid
-                              race-conditions on shared parts */
-    UT_hash_handle hh;     /* UTHASH handle, needed to use UTHASH macros */
+    bool clean_session; /* States if the connection packet was set to clean
+                           session */
+    UT_hash_handle hh;  /* UTHASH handle, needed to use UTHASH macros */
 };
 
 /*
@@ -226,9 +222,9 @@ struct client_session {
                                structs */
     List *outgoing_msgs; /* Outgoing messages during disconnection time, stored
                             as mqtt_packet pointers */
-    volatile atomic_ushort inflights; /* Just a counter stating the presence of
-                                         inflight messages */
-    bool clean_session;               /* Clean session flag */
+    unsigned short inflights; /* Just a counter stating the presence of
+                                        inflight messages */
+    bool clean_session;       /* Clean session flag */
     char session_id[MQTT_CLIENT_ID_LEN]; /* The client_id the session refers to
                                           */
     struct mqtt_packet
@@ -240,13 +236,6 @@ struct client_session {
     struct ref
         refcount; /* Reference counting struct, to share the struct easily */
 };
-
-/*
- * Simple mutex for contexted critical areas, mainly used in the handlers
- * module, in server the only useful use are when creating and deactivating
- * clients
- */
-extern pthread_mutex_t mutex;
 
 struct server;
 

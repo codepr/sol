@@ -58,33 +58,33 @@ struct io_event {
 /* Global informations statistics structure */
 struct sol_info {
     /* Number of clients currently connected */
-    atomic_size_t active_connections;
+    size_t active_connections;
     /* Total number of clients connected since the start */
-    atomic_size_t total_connections;
+    size_t total_connections;
     /* Total number of sent messages */
-    atomic_size_t messages_sent;
+    size_t messages_sent;
     /* Total number of received messages */
-    atomic_size_t messages_recv;
+    size_t messages_recv;
     /* Timestamp of the start time */
-    atomic_size_t start_time;
+    size_t start_time;
     /* Seconds passed since the start */
-    atomic_size_t uptime;
+    size_t uptime;
     /* Total number of bytes received */
-    atomic_size_t bytes_sent;
+    size_t bytes_sent;
     /* Total number of bytes sent out */
-    atomic_size_t bytes_recv;
+    size_t bytes_recv;
 };
 
 #define INIT_INFO                                                              \
     do {                                                                       \
-        info.active_connections = ATOMIC_VAR_INIT(0);                          \
-        info.total_connections  = ATOMIC_VAR_INIT(0);                          \
-        info.messages_sent      = ATOMIC_VAR_INIT(0);                          \
-        info.messages_recv      = ATOMIC_VAR_INIT(0);                          \
-        info.start_time         = ATOMIC_VAR_INIT(0);                          \
-        info.uptime             = ATOMIC_VAR_INIT(0);                          \
-        info.bytes_sent         = ATOMIC_VAR_INIT(0);                          \
-        info.bytes_recv         = ATOMIC_VAR_INIT(0);                          \
+        info.active_connections = 0;                                           \
+        info.total_connections  = 0;                                           \
+        info.messages_sent      = 0;                                           \
+        info.messages_recv      = 0;                                           \
+        info.start_time         = 0;                                           \
+        info.uptime             = 0;                                           \
+        info.bytes_sent         = 0;                                           \
+        info.bytes_recv         = 0;                                           \
     } while (0)
 
 /*
