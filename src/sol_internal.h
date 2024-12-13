@@ -148,10 +148,10 @@ struct inflight_msg {
  * - WAITING_DATA   it's the step required to receive the full byte stream as
  *                  the encoded length describe. We wait for the effective
  *                  payload in this state.
- * - SENDING_DATA   the last status, a complete packet has been received and
+ * - SENDING_DATA   the last state, a complete packet has been received and
  *                  has to be processed and reply back if needed.
  */
-enum client_status {
+enum client_state {
     WAITING_HEADER,
     WAITING_LENGTH,
     WAITING_DATA,
@@ -170,18 +170,18 @@ enum client_status {
  */
 struct client {
     struct ev_ctx
-        *ctx;   /* An event context refrence mostly used to fire write events */
-    int rc;     /* Return code of the message just handled */
-    int status; /* Current status of the client (state machine) */
-    int rpos;   /* The nr of bytes to skip after a complete
-                 * packet has * been read. This because for
-                 * MQTT, length is encoded on multiple bytes
-                 * according to it's size, using a continuation bit
-                 * as a technique to encode it. We don't want to
-                 * decode the length two times when we already
-                 * know it, so we need an offset to know where
-                 * the actual packet will start
-                 */
+        *ctx;  /* An event context refrence mostly used to fire write events */
+    int rc;    /* Return code of the message just handled */
+    int state; /* Current state of the client (state machine) */
+    int rpos;  /* The nr of bytes to skip after a complete
+                * packet has * been read. This because for
+                * MQTT, length is encoded on multiple bytes
+                * according to it's size, using a continuation bit
+                * as a technique to encode it. We don't want to
+                * decode the length two times when we already
+                * know it, so we need an offset to know where
+                * the actual packet will start
+                */
     size_t read;         /* The number of bytes already read */
     size_t toread;       /* The number of bytes that have to be read */
     unsigned char *rbuf; /* The reading buffer */

@@ -370,7 +370,7 @@ static void client_init(struct client *client)
     client->connected     = false;
     client->clean_session = true;
     client->client_id[0]  = '\0';
-    client->status        = WAITING_HEADER;
+    client->state         = WAITING_HEADER;
     client->rc            = 0;
     client->rpos          = 0;
     client->read          = 0;
@@ -446,8 +446,8 @@ static ssize_t recv_packet(struct client *c)
     unsigned opcode = 0, pos = 0;
     unsigned int pktlen = 0LL;
 
-    // Base status, we have read 0 to 2 bytes
-    if (c->status == WAITING_HEADER) {
+    // Base state, we have read 0 to 2 bytes
+    if (c->state == WAITING_HEADER) {
 
         /*
          * Read the first two bytes, the first should contain the message
@@ -463,7 +463,7 @@ static ssize_t recv_packet(struct client *c)
         if (errno == EAGAIN && c->read < 2)
             return -ERREAGAIN;
 
-        c->status = WAITING_LENGTH;
+        c->state = WAITING_LENGTH;
     }
 
     /*
@@ -473,7 +473,7 @@ static ssize_t recv_packet(struct client *c)
      * case of ACK type packet or PINGREQ/PINGRESP and DISCONNECT, the
      * entire packet
      */
-    if (c->status == WAITING_LENGTH) {
+    if (c->state == WAITING_LENGTH) {
 
         if (c->read == 2) {
             opcode = *c->rbuf >> 4;
@@ -538,11 +538,11 @@ static ssize_t recv_packet(struct client *c)
         if (pktlen <= 4)
             goto exit;
 
-        c->status = WAITING_DATA;
+        c->state = WAITING_DATA;
     }
 
     /*
-     * Last status, we have access to the length of the packet and we know
+     * Last state, we have access to the length of the packet and we know
      * for sure that it's not a PINGREQ/PINGRESP/DISCONNECT packet.
      */
     nread = recv_data(&c->conn, c->rbuf + c->read, c->toread - c->read);
@@ -649,9 +649,9 @@ static void write_callback(struct ev_ctx *ctx, void *arg)
         /*
          * Rearm descriptor making it ready to receive input,
          * read_callback will be the callback to be used; also reset the
-         * read buffer status for the client.
+         * read buffer state for the client.
          */
-        client->status = WAITING_HEADER;
+        client->state = WAITING_HEADER;
         ev_fire_event(ctx, client->conn.fd, EV_READ, read_callback, client);
         break;
     case -ERREAGAIN:
@@ -728,7 +728,7 @@ static void accept_callback(struct ev_ctx *ctx, void *data)
 static void read_callback(struct ev_ctx *ctx, void *data)
 {
     struct client *c = data;
-    if (c->status == SENDING_DATA)
+    if (c->state == SENDING_DATA)
         return;
     /*
      * Received a bunch of data from a client, after the creation
@@ -745,7 +745,7 @@ static void read_callback(struct ev_ctx *ctx, void *data)
          */
         /* Record last action as of now */
         c->last_seen = time(NULL);
-        c->status    = SENDING_DATA;
+        c->state     = SENDING_DATA;
         process_message(ctx, c);
         break;
     case -ERRCLIENTDC:
@@ -839,7 +839,7 @@ static void process_message(struct ev_ctx *ctx, struct client *c)
         log_error(solerr(c->rc));
         break;
     default:
-        c->status = WAITING_HEADER;
+        c->state = WAITING_HEADER;
         if (io.data.header.bits.type != PUBLISH)
             mqtt_packet_destroy(&io.data);
         break;
