@@ -87,8 +87,8 @@ char *update_integer_string(char *str, int num)
      * Check for realloc if the new value is "larger" then
      * previous
      */
-    char tmp[number_len(n) + 1]; // max size in bytes
-    sprintf(tmp, "%d", n);       // XXX Unsafe
+    char tmp[number_len(n) + 1];           // max size in bytes
+    snprintf(tmp, number_len(n), "%d", n); // XXX Unsafe
     size_t len = strlen(tmp);
     str        = try_realloc(str, len + 1);
     memcpy(str, tmp, len + 1);

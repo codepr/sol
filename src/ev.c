@@ -589,12 +589,13 @@ static int ev_api_fire_event(struct ev_ctx *ctx, int fd, int mask)
 {
     struct kqueue_api *k_api = ctx->api;
     struct kevent ke;
-    int op = 0;
+    int flags = EV_ADD | EV_ONESHOT;
+    int op    = 0;
     if (mask & (EV_READ | EV_EVENTFD))
-        op |= EVFILT_READ;
+        return EV_OK;
     if (mask & EV_WRITE)
         op |= EVFILT_WRITE;
-    EV_SET(&ke, fd, op, EV_ADD | EV_ENABLE, 0, 0, NULL);
+    EV_SET(&ke, fd, op, flags, 0, 0, NULL);
     if (kevent(k_api->fd, &ke, 1, NULL, 0, NULL) == -1)
         return -EV_ERR;
     return EV_OK;

@@ -44,8 +44,11 @@ else (APPLE)
     TARGET_LINK_LIBRARIES(sol pthread ssl crypto crypt)
     TARGET_LINK_LIBRARIES(sol_test pthread ssl crypto crypt)
 endif (APPLE)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wunused -Werror -pedantic \
-    -Wno-unused-result -std=c11 -O3")
+    # set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wunused -Werror -pedantic \
+    # -Wno-unused-result -std=c11 -O3")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wunused -Werror -pedantic \
+    -Wno-unused-result -std=c11 -ggdb -fsanitize=address \
+    -fsanitize=undefined -fno-omit-frame-pointer -pg")
 
 endif (DEBUG)
 

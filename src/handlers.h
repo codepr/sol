@@ -30,10 +30,10 @@
 
 struct topic;
 struct mqtt_packet;
-struct io_event;
+typedef struct connection_context Connection_Context;
 
 int publish_message(struct mqtt_packet *, const struct topic *);
 
-int handle_command(unsigned, struct io_event *);
+int handle_command(unsigned, Connection_Context *);
 
 #endif

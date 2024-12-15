@@ -43,6 +43,8 @@
  */
 #define BASE_CLIENTS_NUM     1024 * 128
 
+typedef struct connection_context Connection_Context;
+
 /*
  * IO event strucuture, it's the main information that will be communicated
  * between threads, every request packet will be wrapped into an IO event and
@@ -51,7 +53,7 @@
  * passed back to the IO epoll loop to be written back to the requesting client
  */
 struct io_event {
-    struct client *client;
+    Connection_Context *client;
     struct mqtt_packet data;
 };
 
@@ -102,12 +104,12 @@ extern struct sol_info info;
  */
 struct server {
     // The main topics store
-    struct topic_store *store;
+    struct topic_repo *repo;
     // A memory pool for clients allocation
     struct memorypool *pool;
     // Our clients map, it's a handle pointer for UTHASH APIs, must be set to
     // NULL
-    struct client *clients_map;
+    Connection_Context *context_map;
     // The global session map, another UTHASH handle pointer, must be set to
     // NULL
     struct client_session *sessions;
@@ -132,7 +134,7 @@ int start_server(const char *, const char *);
  * schedules an EV_WRITE event with a client pointer set to write carried
  * contents out on the socket descriptor.
  */
-void enqueue_event_write(const struct client *);
+void enqueue_event_write(const struct connection_context *);
 
 /*
  * Make the entire process a daemon running in background

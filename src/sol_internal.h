@@ -80,10 +80,10 @@ struct topic {
 };
 
 /*
- * Topic store keep track of all topics and wildcards registered, using a
+ * Topic repo keep track of all topics and wildcards registered, using a
  * trie as underlying data structure
  */
-struct topic_store {
+struct topic_repo {
     // The main topics Trie structure
     Trie *topics;
     // A list of wildcards subscriptions, as it's not possible to know in
@@ -135,28 +135,15 @@ struct inflight_msg {
 };
 
 /*
- * The client actions can be summarized as a roughly simple state machine,
- * comprised by 4 states:
- * - WAITING_HEADER it's the base state, waiting for the next packet to be
- *                  received
- * - WAITING_LENGTH the second state, a packet has arrived but it's not
- *                  complete yet. Accorting to MQTT protocol, after the first
- *                  byte we need to wait 1 to 4 more bytes based on the
- *                  encoded length (use continuation bit to state the number
- *                  of bytes needed, see http://docs.oasis-open.org/mqtt/mqtt/
- *                  v3.1.1/os/mqtt-v3.1.1-os.html for more info)
- * - WAITING_DATA   it's the step required to receive the full byte stream as
- *                  the encoded length describe. We wait for the effective
- *                  payload in this state.
- * - SENDING_DATA   the last state, a complete packet has been received and
- *                  has to be processed and reply back if needed.
+ * The connection context states can be summarized as a roughly simple state
+ * machine, comprised by 3 states:
+ * - CS_OPEN    it's the base state, waiting for the next packet to be
+ *              received, indicates an active connection
+ * - CS_CLOSING the second state, a connection has been closed on the sending
+ *              end, the context must be cleaned up and deactivated
+ * - CS_CLOSE   the last state, represents an inactive connection
  */
-enum client_state {
-    WAITING_HEADER,
-    WAITING_LENGTH,
-    WAITING_DATA,
-    SENDING_DATA
-};
+enum connection_state { CS_OPEN, CS_CLOSING, CS_CLOSED };
 
 /*
  * Wrapper structure around a connected client, each client can be a publisher
@@ -168,28 +155,17 @@ enum client_state {
  * It's an hashable struct which will be tracked during the execution of the
  * application, see https://troydhanson.github.io/uthash/userguide.html.
  */
-struct client {
-    struct ev_ctx
-        *ctx;  /* An event context refrence mostly used to fire write events */
-    int rc;    /* Return code of the message just handled */
-    int state; /* Current state of the client (state machine) */
-    int rpos;  /* The nr of bytes to skip after a complete
-                * packet has * been read. This because for
-                * MQTT, length is encoded on multiple bytes
-                * according to it's size, using a continuation bit
-                * as a technique to encode it. We don't want to
-                * decode the length two times when we already
-                * know it, so we need an offset to know where
-                * the actual packet will start
-                */
-    size_t read;         /* The number of bytes already read */
-    size_t toread;       /* The number of bytes that have to be read */
-    unsigned char *rbuf; /* The reading buffer */
-    size_t wrote;        /* The number of bytes already written */
-    size_t towrite;      /* The number of bytes we have to write */
-    unsigned char *wbuf; /* The writing buffer */
-    char client_id[MQTT_CLIENT_ID_LEN]; /* The client ID according to MQTT specs
-                                         */
+typedef struct connection_context {
+    struct ev_ctx *ctx; /* An event context refrence to handle callbacks */
+    int rc;             /* Return code of the message just handled */
+    int state;          /* Current state of the client (state machine) */
+    unsigned char *recv_buf;
+    unsigned char *send_buf;
+    size_t read;                  /* The number of bytes already read */
+    size_t written;               /* The number of bytes already written */
+    size_t write_total;           /* The number of bytes we have to write */
+    char cid[MQTT_CLIENT_ID_LEN]; /* The client ID according to MQTT specs */
+    struct mqtt_packet data;
     struct connection conn; /* A connection structure, takes care of plain or
                              * TLS encrypted communication by using callbacks
                              */
@@ -202,7 +178,7 @@ struct client {
     bool clean_session; /* States if the connection packet was set to clean
                            session */
     UT_hash_handle hh;  /* UTHASH handle, needed to use UTHASH macros */
-};
+} Connection_Context;
 
 /*
  * Every client has a session which track his subscriptions, possible missed
@@ -299,7 +275,7 @@ struct subscriber *topic_add_subscriber(struct topic *, struct client_session *,
  * reserved to the struct subscriber.
  * The function can't fail.
  */
-void topic_del_subscriber(struct topic *, struct client *);
+void topic_del_subscriber(struct topic *, struct connection_context *);
 
 /*
  * Allocate a new store structure on the heap and return it after its
@@ -307,19 +283,19 @@ void topic_del_subscriber(struct topic *, struct client *);
  * wildcard topics.
  * The function may gracefully crash as the memory allocation may fail.
  */
-struct topic_store *topic_store_new(void);
+struct topic_repo *topic_repo_new(void);
 
 /*
  * Deallocate heap memory for the list and every wildcard item stored into,
  * also the store is deallocated
  */
-void topic_store_destroy(struct topic_store *);
+void topic_repo_free(struct topic_repo *);
 
 /*
  * Return a topic associated to a topic name from the store, returns NULL if no
  * topic is found.
  */
-struct topic *topic_store_get(const struct topic_store *, const char *);
+struct topic *topic_repo_fetch(const struct topic_repo *, const char *);
 
 /*
  * Return a topic associated to a topic name from the store, if no topic is
@@ -328,47 +304,47 @@ struct topic *topic_store_get(const struct topic_store *, const char *);
  * The function may fail as in case of no topic found it tries to allocate
  * space on the heap for the new inserted topic.
  */
-struct topic *topic_store_get_or_put(struct topic_store *, const char *);
+struct topic *topic_repo_fetch_default(struct topic_repo *, const char *);
 
 /*
  * Check if the store contains a topic by name key
  */
-bool topic_store_contains(const struct topic_store *, const char *);
+bool topic_repo_contains(const struct topic_repo *, const char *);
 
 /*
  * Insert a topic into the store or update it if already present
  */
-void topic_store_put(struct topic_store *, struct topic *);
+void topic_repo_put(struct topic_repo *, struct topic *);
 
 /*
  * Remove a topic into the store
  */
-void topic_store_del(struct topic_store *, const char *);
+void topic_repo_delete(struct topic_repo *, const char *);
 
 /*
  * Add a wildcard topic to the topic_store struct, does not check if it already
  * exists
  */
-void topic_store_add_wildcard(struct topic_store *, struct subscription *);
+void topic_repo_add_wildcard(struct topic_repo *, struct subscription *);
 
 /*
  * Remove a wildcard by id key from the topic_store struct
  */
-void topic_store_remove_wildcard(struct topic_store *, char *);
+void topic_repo_remove_wildcard(struct topic_repo *, char *);
 
 /*
  * Run a function to each node of the topic_store trie holding the topic
  * entries
  */
-void topic_store_map(struct topic_store *, const char *,
-                     void (*fn)(struct trie_node *, void *), void *);
+void topic_repo_map(struct topic_repo *, const char *,
+                    void (*fn)(struct trie_node *, void *), void *);
 
 /*
  * Check if the wildcards list of the topic_store is empty
  */
-bool topic_store_wildcards_empty(const struct topic_store *);
+bool topic_repo_wildcards_empty(const struct topic_repo *);
 
-#define topic_store_wildcards_foreach(item, store)                             \
+#define topic_repo_wildcards_foreach(item, store)                              \
     list_foreach(item, store->wildcards)
 
 #define has_inflight(session)   ((session)->inflights > 0)
