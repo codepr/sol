@@ -238,16 +238,20 @@ exit:
 }
 
 /*
- * Check if a topic match a wildcard subscription. It works with + and # as
+ * Check if a topic matches a wildcard subscription. It works with + and # as
  * well
  */
-static inline int match_subscription(const char *topic, const char *wtopic,
-                                     bool multilevel)
+static int match_subscription(const char *topic, const char *wtopic,
+                              bool multilevel)
 {
     size_t len = strlen(wtopic);
     int i = 0, j = 0;
     bool found   = false;
     char *ptopic = (char *)topic;
+
+    if (!ptopic)
+        return -SOL_ERR;
+
     /*
      * Cycle through the wildcard topic, char by char, seeking for '+' char and
      * at the same time assuring that every char is equal in the topic as well,
@@ -255,14 +259,13 @@ static inline int match_subscription(const char *topic, const char *wtopic,
      */
     while (i < len && wtopic[i]) {
         j = 0;
-        for (; i < len; ++i) {
+        for (; i < len; ++i, ++j) {
             if (wtopic[i] == '+') {
                 found = true;
                 break;
-            } else if (!ptopic || (wtopic[i] != ptopic[j])) {
+            } else if (wtopic[i] != ptopic[j]) {
                 return -SOL_ERR;
             }
-            j++;
         }
         /*
          * Get a pointer to the next '/', called two times because we want to

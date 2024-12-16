@@ -37,7 +37,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
-#include <sys/event.h>
 #include <unistd.h>
 
 #define BUFSIZE 2048
@@ -432,7 +431,6 @@ static inline int write_data(Connection_Context *c)
 {
     ssize_t wrote = send_data(&c->conn, c->send_buf + c->written,
                               c->write_total - c->written);
-    printf("WEWEW %s (%zu)\n", c->cid, wrote);
     if (errno != EAGAIN && errno != EWOULDBLOCK && wrote < 0)
         goto e_client_dc;
     c->written += wrote > 0 ? wrote : 0;
