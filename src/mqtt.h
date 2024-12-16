@@ -44,7 +44,7 @@
 #define MQTT_UNACCEPTABLE_PROTOCOL_VERSION 0x01
 #define MQTT_IDENTIFIER_REJECTED           0x02
 #define MQTT_SERVER_UNAVAILABLE            0x03
-#define MQTT_BAD_USERNAME_OR_PASSWORD      0x04
+#define MQTT_BAD_CREDENTIALS               0x04
 #define MQTT_NOT_AUTHORIZED                0x05
 
 /*
@@ -198,7 +198,7 @@ struct mqtt_connack {
 };
 
 struct mqtt_subscribe {
-    u16 pkt_id;
+    u16 id;
     u16 tuples_len;
     struct {
         u8 qos;
@@ -208,7 +208,7 @@ struct mqtt_subscribe {
 };
 
 struct mqtt_unsubscribe {
-    u16 pkt_id;
+    u16 id;
     u16 tuples_len;
     struct {
         u16 topic_len;
@@ -217,13 +217,13 @@ struct mqtt_unsubscribe {
 };
 
 struct mqtt_suback {
-    u16 pkt_id;
+    u16 id;
     u16 rcslen;
     u8 *rcs;
 };
 
 struct mqtt_publish {
-    u16 pkt_id;
+    u16 id;
     u16 topiclen;
     u8 *topic;
     u32 payloadlen;
@@ -231,7 +231,7 @@ struct mqtt_publish {
 };
 
 struct mqtt_ack {
-    u16 pkt_id;
+    u16 id;
 };
 
 typedef struct mqtt_ack mqtt_puback;

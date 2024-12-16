@@ -303,7 +303,7 @@ static int unpack_mqtt_publish(u8 *buf, struct mqtt_packet *pkt, usize len)
 
     /* Read packet id */
     if (pkt->header.bits.qos > AT_MOST_ONCE) {
-        pkt->publish.pkt_id = unpack_integer(&buf, 'H');
+        pkt->publish.id = unpack_integer(&buf, 'H');
         len -= sizeof(u16);
     }
 
@@ -328,7 +328,7 @@ static int unpack_mqtt_subscribe(u8 *buf, struct mqtt_packet *pkt, usize len)
     subscribe.tuples = NULL;
 
     /* Read packet id */
-    subscribe.pkt_id = unpack_integer(&buf, 'H');
+    subscribe.id     = unpack_integer(&buf, 'H');
     len -= sizeof(u16);
 
     /*
@@ -373,7 +373,7 @@ static int unpack_mqtt_unsubscribe(u8 *buf, struct mqtt_packet *pkt, usize len)
     unsubscribe.tuples = NULL;
 
     /* Read packet id */
-    unsubscribe.pkt_id = unpack_integer(&buf, 'H');
+    unsubscribe.id     = unpack_integer(&buf, 'H');
     len -= sizeof(u16);
 
     /*
@@ -411,7 +411,7 @@ err:
 
 static int unpack_mqtt_ack(u8 *buf, struct mqtt_packet *pkt, usize len)
 {
-    pkt->ack = (struct mqtt_ack){.pkt_id = unpacku16(buf)};
+    pkt->ack = (struct mqtt_ack){.id = unpacku16(buf)};
     return MQTT_OK;
 }
 
@@ -462,7 +462,7 @@ static usize pack_mqtt_header(const union mqtt_header *hdr, u8 *buf)
 static usize pack_mqtt_ack(const struct mqtt_packet *pkt, u8 *buf)
 {
 
-    pack(buf, "BBH", pkt->header.byte, MQTT_HEADER_LEN, pkt->ack.pkt_id);
+    pack(buf, "BBH", pkt->header.byte, MQTT_HEADER_LEN, pkt->ack.id);
 
     return MQTT_ACK_LEN;
 }
@@ -487,7 +487,7 @@ static usize pack_mqtt_suback(const struct mqtt_packet *pkt, u8 *buf)
     pack(buf++, "B", pkt->header.byte);
     buf += mqtt_write_length(buf, len);
 
-    buf += pack(buf, "H", pkt->suback.pkt_id);
+    buf += pack(buf, "H", pkt->suback.id);
     for (int i = 0; i < pkt->suback.rcslen; i++)
         pack(buf++, "B", pkt->suback.rcs[i]);
 
@@ -521,7 +521,7 @@ static usize pack_mqtt_publish(const struct mqtt_packet *pkt, u8 *buf)
 
     // Packet id
     if (pkt->header.bits.qos > AT_MOST_ONCE)
-        buf += pack(buf, "H", pkt->publish.pkt_id);
+        buf += pack(buf, "H", pkt->publish.id);
 
     // Finally the payload, same way of topic, payload len -> payload
     memcpy(buf, pkt->publish.payload, pkt->publish.payloadlen);
@@ -547,7 +547,7 @@ usize mqtt_write(const struct mqtt_packet *pkt, u8 *buf)
 
 void mqtt_ack(struct mqtt_packet *pkt, u16 pkt_id)
 {
-    pkt->ack = (struct mqtt_ack){.pkt_id = pkt_id};
+    pkt->ack = (struct mqtt_ack){.id = pkt_id};
 }
 
 void mqtt_connack(struct mqtt_packet *pkt, u8 cflags, u8 rc)
@@ -558,14 +558,14 @@ void mqtt_connack(struct mqtt_packet *pkt, u8 cflags, u8 rc)
 void mqtt_suback(struct mqtt_packet *pkt, u16 pkt_id, u8 *rcs, u16 rcslen)
 {
     pkt->suback = (struct mqtt_suback){
-        .pkt_id = pkt_id, .rcslen = rcslen, .rcs = try_alloc(rcslen)};
+        .id = pkt_id, .rcslen = rcslen, .rcs = try_alloc(rcslen)};
     memcpy(pkt->suback.rcs, rcs, rcslen);
 }
 
 void mqtt_packet_publish(struct mqtt_packet *pkt, u16 pkt_id, usize topiclen,
                          u8 *topic, usize payloadlen, u8 *payload)
 {
-    pkt->publish = (struct mqtt_publish){.pkt_id     = pkt_id,
+    pkt->publish = (struct mqtt_publish){.id         = pkt_id,
                                          .topiclen   = topiclen,
                                          .topic      = topic,
                                          .payloadlen = payloadlen,

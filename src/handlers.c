@@ -177,15 +177,15 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t)
          * correct QoS value (0) and packet identifier to (0) as
          * specified by MQTT specs
          */
-        pkt->publish.pkt_id = 0;
+        pkt->publish.id = 0;
 
         /*
          * if QoS > 0 we set packet identifier and track the inflight
          * message, proceed with the publish towards online subscriber.
          */
         if (pkt->header.bits.qos > AT_MOST_ONCE) {
-            mid                 = next_free_mid(s);
-            pkt->publish.pkt_id = mid;
+            mid             = next_free_mid(s);
+            pkt->publish.id = mid;
             INCREF(pkt, struct mqtt_packet);
             /*
              * If offline, we must enqueue messages in the inflight queue
@@ -224,7 +224,7 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t)
         log_debug(
             "Sending PUBLISH to %s (d%i, q%u, r%i, m%u, %s, ... (%i bytes))",
             sc->cid, pkt->header.bits.dup, pkt->header.bits.qos,
-            pkt->header.bits.retain, pkt->publish.pkt_id, pkt->publish.topic,
+            pkt->header.bits.retain, pkt->publish.id, pkt->publish.topic,
             pkt->publish.payloadlen);
     }
 
@@ -422,7 +422,7 @@ static int connect_handler(Connection_Context *cc)
         cc->session->lwt_msg = (struct mqtt_packet){
             .header  = (union mqtt_header){.byte = PUBLISH_B},
             .publish = (struct mqtt_publish){
-                .pkt_id     = 0, // placeholder
+                .id         = 0, // placeholder
                 .topiclen   = tpc_len,
                 .topic      = (unsigned char *)try_strdup(will_topic),
                 .payloadlen = msg_len,
@@ -460,10 +460,10 @@ e_client_dc:
 
 e_bad_auth:
     log_debug("Sending CONNACK to %s (%u, %u)", cc->cid, session_present,
-              MQTT_BAD_USERNAME_OR_PASSWORD);
-    set_connack(cc, MQTT_BAD_USERNAME_OR_PASSWORD, session_present);
+              MQTT_BAD_CREDENTIALS);
+    set_connack(cc, MQTT_BAD_CREDENTIALS, session_present);
 
-    return MQTT_BAD_USERNAME_OR_PASSWORD;
+    return MQTT_BAD_CREDENTIALS;
 
 e_not_authorized:
     log_debug("Sending CONNACK to %s (%u, %u)", cc->cid, session_present,
@@ -591,7 +591,7 @@ static int subscribe_handler(Connection_Context *c)
     }
 
     struct mqtt_packet pkt = {.header = (union mqtt_header){.byte = SUBACK_B}};
-    mqtt_suback(&pkt, s->pkt_id, rcs, s->tuples_len);
+    mqtt_suback(&pkt, s->id, rcs, s->tuples_len);
 
     size_t len = mqtt_size(&pkt, NULL);
     mqtt_write(&pkt, c->send_buf + c->write_total);
@@ -617,7 +617,7 @@ static int unsubscribe_handler(Connection_Context *c)
             topic_del_subscriber(t, c);
     }
     mqtt_write_ack(c->send_buf + c->write_total, UNSUBACK,
-                   c->data.unsubscribe.pkt_id);
+                   c->data.unsubscribe.id);
     c->write_total += MQTT_ACK_LEN;
 
     log_debug("Sending UNSUBACK to %s", c->cid);
@@ -632,12 +632,12 @@ static int publish_handler(Connection_Context *c)
 
     union mqtt_header *hdr  = &c->data.header;
     struct mqtt_publish *p  = &c->data.publish;
-    unsigned short orig_mid = p->pkt_id;
+    unsigned short orig_mid = p->id;
 
     log_debug(
         "Received PUBLISH from %s (d%i, q%u, r%i, m%u, %s, ... (%llu bytes))",
-        c->cid, hdr->bits.dup, hdr->bits.qos, hdr->bits.retain, p->pkt_id,
-        p->topic, p->payloadlen);
+        c->cid, hdr->bits.dup, hdr->bits.qos, hdr->bits.retain, p->id, p->topic,
+        p->payloadlen);
 
     info.messages_recv++;
 
@@ -715,7 +715,7 @@ exit:
 
 static int puback_handler(Connection_Context *c)
 {
-    unsigned pkt_id = c->data.ack.pkt_id;
+    unsigned pkt_id = c->data.ack.id;
     log_debug("Received PUBACK from %s (m%u)", c->cid, pkt_id);
     inflight_msg_clear(&c->session->i_msgs[pkt_id]);
     c->session->i_msgs[pkt_id].packet = NULL;
@@ -726,7 +726,7 @@ static int puback_handler(Connection_Context *c)
 
 static int pubrec_handler(Connection_Context *c)
 {
-    unsigned pkt_id = c->data.ack.pkt_id;
+    unsigned pkt_id = c->data.ack.id;
     log_debug("Received PUBREC from %s (m%u)", c->cid, pkt_id);
     mqtt_write_ack(c->send_buf + c->write_total, PUBREL, pkt_id);
     c->write_total += MQTT_ACK_LEN;
@@ -738,7 +738,7 @@ static int pubrec_handler(Connection_Context *c)
 
 static int pubrel_handler(Connection_Context *c)
 {
-    unsigned pkt_id = c->data.ack.pkt_id;
+    unsigned pkt_id = c->data.ack.id;
     log_debug("Received PUBREL from %s (m%u)", c->cid, pkt_id);
     mqtt_write_ack(c->send_buf + c->write_total, PUBCOMP, pkt_id);
     c->write_total += MQTT_ACK_LEN;
@@ -748,7 +748,7 @@ static int pubrel_handler(Connection_Context *c)
 
 static int pubcomp_handler(Connection_Context *c)
 {
-    unsigned pkt_id = c->data.ack.pkt_id;
+    unsigned pkt_id = c->data.ack.id;
     log_debug("Received PUBCOMP from %s (m%u)", c->cid, pkt_id);
     c->session->i_acks[pkt_id] = -1;
     inflight_msg_clear(&c->session->i_msgs[pkt_id]);

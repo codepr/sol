@@ -190,7 +190,7 @@ static const char *solerr(int rc)
         return "[MQTT] Wrong identifier";
     case MQTT_SERVER_UNAVAILABLE:
         return "[MQTT] Server unavailable";
-    case MQTT_BAD_USERNAME_OR_PASSWORD:
+    case MQTT_BAD_CREDENTIALS:
         return "[MQTT] Bad username or password";
     case MQTT_NOT_AUTHORIZED:
         return "[MQTT] Not authorized";
@@ -207,7 +207,7 @@ static const char *solerr(int rc)
 
 /*
  * Publish statistics periodic task, it will be called once every N config
- * defined seconds, it publishes some informations on predefined topics
+ * defined seconds, it publishes some information on predefined topics
  */
 static void publish_stats(struct ev_ctx *ctx, void *data)
 {
@@ -240,7 +240,7 @@ static void publish_stats(struct ev_ctx *ctx, void *data)
     // $SOL/uptime
     struct mqtt_packet p = {.header  = (union mqtt_header){.byte = PUBLISH_B},
                             .publish = (struct mqtt_publish){
-                                .pkt_id   = 0,
+                                .id       = 0,
                                 .topiclen = sys_topics[2].len,
                                 .topic    = (unsigned char *)sys_topics[2].name,
                                 .payloadlen = strlen(utime),
@@ -474,7 +474,7 @@ static void send_callback(struct ev_ctx *ctx, void *arg)
          * read_callback will be the callback to be used; also reset the
          * read buffer state for the client.
          */
-        ev_fire_event(ctx, client->conn.fd, EV_READ, recv_callback, client);
+        ev_add(ctx, client->conn.fd, EV_READ, recv_callback, client);
         break;
     case -ERREAGAIN:
         /*
@@ -488,7 +488,7 @@ static void send_callback(struct ev_ctx *ctx, void *arg)
     default:
         log_info("Closing connection with %s (%s): %s %i", client->cid,
                  client->conn.ip, solerr(client->rc), err);
-        ev_del_fd(ctx, client->conn.fd);
+        ev_delete(ctx, client->conn.fd);
         connection_ctx_deactivate(client);
         // Update stats
         info.active_connections--;
@@ -531,7 +531,7 @@ static void accept_callback(struct ev_ctx *ctx, void *data)
         c->ctx = ctx;
 
         /* Add it to the epoll loop */
-        ev_register_event(ctx, fd, EV_READ, recv_callback, c);
+        ev_add_event(ctx, fd, EV_READ, recv_callback, c);
 
         /* Record the new client connected */
         info.active_connections++;
@@ -568,7 +568,7 @@ static void process_mqtt_message(Connection_Context *c, off_t start,
     switch (c->rc) {
     case REPLY:
     case MQTT_NOT_AUTHORIZED:
-    case MQTT_BAD_USERNAME_OR_PASSWORD:
+    case MQTT_BAD_CREDENTIALS:
         /*
          * Write out to client, after a request has been processed in
          * worker thread routine. Just send out all bytes stored in the
@@ -602,7 +602,7 @@ static void recv_callback(struct ev_ctx *ctx, void *data)
 {
     Connection_Context *c = data;
     if (c->state == CS_CLOSING) {
-        ev_del_fd(ctx, c->conn.fd);
+        ev_delete(ctx, c->conn.fd);
         connection_ctx_deactivate(c);
         // Update stats
         info.active_connections--;
@@ -623,7 +623,7 @@ static void recv_callback(struct ev_ctx *ctx, void *data)
              * the moment and it would block, so we just want to re-try some
              * time later, re-enqueuing a new read event
              */
-            ev_fire_event(ctx, c->conn.fd, EV_READ, recv_callback, c);
+            ev_add(ctx, c->conn.fd, EV_READ, recv_callback, c);
             return;
         }
 
@@ -643,7 +643,7 @@ static void recv_callback(struct ev_ctx *ctx, void *data)
                 publish_message(&c->session->lwt_msg, t);
         }
         // Clean resources
-        ev_del_fd(ctx, c->conn.fd);
+        ev_delete(ctx, c->conn.fd);
         // Remove from subscriptions for now
         if (c->session && list_size(c->session->subscriptions) > 0) {
             list_foreach(item, c->session->subscriptions)
@@ -732,21 +732,19 @@ static void eventloop_start(void *args)
     ev_register_event(&ctx, conf->run, EV_CLOSEFD | EV_READ, stop_handler,
                       NULL);
 #else
-    ev_register_event(&ctx, conf->run[1], EV_CLOSEFD | EV_READ, stop_handler,
-                      NULL);
+    ev_add_event(&ctx, conf->run[1], EV_CLOSEFD | EV_READ, stop_handler, NULL);
 #endif
     // Register listening FD with accept callback
-    ev_register_event(&ctx, sfd, EV_READ, accept_callback, &sfd);
+    ev_add_event(&ctx, sfd, EV_READ, accept_callback, &sfd);
     // Register periodic tasks
     if (loop_data->cronjobs == true) {
-        ev_register_cron(&ctx, publish_stats, NULL, conf->stats_pub_interval,
-                         0);
-        ev_register_cron(&ctx, inflight_msg_check, NULL, 1, 0);
+        ev_add_cron(&ctx, publish_stats, NULL, conf->stats_pub_interval, 0);
+        ev_add_cron(&ctx, inflight_msg_check, NULL, 1, 0);
     }
     // Start the loop, blocking call
     if (ev_run(&ctx) < 0)
         log_error("Event loop: %s", strerror(errno));
-    ev_destroy(&ctx);
+    ev_free(&ctx);
 }
 
 /*
@@ -763,14 +761,14 @@ static void eventloop_start(void *args)
 void enqueue_event_write(const Connection_Context *c)
 {
     if (c->state == CS_CLOSING) {
-        ev_del_fd(c->ctx, c->conn.fd);
+        ev_delete(c->ctx, c->conn.fd);
         connection_ctx_deactivate((Connection_Context *)c);
         // Update stats
         info.active_connections--;
         info.total_connections--;
         return;
     }
-    ev_fire_event(c->ctx, c->conn.fd, EV_WRITE, send_callback, (void *)c);
+    ev_add(c->ctx, c->conn.fd, EV_WRITE, send_callback, (void *)c);
 }
 
 /*
