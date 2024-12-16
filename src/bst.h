@@ -1,7 +1,7 @@
 /*
  * BSD 2-Clause License
  *
- * Copyright (c) 2023 Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025 Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -45,6 +45,6 @@ struct bst_node *bst_search(const struct bst_node *, unsigned char);
 
 struct bst_node *bst_delete(struct bst_node *, unsigned char);
 
-void bst_destroy(struct bst_node *, void (*free_fn)(struct bst_node *));
+void bst_free(struct bst_node *, void (*free_fn)(struct bst_node *));
 
 #endif

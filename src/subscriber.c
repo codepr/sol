@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -27,8 +27,9 @@
 
 #include "memory.h"
 #include "sol_internal.h"
+#include "util.h"
 
-static void subscriber_destroy(const struct ref *);
+static void subscriber_free(const struct ref *);
 
 /*
  * Allocate memory on the heap to create and return a pointer to a struct
@@ -41,7 +42,7 @@ struct subscriber *subscriber_new(struct client_session *s, unsigned char qos)
     struct subscriber *sub = try_alloc(sizeof(*sub));
     sub->session           = s;
     sub->granted_qos       = qos;
-    sub->refcount = (struct ref){.count = 0, .free = subscriber_destroy};
+    sub->refcount          = (struct ref){.count = 0, .free = subscriber_free};
     memcpy(sub->id, s->session_id, MQTT_CLIENT_ID_LEN);
     return sub;
 }
@@ -58,7 +59,7 @@ struct subscriber *subscriber_clone(const struct subscriber *s)
     struct subscriber *sub = try_alloc(sizeof(*sub));
     sub->session           = s->session;
     sub->granted_qos       = s->granted_qos;
-    sub->refcount = (struct ref){.count = 0, .free = subscriber_destroy};
+    sub->refcount          = (struct ref){.count = 0, .free = subscriber_free};
     memcpy(sub->id, s->id, MQTT_CLIENT_ID_LEN);
     return sub;
 }
@@ -78,7 +79,7 @@ bool is_subscribed(const struct topic *t, const struct client_session *s)
  * Auxiliary function, defines the destructor behavior for subscriber, just
  * decreasing the reference counter till 0, then free the memory.
  */
-static void subscriber_destroy(const struct ref *r)
+static void subscriber_free(const struct ref *r)
 {
     struct subscriber *sub = container_of(r, struct subscriber, refcount);
     free_memory(sub);

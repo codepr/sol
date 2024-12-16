@@ -1,7 +1,7 @@
 /*
  * BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -50,7 +50,7 @@ void iter_init(struct iterator *i, void *iterable,
     iter_next(i);
 }
 
-void iter_destroy(struct iterator *i) { free_memory(i); }
+void iter_free(struct iterator *i) { free_memory(i); }
 
 /*
  * Advance the iterator ptr to the next item in the iterable collection

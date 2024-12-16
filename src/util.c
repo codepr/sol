@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -33,7 +33,6 @@
 // #include <crypt.h>
 #include <ctype.h>
 #include <stdarg.h>
-#include <stdatomic.h>
 #include <stdlib.h>
 #include <sys/resource.h>
 #include <sys/time.h>
@@ -88,8 +87,8 @@ char *update_integer_string(char *str, int num)
      * Check for realloc if the new value is "larger" then
      * previous
      */
-    char tmp[number_len(n) + 1]; // max size in bytes
-    sprintf(tmp, "%d", n);       // XXX Unsafe
+    char tmp[number_len(n) + 1];           // max size in bytes
+    snprintf(tmp, number_len(n), "%d", n); // XXX Unsafe
     size_t len = strlen(tmp);
     str        = try_realloc(str, len + 1);
     memcpy(str, tmp, len + 1);

@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -35,11 +35,9 @@
 
 #pragma once
 
-#include <stdatomic.h>
-
 struct ref {
     void (*free)(const struct ref *);
-    volatile atomic_int count;
+    int count;
 };
 
 static inline void ref_inc(const struct ref *ref)

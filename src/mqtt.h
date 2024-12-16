@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -44,7 +44,7 @@
 #define MQTT_UNACCEPTABLE_PROTOCOL_VERSION 0x01
 #define MQTT_IDENTIFIER_REJECTED           0x02
 #define MQTT_SERVER_UNAVAILABLE            0x03
-#define MQTT_BAD_USERNAME_OR_PASSWORD      0x04
+#define MQTT_BAD_CREDENTIALS               0x04
 #define MQTT_NOT_AUTHORIZED                0x05
 
 /*
@@ -198,7 +198,7 @@ struct mqtt_connack {
 };
 
 struct mqtt_subscribe {
-    u16 pkt_id;
+    u16 id;
     u16 tuples_len;
     struct {
         u8 qos;
@@ -208,7 +208,7 @@ struct mqtt_subscribe {
 };
 
 struct mqtt_unsubscribe {
-    u16 pkt_id;
+    u16 id;
     u16 tuples_len;
     struct {
         u16 topic_len;
@@ -217,13 +217,13 @@ struct mqtt_unsubscribe {
 };
 
 struct mqtt_suback {
-    u16 pkt_id;
+    u16 id;
     u16 rcslen;
     u8 *rcs;
 };
 
 struct mqtt_publish {
-    u16 pkt_id;
+    u16 id;
     u16 topiclen;
     u8 *topic;
     u32 payloadlen;
@@ -231,7 +231,7 @@ struct mqtt_publish {
 };
 
 struct mqtt_ack {
-    u16 pkt_id;
+    u16 id;
 };
 
 typedef struct mqtt_ack mqtt_puback;
@@ -270,25 +270,25 @@ struct mqtt_packet {
  * remaining length or not.
  * Returns the number of bytes used to store the value passed.
  */
-int mqtt_encode_length(u8 *, usize);
+int mqtt_write_length(u8 *, usize);
 
 /*
  * The reverse of the encoding function, returns the value of the size decoded
  */
-usize mqtt_decode_length(u8 *, unsigned *);
+usize mqtt_read_length(u8 *, unsigned *);
 
 /*
  * Pack to binary an MQTT packet, internally it uses a dispatch table to call
  * the right pack function based on the packet opcode.
  */
-int mqtt_unpack(u8 *, struct mqtt_packet *, u8, usize);
+int mqtt_read(u8 *, struct mqtt_packet *, u8, usize);
 
 /*
  * Unpack from binary to an mqtt_packet structure. Internally it uses a
  * dispatch table to call the right unpack function based on the opcode
  * expected to read.
  */
-usize mqtt_pack(const struct mqtt_packet *, u8 *);
+usize mqtt_write(const struct mqtt_packet *, u8 *);
 
 /*
  * MQTT Build helpers
@@ -308,7 +308,7 @@ void mqtt_publish(struct mqtt_packet *, u16, usize, u8 *, usize, u8 *);
  * Release the memory allocated through helpers function calls based on the
  * opcode of the MQTT packet passed
  */
-void mqtt_packet_destroy(struct mqtt_packet *);
+void mqtt_packet_free(struct mqtt_packet *);
 
 void mqtt_set_dup(struct mqtt_packet *);
 
@@ -316,7 +316,7 @@ void mqtt_set_dup(struct mqtt_packet *);
  * Helper function used to pack ACK packets, mono as the single field `packet
  * identifier` that ACKs packet carries
  */
-int mqtt_pack_mono(u8 *, u8, u16);
+int mqtt_write_ack(u8 *, u8, u16);
 
 /*
  * Returns the size of a packet. Useful to pack functions to know the expected
