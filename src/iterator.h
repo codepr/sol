@@ -1,7 +1,7 @@
 /*
  * BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -47,7 +47,7 @@ struct iterator {
 struct iterator *iter_new(void *, void (*next)(struct iterator *));
 void iter_init(struct iterator *, void *, void (*next)(struct iterator *));
 struct iterator *iter_next(struct iterator *);
-void iter_destroy(struct iterator *);
+void iter_free(struct iterator *);
 
 #define FOREACH(it) for (; it && it->ptr; it = iter_next(it))
 

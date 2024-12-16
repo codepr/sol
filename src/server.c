@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -581,6 +581,7 @@ static void process_mqtt_message(Connection_Context *c, off_t start,
     case -ERRCLIENTDC:
         // Client disconnected, set resources to be cleaned up
         c->state = CS_CLOSING;
+        shutdown(c->conn.fd, SHUT_RDWR);
         break;
     case -ERRNOMEM:
         log_error(solerr(c->rc));

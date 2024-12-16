@@ -1,7 +1,7 @@
 /*
  * BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -256,7 +256,7 @@ struct topic *topic_new(const char *);
 /*
  * Deallocate the topic name, retained_msg and all its subscribers
  */
-void topic_destroy(struct topic *);
+void topic_free(struct topic *);
 
 /*
  * Allocate a new subscriber struct on the heap referring to the passed in

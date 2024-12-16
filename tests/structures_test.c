@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan
+ * Copyright (c) 2025, Andrea Giacomo Baldan
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -42,7 +42,7 @@ static char *test_list_new(void)
 {
     List *l = list_new(NULL);
     ASSERT("list::list_new...FAIL", l != NULL);
-    list_destroy(l, 0);
+    list_free(l, 0);
     printf("list::list_new...OK\n");
     return 0;
 }
@@ -54,7 +54,7 @@ static char *test_list_destroy(void)
 {
     List *l = list_new(NULL);
     ASSERT("list::list_destroy...FAIL", l != NULL);
-    list_destroy(l, 0);
+    list_free(l, 0);
     printf("list::list_destroy...OK\n");
     return 0;
 }
@@ -68,7 +68,7 @@ static char *test_list_push(void)
     char *x = "abc";
     list_push(l, x);
     ASSERT("list::list_push...FAIL", l->len == 1);
-    list_destroy(l, 0);
+    list_free(l, 0);
     printf("list::list_push...OK\n");
     return 0;
 }
@@ -82,7 +82,7 @@ static char *test_list_push_back(void)
     char *x = "abc";
     list_push_back(l, x);
     ASSERT("list::list_push_back...FAIL", l->len == 1);
-    list_destroy(l, 0);
+    list_free(l, 0);
     printf("list::list_push_back...OK\n");
     return 0;
 }
@@ -107,7 +107,7 @@ static char *test_list_remove_node(void)
     struct list_node *node = list_remove_node(l, x, compare_str);
     ASSERT("list::list_remove_node...FAIL", strcmp(node->data, x) == 0);
     free_memory(node);
-    list_destroy(l, 0);
+    list_free(l, 0);
     printf("list::list_remove_node...OK\n");
     return 0;
 }
@@ -123,8 +123,8 @@ static char *test_list_iterator(void)
     struct iterator *it = iter_new(l, list_iter_next);
     ASSERT("list::list_iterator::list_iter_next...FAIL",
            strcmp(it->ptr, x) == 0);
-    list_destroy(l, 0);
-    iter_destroy(it);
+    list_free(l, 0);
+    iter_free(it);
     printf("list::list_iterator...OK\n");
     return 0;
 }
@@ -136,7 +136,7 @@ static char *test_trie_new(void)
 {
     struct Trie *trie = trie_new(NULL);
     ASSERT("trie::trie_new...FAIL", trie != NULL);
-    trie_destroy(trie);
+    trie_free(trie);
     printf("trie::trie_new...OK\n");
     return 0;
 }
@@ -149,7 +149,7 @@ static char *test_trie_create_node(void)
     struct trie_node *node = trie_create_node('a');
     size_t size            = 0;
     ASSERT("trie::trie_create_node...FAIL", node != NULL);
-    trie_node_destroy(node, &size, NULL);
+    trie_node_free(node, &size, NULL);
     printf("trie::trie_create_node...OK\n");
     return 0;
 }
@@ -166,7 +166,7 @@ static char *test_trie_insert(void)
     void *payload = NULL;
     bool found    = trie_find(root, key, &payload);
     ASSERT("trie::trie_insert...FAIL", (found == true && payload != NULL));
-    trie_destroy(root);
+    trie_free(root);
     printf("trie::trie_insert...OK\n");
     return 0;
 }
@@ -183,7 +183,7 @@ static char *test_trie_find(void)
     void *payload = NULL;
     bool found    = trie_find(root, key, &payload);
     ASSERT("trie::trie_find...FAIL", (found == true && payload != NULL));
-    trie_destroy(root);
+    trie_free(root);
     printf("trie::trie_find...OK\n");
     return 0;
 }
@@ -213,7 +213,7 @@ static char *test_trie_delete(void)
     ASSERT("trie::trie_delete...FAIL", (found == false || payload == NULL));
     found = trie_find(root, key3, &payload);
     ASSERT("trie::trie_delete...FAIL", (found == false || payload == NULL));
-    trie_destroy(root);
+    trie_free(root);
     printf("trie::trie_delete...OK\n");
     return 0;
 }
@@ -250,7 +250,7 @@ static char *test_trie_prefix_delete(void)
     found = trie_find(root, key4, &payload);
     ASSERT("trie::trie_prefix_delete...FAIL",
            (found == true || payload != NULL));
-    trie_destroy(root);
+    trie_free(root);
     printf("trie::trie_prefix_delete...OK\n");
     return 0;
 }
@@ -277,7 +277,7 @@ static char *test_trie_prefix_count(void)
     ASSERT("trie::trie_prefix_count...FAIL", count == 4);
     count = trie_prefix_count(root, "helloworld!");
     ASSERT("trie::trie_prefix_count...FAIL", count == 0);
-    trie_destroy(root);
+    trie_free(root);
     printf("trie::trie_prefix_count...OK\n");
     return 0;
 }

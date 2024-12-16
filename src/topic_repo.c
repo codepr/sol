@@ -1,7 +1,7 @@
 /*
  * BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -58,8 +58,8 @@ struct topic_repo *topic_repo_new(void)
  */
 void topic_repo_free(struct topic_repo *store)
 {
-    list_destroy(store->wildcards, 1);
-    trie_destroy(store->topics);
+    list_free(store->wildcards, 1);
+    trie_free(store->topics);
     free_memory(store);
 }
 
@@ -177,7 +177,7 @@ static bool topic_destructor(struct trie_node *node, bool flag)
     if (!node || !node->data)
         return false;
     struct topic *t = node->data;
-    topic_destroy(t);
+    topic_free(t);
     return true;
 }
 

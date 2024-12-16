@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -86,8 +86,8 @@ static void session_free(const struct ref *refcount)
 {
     struct client_session *session =
         container_of(refcount, struct client_session, refcount);
-    list_destroy(session->subscriptions, 0);
-    list_destroy(session->outgoing_msgs, 0);
+    list_free(session->subscriptions, 0);
+    list_free(session->outgoing_msgs, 0);
     if (has_inflight(session)) {
         for (int i = 0; i < MAX_INFLIGHT_MSGS; ++i) {
             if (session->i_msgs[i].packet)
