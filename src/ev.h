@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -50,6 +50,8 @@ enum ev_type {
 
 struct ev_ctx;
 
+typedef void (*ev_callback)(struct ev_ctx *, void *);
+
 /*
  * Event struture used as the main carrier of clients informations, it will be
  * tracked by an array in every context created
@@ -57,10 +59,10 @@ struct ev_ctx;
 struct ev {
     int fd;
     int mask;
-    void *rdata; // opaque pointer for read callback args
-    void *wdata; // opaque pointer for write callback args
-    void (*rcallback)(struct ev_ctx *, void *); // read callback
-    void (*wcallback)(struct ev_ctx *, void *); // write callback
+    void *rdata;           // opaque pointer for read callback args
+    void *wdata;           // opaque pointer for write callback args
+    ev_callback rcallback; // read callback
+    ev_callback wcallback; // write callback
 };
 
 /*
@@ -81,13 +83,13 @@ struct ev_ctx {
     int stop;
     int maxevents;
     unsigned long long fired_events;
-    struct ev *events_monitored;
+    struct ev *monitored;
     void *api; // opaque pointer to platform defined backends
 };
 
 int ev_init(struct ev_ctx *, int);
 
-void ev_destroy(struct ev_ctx *);
+void ev_free(struct ev_ctx *);
 
 /*
  * Poll an event context for events, accepts a timeout or block forever,
@@ -113,14 +115,14 @@ void ev_stop(struct ev_ctx *);
  * ev_fire_event just without an event to be carried. Useful to add simple
  * descritors like a listening socket o message queue FD.
  */
-int ev_watch_fd(struct ev_ctx *, int, int);
+int ev_watch(struct ev_ctx *, int, int);
 
 /*
  * Remove a FD from the loop, even tho a close syscall is sufficient to remove
  * the FD from the underlying backend such as EPOLL/SELECT, this call ensure
  * that any associated events is cleaned out an set to EV_NONE
  */
-int ev_del_fd(struct ev_ctx *, int);
+int ev_delete(struct ev_ctx *, int);
 
 /*
  * Register a new event, semantically it's equal to ev_register_event but
@@ -128,17 +130,14 @@ int ev_del_fd(struct ev_ctx *, int);
  * It could be easily integrated in ev_fire_event call but I prefer maintain
  * the samantic separation of responsibilities.
  */
-int ev_register_event(struct ev_ctx *, int, int,
-                      void (*callback)(struct ev_ctx *, void *), void *);
+int ev_add_event(struct ev_ctx *, int, int, ev_callback, void *);
 
-int ev_register_cron(struct ev_ctx *, void (*callback)(struct ev_ctx *, void *),
-                     void *, long long, long long);
+int ev_add_cron(struct ev_ctx *, ev_callback, void *, long long, long long);
 
 /*
  * Register a new event for the next loop cycle to a FD. Equal to ev_watch_fd
  * but allow to carry an event object for the next cycle.
  */
-int ev_fire_event(struct ev_ctx *, int, int,
-                  void (*callback)(struct ev_ctx *, void *), void *);
+int ev_add(struct ev_ctx *, int, int, ev_callback, void *);
 
 #endif

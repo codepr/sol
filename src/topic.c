@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -58,7 +58,7 @@ struct topic *topic_new(const char *name)
 /*
  * Deallocate the topic name, retained_msg and all its subscribers
  */
-void topic_destroy(struct topic *t)
+void topic_free(struct topic *t)
 {
     if (!t)
         return;
@@ -104,10 +104,10 @@ struct subscriber *topic_add_subscriber(struct topic *t,
  * reserved to the struct subscriber.
  * The function can't fail.
  */
-void topic_del_subscriber(struct topic *t, struct client *c)
+void topic_del_subscriber(struct topic *t, Connection_Context *c)
 {
     struct subscriber *sub = NULL;
-    HASH_FIND_STR(t->subscribers, c->client_id, sub);
+    HASH_FIND_STR(t->subscribers, c->cid, sub);
     if (sub) {
         HASH_DEL(t->subscribers, sub);
         DECREF(sub, struct subscriber);

@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan
+ * Copyright (c) 2025, Andrea Giacomo Baldan
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -102,9 +102,9 @@ bool trie_delete(Trie *, const char *);
  */
 bool trie_find(const Trie *, const char *, void **);
 
-void trie_node_destroy(struct trie_node *, size_t *, trie_destructor *);
+void trie_node_free(struct trie_node *, size_t *, trie_destructor *);
 
-void trie_destroy(Trie *);
+void trie_free(Trie *);
 
 /*
  * Remove all keys matching a given prefix in a less than linear time

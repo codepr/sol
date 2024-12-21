@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan
+ * Copyright (c) 2025, Andrea Giacomo Baldan
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -56,7 +56,7 @@ List *list_new(int (*destructor)(struct list_node *));
  * Release a list, accept a integer flag to control the depth of the free call
  * (e.g. going to free also data field of every node)
  */
-void list_destroy(List *, int);
+void list_free(List *, int);
 
 /* Return list size */
 unsigned long list_size(const List *);

@@ -1,7 +1,7 @@
 /*
  * BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -264,21 +264,22 @@ err:
  */
 ssize_t recv_bytes(int fd, unsigned char *buf, size_t bufsize)
 {
-
     ssize_t n     = 0;
     ssize_t total = 0;
 
-    while (total < (ssize_t)bufsize) {
-
+    while (total < bufsize) {
         if ((n = recv(fd, buf, bufsize - total, 0)) < 0) {
+            total = total == 0 ? -1 : total;
             if (errno == EAGAIN || errno == EWOULDBLOCK)
                 break;
             else
                 goto err;
         }
 
-        if (n == 0)
-            return 0;
+        if (n == 0) {
+            // printf("zerooo bufsize %zu total %zi\n", bufsize, total);
+            return total;
+        }
 
         buf += n;
         total += n;
