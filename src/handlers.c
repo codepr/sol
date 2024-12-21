@@ -151,10 +151,8 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t)
     unsigned char qos     = pkt->header.bits.qos;
     int count             = HASH_COUNT(t->subscribers);
 
-    if (count == 0) {
-        INCREF(pkt, struct mqtt_packet);
-        goto exit;
-    }
+    if (count == 0)
+        return -1;
 
     // first run check
     struct subscriber *sub, *dummy;
@@ -231,8 +229,6 @@ int publish_message(struct mqtt_packet *pkt, const struct topic *t)
     // add return code
     if (all_at_most_once == true)
         count = 0;
-
-exit:
 
     return count;
 }
@@ -533,7 +529,7 @@ static int subscribe_handler(Connection_Context *c)
          * the global map
          */
         char topic[s->tuples[i].topic_len + 2];
-        snprintf(topic, s->tuples[i].topic_len + 1, "%s", s->tuples[i].topic);
+        snprintf(topic, sizeof(topic), "%s", s->tuples[i].topic);
 
         log_debug("\t%s (QoS %i)", topic, s->tuples[i].qos);
         /* Recursive subscribe to all children topics if the topic ends with
@@ -649,9 +645,9 @@ static int publish_handler(Connection_Context *c)
      * hierarchical level
      */
     if (p->topic[p->topiclen - 1] != '/')
-        snprintf(topic, p->topiclen + 2, "%s/", (const char *)p->topic);
+        snprintf(topic, sizeof(topic), "%s/", (const char *)p->topic);
     else
-        snprintf(topic, p->topiclen + 1, "%s", (const char *)p->topic);
+        snprintf(topic, sizeof(topic), "%s", (const char *)p->topic);
 
     /*
      * Retrieve the topic from the global map, if it wasn't created before,
@@ -660,7 +656,7 @@ static int publish_handler(Connection_Context *c)
     struct topic *t = topic_repo_fetch_default(server.repo, topic);
 
     /* Check for # wildcards subscriptions */
-    if (topic_repo_wildcards_empty(server.repo)) {
+    if (!topic_repo_wildcards_empty(server.repo)) {
         topic_repo_wildcards_foreach(item, server.repo)
         {
             struct subscription *s = item->data;

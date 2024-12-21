@@ -39,7 +39,7 @@
 #include <pthread.h>
 #include <unistd.h>
 
-#define BUFSIZE 2048
+#define BUFSIZE 512000
 
 /*
  * Auxiliary structure to be used as init argument for eventloop, fd is the
@@ -441,6 +441,7 @@ static inline int write_data(Connection_Context *c)
     memset(c->send_buf, 0x00, BUFSIZE);
     // Reset client written bytes track fields
     c->write_total = c->written = 0;
+    // printf("resetting %ld (%ld)\n", c->written, c->write_total);
     return SOL_OK;
 
 e_client_dc:
