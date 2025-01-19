@@ -277,7 +277,6 @@ ssize_t recv_bytes(int fd, unsigned char *buf, size_t bufsize)
         }
 
         if (n == 0) {
-            // printf("zerooo bufsize %zu total %zi\n", bufsize, total);
             return total;
         }
 

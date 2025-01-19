@@ -522,7 +522,7 @@ static void ev_api_free(struct ev_ctx *ctx)
 static int ev_api_get_event_mask(struct ev_ctx *ctx, int idx)
 {
     struct kqueue_api *k_api = ctx->api;
-    int events               = k_api->events[idx].flags;
+    int events               = k_api->events[idx].filter;
     int ev_mask              = ctx->monitored[k_api->events[idx].ident].mask;
     // We want to remember the previous events only if they're not of type
     // CLOSE or TIMER
@@ -533,15 +533,17 @@ static int ev_api_get_event_mask(struct ev_ctx *ctx, int idx)
         mask |= EV_READ;
     if (events & EVFILT_WRITE)
         mask |= EV_WRITE;
+    ctx->monitored[k_api->events[idx].ident].mask = EV_NONE;
     return mask;
 }
 
 static int ev_api_poll(struct ev_ctx *ctx, time_t timeout)
 {
-    struct kqueue_api *k_api = ctx->api;
-    const struct timespec ts = {.tv_sec  = timeout < 0 ? 0 : timeout,
-                                .tv_nsec = 0};
-    int err = kevent(k_api->fd, NULL, 0, k_api->events, ctx->maxevents, &ts);
+    struct kqueue_api *k_api      = ctx->api;
+    const struct timespec ts      = {.tv_sec  = timeout < 0 ? 0 : timeout,
+                                     .tv_nsec = 0};
+    const struct timespec *ts_ptr = timeout < 0 ? NULL : &ts;
+    int err = kevent(k_api->fd, NULL, 0, k_api->events, ctx->maxevents, ts_ptr);
     if (err < 0)
         return -EV_ERR;
     return err;
@@ -592,7 +594,7 @@ static int ev_api_add(struct ev_ctx *ctx, int fd, int mask)
     int flags = EV_ADD | EV_ONESHOT;
     int op    = 0;
     if (mask & (EV_READ | EV_EVENTFD))
-        return EV_OK;
+        op |= EVFILT_READ;
     if (mask & EV_WRITE)
         op |= EVFILT_WRITE;
     EV_SET(&ke, fd, op, flags, 0, 0, NULL);
@@ -655,9 +657,10 @@ static int ev_process_event(struct ev_ctx *ctx, int idx, int mask)
             ++fired;
         }
         if (mask & EV_WRITE) {
-            if (!fired || e->wcallback != e->rcallback) {
+            if (!fired || (e->wcallback && (e->wcallback != e->rcallback))) {
                 e->wcallback(ctx, e->wdata);
                 ++fired;
+                e->wcallback = NULL;
             }
         }
     }
@@ -851,7 +854,7 @@ int ev_add_cron(struct ev_ctx *ctx, ev_callback cb, void *data, long long s,
  * - callback:  is a function pointer to the routine we want to execute
  * - data:  an opaque pointer to the arguments for the callback.
  */
-int ev_add(struct ev_ctx *ctx, int fd, int mask, ev_callback cb, void *data)
+int ev_oneshot(struct ev_ctx *ctx, int fd, int mask, ev_callback cb, void *data)
 {
     int ret = 0;
     ev_add_monitored(ctx, fd, mask, cb, data);

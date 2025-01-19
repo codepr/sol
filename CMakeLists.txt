@@ -10,6 +10,10 @@ add_definitions("-D_DEFAULT_SOURCE")
 find_package(OpenSSL REQUIRED)
 
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
+set(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/lib)
+
+# Add include directories for headers
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/lib)
 
 file(GLOB SOURCES src/*.c)
 file(GLOB TEST src/hashtable.c src/bst.c src/config.c src/list.c src/trie.c

@@ -33,35 +33,31 @@
 /* Reading data on const u8 pointer */
 
 // bytes -> int16_t
-i16 unpacki16(u8 *);
+i16 read_i16(const u8 *);
 
 // bytes -> uint16_t
-u16 unpacku16(u8 *);
+u16 read_u16(const u8 *);
 
 // bytes -> int32_t
-i32 unpacki32(u8 *);
+i32 read_i32(const u8 *);
 
 // bytes -> uint32_t
-u32 unpacku32(u8 *);
+u32 read_u32(const u8 *);
 
 // bytes -> int64_t
-i64 unpacki64(u8 *);
+i64 read_i64(const u8 *);
 
 // bytes -> uint64_t
-u64 unpacku64(u8 *);
-
-/* Write data on const u8 pointer */
-// append a u8 -> bytes into the bytestring
-void pack_u8(u8 **, u8);
+u64 read_u64(const u8 *);
 
 // append a uint16_t -> bytes into the bytestring
-void packi16(u8 *, u16);
+void write_i16(u8 *, u16);
 
 // append a int32_t -> bytes into the bytestring
-void packi32(u8 *, u32);
+void write_i32(u8 *, u32);
 
 // append a uint64_t -> bytes into the bytestring
-void packi64(u8 *, u64);
+void write_i64(u8 *, u64);
 
 /*
  * pack() -- store data dictated by the format string in the buffer
@@ -76,7 +72,7 @@ void packi64(u8 *, u64);
  *
  *  (16-bit unsigned length is automatically prepended to strings)
  */
-usize pack(u8 *, char *, ...);
+usize write_struct(u8 *, char *, ...);
 
 /*
  * unpack() -- unpack data dictated by the format string into the buffer
@@ -92,12 +88,14 @@ usize pack(u8 *, char *, ...);
  *  (string is extracted based on its stored length, but 's' can be
  *  prepended with a max length)
  */
-usize unpack(u8 *, char *, ...);
+usize read_struct(u8 *, char *, ...);
 
-i64 unpack_integer(u8 **, i8);
+i64 read_int(u8 **, i8);
 
-u8 *unpack_bytes(u8 **, usize);
+typedef struct arena_allocator Arena_Allocator;
 
-u16 unpack_string16(u8 **, u8 **);
+u8 *read_bytes(u8 **, usize, Arena_Allocator *);
+
+u16 read_string_u16(u8 **, u8 **, Arena_Allocator *);
 
 #endif

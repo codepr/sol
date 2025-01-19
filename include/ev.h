@@ -68,7 +68,7 @@ struct ev {
 /*
  * Event loop context, carry the expected number of events to be monitored at
  * every cycle and an opaque pointer to the backend used as engine
- * (Select | Epoll | Kqueue).
+ * (Select | Epoll | Kqueue).ev
  * By now we stick with epoll and skip over select, cause as the current
  * threaded model employed by the server is not very friendly with select
  * Level-trigger default setting. But it would be quiet easy abstract over the
@@ -138,6 +138,6 @@ int ev_add_cron(struct ev_ctx *, ev_callback, void *, long long, long long);
  * Register a new event for the next loop cycle to a FD. Equal to ev_watch_fd
  * but allow to carry an event object for the next cycle.
  */
-int ev_add(struct ev_ctx *, int, int, ev_callback, void *);
+int ev_oneshot(struct ev_ctx *, int, int, ev_callback, void *);
 
 #endif

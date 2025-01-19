@@ -44,11 +44,11 @@ static int subscription_cmp(const void *, const void *);
  * wildcard topics.
  * The function may gracefully crash as the memory allocation may fail.
  */
-struct topic_repo *topic_repo_new(void)
+Topic_Repo *topic_repo_new(void)
 {
-    struct topic_repo *store = try_alloc(sizeof(*store));
-    store->topics            = trie_new(topic_destructor);
-    store->wildcards         = list_new(wildcard_destructor);
+    Topic_Repo *store = try_alloc(sizeof(*store));
+    store->topics     = trie_new(topic_destructor);
+    store->wildcards  = list_new(wildcard_destructor);
     return store;
 }
 
@@ -56,7 +56,7 @@ struct topic_repo *topic_repo_new(void)
  * Deallocate heap memory for the list and every wildcard item stored into,
  * also the store is deallocated
  */
-void topic_repo_free(struct topic_repo *store)
+void topic_repo_free(Topic_Repo *store)
 {
     list_free(store->wildcards, 1);
     trie_free(store->topics);
@@ -66,7 +66,7 @@ void topic_repo_free(struct topic_repo *store)
 /*
  * Insert a topic into the store or update it if already present
  */
-void topic_repo_put(struct topic_repo *store, struct topic *t)
+void topic_repo_put(Topic_Repo *store, Topic *t)
 {
     trie_insert(store->topics, t->name, t);
 }
@@ -74,7 +74,7 @@ void topic_repo_put(struct topic_repo *store, struct topic *t)
 /*
  * Remove a topic into the store
  */
-void topic_repo_delete(struct topic_repo *store, const char *name)
+void topic_repo_delete(Topic_Repo *store, const char *name)
 {
     trie_delete(store->topics, name);
 }
@@ -82,9 +82,9 @@ void topic_repo_delete(struct topic_repo *store, const char *name)
 /*
  * Check if the store contains a topic by name key
  */
-bool topic_repo_contains(const struct topic_repo *store, const char *name)
+bool topic_repo_contains(const Topic_Repo *store, const char *name)
 {
-    struct topic *t = topic_repo_fetch(store, name);
+    Topic *t = topic_repo_fetch(store, name);
     return t != NULL;
 }
 
@@ -92,9 +92,9 @@ bool topic_repo_contains(const struct topic_repo *store, const char *name)
  * Return a topic associated to a topic name from the store, returns NULL if no
  * topic is found.
  */
-struct topic *topic_repo_fetch(const struct topic_repo *store, const char *name)
+Topic *topic_repo_fetch(const Topic_Repo *store, const char *name)
 {
-    struct topic *ret_topic;
+    Topic *ret_topic;
     trie_find(store->topics, name, (void *)&ret_topic);
     return ret_topic;
 }
@@ -106,10 +106,9 @@ struct topic *topic_repo_fetch(const struct topic_repo *store, const char *name)
  * The function may fail as in case of no topic found it tries to allocate
  * space on the heap for the new inserted topic.
  */
-struct topic *topic_repo_fetch_default(struct topic_repo *store,
-                                       const char *name)
+Topic *topic_repo_fetch_default(Topic_Repo *store, const char *name)
 {
-    struct topic *t = topic_repo_fetch(store, name);
+    Topic *t = topic_repo_fetch(store, name);
     if (t != NULL)
         return t;
     t = topic_new(try_strdup(name));
@@ -121,7 +120,7 @@ struct topic *topic_repo_fetch_default(struct topic_repo *store,
  * Add a wildcard topic to the topic_store struct, does not check if it already
  * exists
  */
-void topic_repo_add_wildcard(struct topic_repo *store, struct subscription *s)
+void topic_repo_add_wildcard(Topic_Repo *store, Subscription *s)
 {
     store->wildcards = list_push(store->wildcards, s);
 }
@@ -129,7 +128,7 @@ void topic_repo_add_wildcard(struct topic_repo *store, struct subscription *s)
 /*
  * Remove a wildcard by id key from the topic_store struct
  */
-void topic_repo_remove_wildcard(struct topic_repo *store, char *id)
+void topic_repo_remove_wildcard(Topic_Repo *store, char *id)
 {
     list_remove(store->wildcards, id, subscription_cmp);
 }
@@ -138,7 +137,7 @@ void topic_repo_remove_wildcard(struct topic_repo *store, char *id)
  * Run a function to each node of the topic_store trie holding the topic
  * entries
  */
-void topic_repo_map(struct topic_repo *store, const char *prefix,
+void topic_repo_map(Topic_Repo *store, const char *prefix,
                     void (*fn)(struct trie_node *, void *), void *arg)
 {
     trie_prefix_map(store->topics->root, prefix, fn, arg);
@@ -147,21 +146,20 @@ void topic_repo_map(struct topic_repo *store, const char *prefix,
 /*
  * Check if the wildcards list of the topic_store is empty
  */
-bool topic_repo_wildcards_empty(const struct topic_repo *store)
+bool topic_repo_wildcards_empty(const Topic_Repo *store)
 {
     return list_size(store->wildcards) == 0;
 }
 
 /*
  * Auxiliary function, destructor to be passed in to init a list structure,
- * this one is used to correctly destroy struct subscription items
+ * this one is used to correctly destroy Subscription items
  */
 static int wildcard_destructor(struct list_node *node)
 {
     if (!node)
         return -SOL_ERR;
-    struct subscription *s = node->data;
-    DECREF(s->subscriber, struct subscriber);
+    Subscription *s = node->data;
     free_memory((char *)s->topic);
     free_memory(s);
     free_memory(node);
@@ -176,7 +174,7 @@ static bool topic_destructor(struct trie_node *node, bool flag)
 {
     if (!node || !node->data)
         return false;
-    struct topic *t = node->data;
+    Topic *t = node->data;
     topic_free(t);
     return true;
 }
@@ -187,7 +185,7 @@ static bool topic_destructor(struct trie_node *node, bool flag)
  */
 static int subscription_cmp(const void *ptr_s1, const void *ptr_s2)
 {
-    struct subscription *s1 = ((struct list_node *)ptr_s1)->data;
-    const char *id          = ptr_s2;
-    return STREQ(s1->subscriber->id, id, MQTT_CLIENT_ID_LEN);
+    Subscription *s1 = ((struct list_node *)ptr_s1)->data;
+    const char *id   = ptr_s2;
+    return STREQ(s1->subscriber->session->cid, id, MQTT_CLIENT_ID_LEN);
 }

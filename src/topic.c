@@ -29,12 +29,12 @@
 #include "sol_internal.h"
 
 /*
- * Initialize a struct topic pointer by setting its name, subscribers and
+ * Initialize a Topic pointer by setting its name, subscribers and
  * retained_msg are set to NULL.
  * The function expects a non-null pointer and can't fail, if a null topic
  * is passed, the function return prematurely.
  */
-void topic_init(struct topic *t, const char *name)
+void topic_init(Topic *t, const char *name)
 {
     if (!t)
         return;
@@ -48,9 +48,9 @@ void topic_init(struct topic *t, const char *name)
  * to it. The function can fail as a memory allocation is requested, if it
  * fails the program execution graceful crash.
  */
-struct topic *topic_new(const char *name)
+Topic *topic_new(const char *name)
 {
-    struct topic *t = try_alloc(sizeof(*t));
+    Topic *t = try_alloc(sizeof(*t));
     topic_init(t, name);
     return t;
 }
@@ -58,7 +58,7 @@ struct topic *topic_new(const char *name)
 /*
  * Deallocate the topic name, retained_msg and all its subscribers
  */
-void topic_free(struct topic *t)
+void topic_free(Topic *t)
 {
     if (!t)
         return;
@@ -68,7 +68,7 @@ void topic_free(struct topic *t)
         free_memory(t);
         return;
     }
-    struct subscriber *sub, *dummy;
+    Subscriber *sub, *dummy;
     HASH_ITER(hh, t->subscribers, sub, dummy)
     {
         if (!sub)
@@ -85,14 +85,12 @@ void topic_free(struct topic *t)
  * The function can fail as a memory allocation is requested, if it fails the
  * program execution graceful crash.
  */
-struct subscriber *topic_add_subscriber(struct topic *t,
-                                        struct client_session *s,
-                                        unsigned char qos)
+Subscriber *topic_add_subscriber(Topic *t, Session *s, unsigned char qos)
 {
-    struct subscriber *sub = subscriber_new(s, qos), *tmp;
-    HASH_FIND_STR(t->subscribers, sub->id, tmp);
+    Subscriber *sub = subscriber_new(s, qos), *tmp;
+    HASH_FIND_STR(t->subscribers, sub->session->cid, tmp);
     if (!tmp)
-        HASH_ADD_STR(t->subscribers, id, sub);
+        HASH_ADD_STR(t->subscribers, session->cid, sub);
     return sub;
 }
 
@@ -101,15 +99,14 @@ struct subscriber *topic_add_subscriber(struct topic *t,
  * the client_id belonging to the client pointer passed in.
  * The subscriber deletion is really a reference count subtraction, DECREF
  * macro takes care of the counter, if it reaches 0 it de-allocates the memory
- * reserved to the struct subscriber.
+ * reserved to the Subscriber.
  * The function can't fail.
  */
-void topic_del_subscriber(struct topic *t, Connection_Context *c)
+void topic_del_subscriber(Topic *t, Connection_Context *c)
 {
-    struct subscriber *sub = NULL;
+    Subscriber *sub = NULL;
     HASH_FIND_STR(t->subscribers, c->cid, sub);
     if (sub) {
         HASH_DEL(t->subscribers, sub);
-        DECREF(sub, struct subscriber);
     }
 }

@@ -1,17 +1,16 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2025, Andrea Giacomo Baldan
- * All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * * Redistributions of source code must retain the above copyright notice, this
- *   list of conditions and the following disclaimer.
+ * * Redistributions of source code must retain the above copyright notice,
+ * this list of conditions and the following disclaimer.
  *
  * * Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -26,28 +25,16 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MEMORYPOOL_H
-#define MEMORYPOOL_H
+#ifndef HANDLERS_H
+#define HANDLERS_H
 
-#include <stdlib.h>
+typedef struct topic Topic;
+struct mqtt_packet;
+typedef struct connection_context Connection_Context;
+typedef struct arena_allocator Arena_Allocator;
 
-/*
- * Simple memory object-pool, the purpose is to allow for fixed size objects to
- * be pre-allocated and re-use of memory blocks, so no size have to be
- * specified like in a normal malloc but only alloc and free of a pointer is
- * possible.
- */
-struct memorypool {
-    void *memory;
-    void *free;
-    int block_used;
-    size_t blocks_nr;
-    size_t blocksize;
-};
+void publish_message(struct mqtt_packet *, const Topic *, Arena_Allocator *);
 
-struct memorypool *memorypool_new(size_t, size_t);
-void memorypool_destroy(struct memorypool *);
-void *memorypool_alloc(struct memorypool *);
-void memorypool_free(struct memorypool *, void *);
+int handle_command(Connection_Context *);
 
 #endif

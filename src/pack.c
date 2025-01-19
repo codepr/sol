@@ -26,6 +26,7 @@
  */
 
 #include "pack.h"
+#include "arena.h"
 #include "memory.h"
 #include <ctype.h>
 #include <stdarg.h>
@@ -34,18 +35,18 @@
 // Beej'us network guide functions
 
 /*
-** packi16() -- store a 16-bit int into a char buffer (like htons())
+** write_i16() -- store a 16-bit int into a char buffer (like htons())
 */
-void packi16(u8 *buf, u16 val)
+void write_i16(u8 *buf, u16 val)
 {
     *buf++ = val >> 8;
     *buf++ = val;
 }
 
 /*
-** packi32() -- store a 32-bit int into a char buffer (like htonl())
+** write_i32() -- store a 32-bit int into a char buffer (like htonl())
 */
-void packi32(u8 *buf, u32 val)
+void write_i32(u8 *buf, u32 val)
 {
     *buf++ = val >> 24;
     *buf++ = val >> 16;
@@ -54,9 +55,9 @@ void packi32(u8 *buf, u32 val)
 }
 
 /*
-** packi64() -- store a 64-bit int into a char buffer (like htonl())
+** write_i64() -- store a 64-bit int into a char buffer (like htonl())
 */
-void packi64(u8 *buf, u64 val)
+void write_i64(u8 *buf, u64 val)
 {
     *buf++ = val >> 56;
     *buf++ = val >> 48;
@@ -69,9 +70,9 @@ void packi64(u8 *buf, u64 val)
 }
 
 /*
-** unpacki16() -- unpack a 16-bit int from a char buffer (like ntohs())
+** read_i16() -- unpack a 16-bit int from a char buffer (like ntohs())
 */
-i16 unpacki16(u8 *buf)
+i16 read_i16(const u8 *buf)
 {
     u16 i2 = ((u16)buf[0] << 8) | buf[1];
     i16 val;
@@ -86,14 +87,14 @@ i16 unpacki16(u8 *buf)
 }
 
 /*
-** unpacku16() -- unpack a 16-bit unsigned from a char buffer (like ntohs())
+** read_u16() -- unpack a 16-bit unsigned from a char buffer (like ntohs())
 */
-u16 unpacku16(u8 *buf) { return ((u16)buf[0] << 8) | buf[1]; }
+u16 read_u16(const u8 *buf) { return ((u16)buf[0] << 8) | buf[1]; }
 
 /*
-** unpacki32() -- unpack a 32-bit int from a char buffer (like ntohl())
+** read_i32() -- unpack a 32-bit int from a char buffer (like ntohl())
 */
-i32 unpacki32(u8 *buf)
+i32 read_i32(const u8 *buf)
 {
     u32 i2 =
         ((i32)buf[0] << 24) | ((i32)buf[1] << 16) | ((i32)buf[2] << 8) | buf[3];
@@ -109,18 +110,18 @@ i32 unpacki32(u8 *buf)
 }
 
 /*
-** unpacku32() -- unpack a 32-bit unsigned from a char buffer (like ntohl())
+** read_u32() -- unpack a 32-bit unsigned from a char buffer (like ntohl())
 */
-u32 unpacku32(u8 *buf)
+u32 read_u32(const u8 *buf)
 {
     return ((u32)buf[0] << 24) | ((u32)buf[1] << 16) | ((u32)buf[2] << 8) |
            buf[3];
 }
 
 /*
-** unpacki64() -- unpack a 64-bit int from a char buffer (like ntohl())
+** read_i64() -- unpack a 64-bit int from a char buffer (like ntohl())
 */
-i64 unpacki64(u8 *buf)
+i64 read_i64(const u8 *buf)
 {
     u64 i2 = ((u64)buf[0] << 56) | ((u64)buf[1] << 48) | ((u64)buf[2] << 40) |
              ((u64)buf[3] << 32) | ((u64)buf[4] << 24) | ((u64)buf[5] << 16) |
@@ -137,9 +138,9 @@ i64 unpacki64(u8 *buf)
 }
 
 /*
-** unpacku64() -- unpack a 64-bit unsigned from a char buffer (like ntohl())
+** read_u64() -- unpack a 64-bit unsigned from a char buffer (like ntohl())
 */
-u64 unpacku64(u8 *buf)
+u64 read_u64(const u8 *buf)
 {
     return ((u64)buf[0] << 56) | ((u64)buf[1] << 48) | ((u64)buf[2] << 40) |
            ((u64)buf[3] << 32) | ((u64)buf[4] << 24) | ((u64)buf[5] << 16) |
@@ -147,7 +148,7 @@ u64 unpacku64(u8 *buf)
 }
 
 /*
- * pack() -- store data dictated by the format string in the buffer
+ * write_struct() -- store data dictated by the format string in the buffer
  *
  *   bits |signed   unsigned   float   string
  *   -----+----------------------------------
@@ -159,7 +160,7 @@ u64 unpacku64(u8 *buf)
  *
  *  (16-bit unsigned length is automatically prepended to strings)
  */
-usize pack(u8 *buf, char *format, ...)
+usize write_struct(u8 *buf, char *format, ...)
 {
     va_list ap;
 
@@ -197,42 +198,42 @@ usize pack(u8 *buf, char *format, ...)
         case 'h': // 16-bit
             size += 2;
             h = va_arg(ap, i32);
-            packi16(buf, h);
+            write_i16(buf, h);
             buf += 2;
             break;
 
         case 'H': // 16-bit unsigned
             size += 2;
             H = va_arg(ap, u32);
-            packi16(buf, H);
+            write_i16(buf, H);
             buf += 2;
             break;
 
         case 'i': // 32-bit
             size += 4;
             i = va_arg(ap, i32);
-            packi32(buf, i);
+            write_i32(buf, i);
             buf += 4;
             break;
 
         case 'I': // 32-bit unsigned
             size += 4;
             I = va_arg(ap, u32);
-            packi32(buf, I);
+            write_i32(buf, I);
             buf += 4;
             break;
 
         case 'q': // 64-bit
             size += 8;
             q = va_arg(ap, i64);
-            packi64(buf, q);
+            write_i64(buf, q);
             buf += 8;
             break;
 
         case 'Q': // 64-bit unsigned
             size += 8;
             Q = va_arg(ap, u64);
-            packi64(buf, Q);
+            write_i64(buf, Q);
             buf += 8;
             break;
 
@@ -251,7 +252,7 @@ usize pack(u8 *buf, char *format, ...)
 }
 
 /*
- * unpack() -- unpack data dictated by the format string into the buffer
+ * read_struct() -- unpack data dictated by the format string into the buffer
  *
  *   bits |signed   unsigned   float   string
  *   -----+----------------------------------
@@ -264,7 +265,7 @@ usize pack(u8 *buf, char *format, ...)
  *  (string is extracted based on its stored length, but 's' can be
  *  prepended with a max length)
  */
-usize unpack(u8 *buf, char *format, ...)
+usize read_struct(u8 *buf, char *format, ...)
 {
     va_list ap;
 
@@ -305,42 +306,42 @@ usize unpack(u8 *buf, char *format, ...)
 
         case 'h': // 16-bit
             h  = va_arg(ap, i16 *);
-            *h = unpacki16(buf);
+            *h = read_i16(buf);
             buf += 2;
             size += 2;
             break;
 
         case 'H': // 16-bit unsigned
             H  = va_arg(ap, u16 *);
-            *H = unpacku16(buf);
+            *H = read_u16(buf);
             buf += 2;
             size += 2;
             break;
 
         case 'i': // 32-bit
             i  = va_arg(ap, i32 *);
-            *i = unpacki32(buf);
+            *i = read_i32(buf);
             buf += 4;
             size += 4;
             break;
 
         case 'I': // 32-bit unsigned
             I  = va_arg(ap, u32 *);
-            *I = unpacku32(buf);
+            *I = read_u32(buf);
             buf += 4;
             size += 4;
             break;
 
         case 'q': // 64-bit
             q  = va_arg(ap, i64 *);
-            *q = unpacki64(buf);
+            *q = read_i64(buf);
             buf += 8;
             size += 8;
             break;
 
         case 'Q': // 64-bit unsigned
             Q  = va_arg(ap, u64 *);
-            *Q = unpacku64(buf);
+            *Q = read_u64(buf);
             buf += 8;
             size += 8;
             break;
@@ -368,7 +369,7 @@ usize unpack(u8 *buf, char *format, ...)
 }
 
 /* Helper functions */
-i64 unpack_integer(u8 **buf, i8 size)
+i64 read_int(u8 **buf, i8 size)
 {
     i64 val = 0LL;
     switch (size) {
@@ -381,45 +382,46 @@ i64 unpack_integer(u8 **buf, i8 size)
         *buf += 1;
         break;
     case 'h':
-        val = unpacki16(*buf);
+        val = read_i16(*buf);
         *buf += 2;
         break;
     case 'H':
-        val = unpacku16(*buf);
+        val = read_u16(*buf);
         *buf += 2;
         break;
     case 'i':
-        val = unpacki32(*buf);
+        val = read_i32(*buf);
         *buf += 4;
         break;
     case 'I':
-        val = unpacku32(*buf);
+        val = read_u32(*buf);
         *buf += 4;
         break;
     case 'q':
-        val = unpacki64(*buf);
+        val = read_i64(*buf);
         *buf += 8;
         break;
     case 'Q':
-        val = unpacku64(*buf);
+        val = read_u64(*buf);
         *buf += 8;
         break;
     }
     return val;
 }
 
-u8 *unpack_bytes(u8 **buf, usize len)
+u8 *read_bytes(u8 **buf, usize len, Arena_Allocator *allocator)
 {
-    u8 *dest = try_alloc(len + 1);
+    // u8 *dest = try_alloc(len + 1);
+    u8 *dest = arena_alloc(allocator, len + 1);
     memcpy(dest, *buf, len);
     dest[len] = '\0';
     *buf += len;
     return dest;
 }
 
-u16 unpack_string16(u8 **buf, u8 **dest)
+u16 read_string_u16(u8 **buf, u8 **dest, Arena_Allocator *allocator)
 {
-    u16 len = unpack_integer(buf, 'H');
-    *dest   = unpack_bytes(buf, len);
+    u16 len = read_int(buf, 'H');
+    *dest   = read_bytes(buf, len, allocator);
     return len;
 }

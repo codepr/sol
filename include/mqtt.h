@@ -28,7 +28,6 @@
 #ifndef MQTT_H
 #define MQTT_H
 
-#include "ref.h"
 #include "types.h"
 
 // Packing/unpacking error codes
@@ -37,7 +36,7 @@
 
 #define MQTT_HEADER_LEN                    2
 #define MQTT_ACK_LEN                       4
-#define MQTT_CLIENT_ID_LEN                 64 // including nul char
+#define MQTT_CLIENT_ID_LEN                 24 // including nul char
 
 // Return codes for connect packet
 #define MQTT_CONNECTION_ACCEPTED           0x00
@@ -101,7 +100,7 @@ enum qos_level { AT_MOST_ONCE, AT_LEAST_ONCE, EXACTLY_ONCE };
  * | Byte 5     |                                                  |
  * |------------|--------------------------------------------------|
  */
-union mqtt_header {
+typedef union mqtt_header {
     u8 byte;
     struct {
         u8 retain : 1;
@@ -109,7 +108,7 @@ union mqtt_header {
         u8 dup : 1;
         u8 type : 4;
     } bits;
-};
+} MQTT_Header;
 
 /*
  * MQTT Connect packet, contains a variable header with some connect related
@@ -163,7 +162,7 @@ union mqtt_header {
  * | Byte N+M+K |                                                  |
  * |------------|--------------------------------------------------|
  */
-struct mqtt_connect {
+typedef struct mqtt_connect {
     union {
         u8 byte;
         struct {
@@ -184,9 +183,9 @@ struct mqtt_connect {
         u8 *will_topic;
         u8 *will_message;
     } payload;
-};
+} MQTT_Connect;
 
-struct mqtt_connack {
+typedef struct mqtt_connack {
     union {
         u8 byte;
         struct {
@@ -195,9 +194,9 @@ struct mqtt_connack {
         } bits;
     };
     u8 rc;
-};
+} MQTT_Connack;
 
-struct mqtt_subscribe {
+typedef struct mqtt_subscribe {
     u16 id;
     u16 tuples_len;
     struct {
@@ -205,60 +204,59 @@ struct mqtt_subscribe {
         u16 topic_len;
         u8 *topic;
     } *tuples;
-};
+} MQTT_Subscribe;
 
-struct mqtt_unsubscribe {
+typedef struct mqtt_unsubscribe {
     u16 id;
     u16 tuples_len;
     struct {
         u16 topic_len;
         u8 *topic;
     } *tuples;
-};
+} MQTT_Unsubscribe;
 
-struct mqtt_suback {
+typedef struct mqtt_suback {
     u16 id;
     u16 rcslen;
     u8 *rcs;
-};
+} MQTT_Suback;
 
-struct mqtt_publish {
+typedef struct mqtt_publish {
     u16 id;
     u16 topiclen;
     u8 *topic;
     u32 payloadlen;
     u8 *payload;
-};
+} MQTT_Publish;
 
-struct mqtt_ack {
+typedef struct mqtt_ack {
     u16 id;
-};
+} MQTT_Ack;
 
 typedef struct mqtt_ack mqtt_puback;
 typedef struct mqtt_ack mqtt_pubrec;
 typedef struct mqtt_ack mqtt_pubrel;
 typedef struct mqtt_ack mqtt_pubcomp;
 typedef struct mqtt_ack mqtt_unsuback;
-typedef union mqtt_header mqtt_pingreq;
-typedef union mqtt_header mqtt_pingresp;
-typedef union mqtt_header mqtt_disconnect;
+typedef MQTT_Header mqtt_pingreq;
+typedef MQTT_Header mqtt_pingresp;
+typedef MQTT_Header mqtt_disconnect;
 
-struct mqtt_packet {
-    union mqtt_header header;
+typedef struct mqtt_packet {
+    MQTT_Header header;
     union {
         // This will cover PUBACK, PUBREC, PUBREL, PUBCOMP and UNSUBACK
-        struct mqtt_ack ack;
+        MQTT_Ack ack;
         // This will cover PINGREQ, PINGRESP and DISCONNECT
         mqtt_pingreq pingreq;
-        struct mqtt_connect connect;
-        struct mqtt_connack connack;
-        struct mqtt_suback suback;
-        struct mqtt_publish publish;
-        struct mqtt_subscribe subscribe;
-        struct mqtt_unsubscribe unsubscribe;
+        MQTT_Connect connect;
+        MQTT_Connack connack;
+        MQTT_Suback suback;
+        MQTT_Publish publish;
+        MQTT_Subscribe subscribe;
+        MQTT_Unsubscribe unsubscribe;
     };
-    struct ref refcount;
-};
+} MQTT_Packet;
 
 /*
  * Encoding packet length function, follows the OASIS specs, encode the total
@@ -281,14 +279,15 @@ usize mqtt_read_length(u8 *, unsigned *);
  * Pack to binary an MQTT packet, internally it uses a dispatch table to call
  * the right pack function based on the packet opcode.
  */
-int mqtt_read(u8 *, struct mqtt_packet *, u8, usize);
+typedef struct arena_allocator Arena_Allocator;
+int mqtt_read(u8 *, MQTT_Packet *, u8, usize, Arena_Allocator *allocator);
 
 /*
  * Unpack from binary to an mqtt_packet structure. Internally it uses a
  * dispatch table to call the right unpack function based on the opcode
  * expected to read.
  */
-usize mqtt_write(const struct mqtt_packet *, u8 *);
+usize mqtt_write(const MQTT_Packet *, u8 *);
 
 /*
  * MQTT Build helpers
@@ -296,21 +295,21 @@ usize mqtt_write(const struct mqtt_packet *, u8 *);
  * They receive a pointer to a struct mqtt_packet and additional informations
  * to be stored inside. Just plain builder functions.
  */
-void mqtt_ack(struct mqtt_packet *, u16);
+void mqtt_ack(MQTT_Packet *, u16);
 
-void mqtt_connack(struct mqtt_packet *, u8, u8);
+void mqtt_connack(MQTT_Packet *, u8, u8);
 
-void mqtt_suback(struct mqtt_packet *, u16, u8 *, u16);
+void mqtt_suback(MQTT_Packet *, u16, u8 *, u16);
 
-void mqtt_publish(struct mqtt_packet *, u16, usize, u8 *, usize, u8 *);
+void mqtt_publish(MQTT_Packet *, u16, usize, u8 *, usize, u8 *);
 
 /*
  * Release the memory allocated through helpers function calls based on the
  * opcode of the MQTT packet passed
  */
-void mqtt_packet_free(struct mqtt_packet *);
+void mqtt_packet_free(MQTT_Packet *);
 
-void mqtt_set_dup(struct mqtt_packet *);
+void mqtt_set_dup(MQTT_Packet *);
 
 /*
  * Helper function used to pack ACK packets, mono as the single field `packet
@@ -323,12 +322,14 @@ int mqtt_write_ack(u8 *, u8, u16);
  * buffer size of the packet based on the opcode. Accept an optional pointer
  * to get the len reserved for storing the remaining length of the full packet
  */
-usize mqtt_size(const struct mqtt_packet *, usize *);
+usize mqtt_size(const MQTT_Packet *, usize *);
+
+typedef struct pool_allocator Pool_Allocator;
 
 /*
  * Allocate struct mqtt_packet on the heap. This should be used in place of
  * malloc/calloc in order to leverage the refcounter
  */
-struct mqtt_packet *mqtt_packet_alloc(u8);
+MQTT_Packet *mqtt_packet_alloc(u8, Pool_Allocator *);
 
 #endif
