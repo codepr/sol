@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -27,12 +27,11 @@
 
 #include "trie.h"
 #include "memory.h"
-#include "util.h"
 #include <assert.h>
 #include <string.h>
 
 // Private functions declaration
-static void children_destroy(struct bst_node *, size_t *, trie_destructor *);
+static void children_free(struct bst_node *, size_t *, trie_destructor *);
 static int trie_node_count(const struct trie_node *);
 static void trie_node_prefix_find(const struct trie_node *, char *, int,
                                   List *);
@@ -253,7 +252,7 @@ void trie_prefix_delete(Trie *trie, const char *prefix)
         return;
     }
 
-    children_destroy(cursor->children, &trie->size, trie->destructor);
+    children_free(cursor->children, &trie->size, trie->destructor);
     cursor->children = NULL;
 
     trie_delete(trie, prefix);
@@ -350,22 +349,22 @@ List *trie_prefix_find(const Trie *trie, const char *prefix)
     return keys;
 }
 
-static void children_destroy(struct bst_node *node, size_t *len,
-                             trie_destructor *destructor)
+static void children_free(struct bst_node *node, size_t *len,
+                          trie_destructor *destructor)
 {
     if (!node)
         return;
-    trie_node_destroy(node->data, len, destructor);
+    trie_node_free(node->data, len, destructor);
     if (node->left)
-        children_destroy(node->left, len, destructor);
+        children_free(node->left, len, destructor);
     if (node->right)
-        children_destroy(node->right, len, destructor);
+        children_free(node->right, len, destructor);
     free_memory(node);
 }
 
 /* Release memory of a node while updating size of the trie */
-void trie_node_destroy(struct trie_node *node, size_t *size,
-                       trie_destructor *destructor)
+void trie_node_free(struct trie_node *node, size_t *size,
+                    trie_destructor *destructor)
 {
 
     // Base case
@@ -373,7 +372,7 @@ void trie_node_destroy(struct trie_node *node, size_t *size,
         return;
 
     // Recursive call to all children of the node
-    children_destroy(node->children, size, destructor);
+    children_free(node->children, size, destructor);
     node->children = NULL;
 
     if (destructor) {
@@ -389,11 +388,11 @@ void trie_node_destroy(struct trie_node *node, size_t *size,
     free_memory(node);
 }
 
-void trie_destroy(Trie *trie)
+void trie_free(Trie *trie)
 {
     if (!trie)
         return;
-    trie_node_destroy(trie->root, &(trie->size), trie->destructor);
+    trie_node_free(trie->root, &(trie->size), trie->destructor);
     free_memory(trie);
 }
 

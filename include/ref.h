@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,17 +25,31 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MEMORY_H
-#define MEMORY_H
+/*
+ * Extremely simple reference counting library, the usage expect the struct ref
+ * to be embedded into the target struct to be reference counted, accessed by
+ * a custom defined free function using the macro container_of defined in util.
+ *
+ * See https://nullprogram.com/blog/2015/02/17/ for more info
+ */
 
-#include <stdio.h>
+#pragma once
 
-void *try_alloc(size_t);
-void *try_calloc(size_t, size_t);
-void *try_realloc(void *, size_t);
-size_t alloc_size(void *);
-void free_memory(void *);
-char *try_strdup(const char *);
-size_t memory_used(void);
+struct ref {
+    void (*free)(const struct ref *);
+    int count;
+};
 
-#endif
+static inline void ref_inc(const struct ref *ref)
+{
+    ((struct ref *)ref)->count++;
+}
+
+static inline void ref_dec(const struct ref *ref)
+{
+    if (--((struct ref *)ref)->count == 0)
+        ref->free(ref);
+}
+
+#define INCREF(ptr, type) ref_inc(&((type *)ptr)->refcount);
+#define DECREF(ptr, type) ref_dec(&((type *)ptr)->refcount);

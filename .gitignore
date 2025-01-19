@@ -37,3 +37,4 @@ passwd_file
 .ccls
 .clangd
 .vscode
+.cache

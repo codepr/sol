@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -24,16 +24,29 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#ifndef TYPES_H
+#define TYPES_H
 
-#ifndef HANDLERS_H
-#define HANDLERS_H
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-struct topic;
-struct mqtt_packet;
-struct io_event;
+// Unsigned integer types
+typedef uint8_t u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+typedef uint64_t u64;
+typedef size_t usize;
 
-int publish_message(struct mqtt_packet *, const struct topic *);
+// Signed integer types
+typedef int8_t i8;
+typedef int16_t i16;
+typedef int32_t i32;
+typedef int64_t i64;
+typedef ssize_t isize;
 
-int handle_command(unsigned, struct io_event *);
+// Floating types
+typedef float f32;
+typedef double f64;
 
 #endif

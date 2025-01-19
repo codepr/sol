@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -28,15 +28,9 @@
 #ifndef SERVER_H
 #define SERVER_H
 
+#include "arena.h"
 #include "mqtt.h"
 #include <openssl/ssl.h>
-
-/*
- * Number of worker threads to be created. Each one will host his own ev_ctx
- * loop. This doesn't take into account the main thread, so to know the total
- * number of running loops +1 must be added to the THREADSNR value.
- */
-#define THREADSNR            2
 
 /*
  * Epoll default settings for concurrent events monitored and timeout, -1
@@ -48,50 +42,40 @@
 /* Initial memory allocation for clients on server start-up, it should be
  * equal to ~40 MB, read and write buffers are initialized lazily
  */
-#define BASE_CLIENTS_NUM     1024 * 128
+#define BASE_CLIENTS_NUM     256
 
-/*
- * IO event strucuture, it's the main information that will be communicated
- * between threads, every request packet will be wrapped into an IO event and
- * passed to the work EPOLL, in order to be handled by the worker thread pool.
- * Then finally, after the execution of the command, it will be updated and
- * passed back to the IO epoll loop to be written back to the requesting client
- */
-struct io_event {
-    struct client *client;
-    struct mqtt_packet data;
-};
+typedef struct connection_context Connection_Context;
 
 /* Global informations statistics structure */
 struct sol_info {
     /* Number of clients currently connected */
-    atomic_size_t active_connections;
+    size_t active_connections;
     /* Total number of clients connected since the start */
-    atomic_size_t total_connections;
+    size_t total_connections;
     /* Total number of sent messages */
-    atomic_size_t messages_sent;
+    size_t messages_sent;
     /* Total number of received messages */
-    atomic_size_t messages_recv;
+    size_t messages_recv;
     /* Timestamp of the start time */
-    atomic_size_t start_time;
+    size_t start_time;
     /* Seconds passed since the start */
-    atomic_size_t uptime;
+    size_t uptime;
     /* Total number of bytes received */
-    atomic_size_t bytes_sent;
+    size_t bytes_sent;
     /* Total number of bytes sent out */
-    atomic_size_t bytes_recv;
+    size_t bytes_recv;
 };
 
 #define INIT_INFO                                                              \
     do {                                                                       \
-        info.active_connections = ATOMIC_VAR_INIT(0);                          \
-        info.total_connections  = ATOMIC_VAR_INIT(0);                          \
-        info.messages_sent      = ATOMIC_VAR_INIT(0);                          \
-        info.messages_recv      = ATOMIC_VAR_INIT(0);                          \
-        info.start_time         = ATOMIC_VAR_INIT(0);                          \
-        info.uptime             = ATOMIC_VAR_INIT(0);                          \
-        info.bytes_sent         = ATOMIC_VAR_INIT(0);                          \
-        info.bytes_recv         = ATOMIC_VAR_INIT(0);                          \
+        info.active_connections = 0;                                           \
+        info.total_connections  = 0;                                           \
+        info.messages_sent      = 0;                                           \
+        info.messages_recv      = 0;                                           \
+        info.start_time         = 0;                                           \
+        info.uptime             = 0;                                           \
+        info.bytes_sent         = 0;                                           \
+        info.bytes_recv         = 0;                                           \
     } while (0)
 
 /*
@@ -107,17 +91,25 @@ extern struct sol_info info;
  * pending_msgs and pendings_acks are two arrays used to track remaining
  * messages to push out and acks respectively.
  */
+typedef struct session Session;
+typedef struct topic_repo Topic_Repo;
 struct server {
     // The main topics store
-    struct topic_store *store;
+    Topic_Repo *repo;
     // A memory pool for clients allocation
-    struct memorypool *pool;
+    Arena_Allocator allocator;
+    // A memory pool for sessions
+    Arena_Allocator session_allocator;
+    // MQTT packets' payload allocator
+    Arena_Allocator mqtt_allocator;
+    // MQTT packets allocator
+    Pool_Allocator packet_allocator;
     // Our clients map, it's a handle pointer for UTHASH APIs, must be set to
     // NULL
-    struct client *clients_map;
+    Connection_Context *contexts;
     // The global session map, another UTHASH handle pointer, must be set to
     // NULL
-    struct client_session *sessions;
+    Session *sessions;
     // UTHASH handle pointer for authentications
     struct authentication *auths;
     // Application TLS context
@@ -139,7 +131,7 @@ int start_server(const char *, const char *);
  * schedules an EV_WRITE event with a client pointer set to write carried
  * contents out on the socket descriptor.
  */
-void enqueue_event_write(const struct client *);
+void enqueue_event_write(const Connection_Context *);
 
 /*
  * Make the entire process a daemon running in background

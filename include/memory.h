@@ -1,7 +1,6 @@
-/*
- * BSD 2-Clause License
+/* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -26,34 +25,17 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef ITERATOR_H
-#define ITERATOR_H
+#ifndef MEMORY_H
+#define MEMORY_H
 
-/*
- * Generic iterator strucuture, have the following fields
- * - unsigned long index: The index of the last visited item in the iterable
- * - void *ptr: The pointer to the current visited item
- * - void *iterable: The iterable data structure to iterate on
- * - void (*next)(struct iterator *): Function pointer used to update the ptr
- *   value, it has to be defined for each different data structure
- */
-struct iterator {
-    unsigned long index;
-    void *ptr;
-    void *iterable;
-    void (*next)(struct iterator *);
-};
+#include <stdio.h>
 
-struct iterator *iter_new(void *, void (*next)(struct iterator *));
-void iter_init(struct iterator *, void *, void (*next)(struct iterator *));
-struct iterator *iter_next(struct iterator *);
-void iter_destroy(struct iterator *);
-
-#define FOREACH(it) for (; it && it->ptr; it = iter_next(it))
-
-#define MAP(it, fn, arg)                                                       \
-    for (; it && it->ptr; it = iter_next(it)) {                                \
-        fn(it->ptr, arg);                                                      \
-    }
+void *try_alloc(size_t);
+void *try_calloc(size_t, size_t);
+void *try_realloc(void *, size_t);
+size_t alloc_size(void *);
+void free_memory(void *);
+char *try_strdup(const char *);
+size_t memory_used(void);
 
 #endif

@@ -1,6 +1,7 @@
-/* BSD 2-Clause License
+/*
+ * BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,33 +26,34 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifndef ITERATOR_H
+#define ITERATOR_H
+
 /*
- * Extremely simple reference counting library, the usage expect the struct ref
- * to be embedded into the target struct to be reference counted, accessed by
- * a custom defined free function using the macro container_of defined in util.
- *
- * See https://nullprogram.com/blog/2015/02/17/ for more info
+ * Generic iterator strucuture, have the following fields
+ * - unsigned long index: The index of the last visited item in the iterable
+ * - void *ptr: The pointer to the current visited item
+ * - void *iterable: The iterable data structure to iterate on
+ * - void (*next)(struct iterator *): Function pointer used to update the ptr
+ *   value, it has to be defined for each different data structure
  */
-
-#pragma once
-
-#include <stdatomic.h>
-
-struct ref {
-    void (*free)(const struct ref *);
-    volatile atomic_int count;
+struct iterator {
+    unsigned long index;
+    void *ptr;
+    void *iterable;
+    void (*next)(struct iterator *);
 };
 
-static inline void ref_inc(const struct ref *ref)
-{
-    ((struct ref *)ref)->count++;
-}
+struct iterator *iter_new(void *, void (*next)(struct iterator *));
+void iter_init(struct iterator *, void *, void (*next)(struct iterator *));
+struct iterator *iter_next(struct iterator *);
+void iter_free(struct iterator *);
 
-static inline void ref_dec(const struct ref *ref)
-{
-    if (--((struct ref *)ref)->count == 0)
-        ref->free(ref);
-}
+#define FOREACH(it) for (; it && it->ptr; it = iter_next(it))
 
-#define INCREF(ptr, type) ref_inc(&((type *)ptr)->refcount);
-#define DECREF(ptr, type) ref_dec(&((type *)ptr)->refcount);
+#define MAP(it, fn, arg)                                                       \
+    for (; it && it->ptr; it = iter_next(it)) {                                \
+        fn(it->ptr, arg);                                                      \
+    }
+
+#endif

@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -26,11 +26,10 @@
  */
 
 #include "memory.h"
-#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
-static atomic_size_t memory = ATOMIC_VAR_INIT(0);
+static size_t memory = 0;
 
 /*
  * Custom malloc function, allocate a defined size of bytes plus

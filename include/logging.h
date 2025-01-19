@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,27 +25,24 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef UTIL_H
-#define UTIL_H
+#ifndef LOGGING_H
+#define LOGGING_H
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdio.h>
+enum log_level { DEBUG, INFORMATION, WARNING, ERROR, FATAL };
 
-bool is_integer(const char *);
-int parse_int(const char *);
-int number_len(size_t);
-void generate_random_id(char *);
-char *remove_occur(char *, char);
-char *append_string(const char *, char *, size_t);
-bool check_passwd(const char *, const char *);
+void sol_log_init(const char *, int);
+void sol_log_close(void);
+void sol_log(int, const char *, ...);
 
-long get_fh_soft_limit(void);
-
-#define STREQ(s1, s2, len) strncasecmp(s1, s2, len) == 0 ? true : false
-
-#define container_of(ptr, type, field)                                         \
-    ((type *)((char *)(ptr) - offsetof(type, field)))
+#define log(...)         sol_log(__VA_ARGS__)
+#define log_debug(...)   log(DEBUG, __VA_ARGS__)
+#define log_warning(...) log(WARNING, __VA_ARGS__)
+#define log_error(...)   log(ERROR, __VA_ARGS__)
+#define log_info(...)    log(INFORMATION, __VA_ARGS__)
+#define log_fatal(...)                                                         \
+    do {                                                                       \
+        log(FATAL, __VA_ARGS__);                                               \
+        exit(EXIT_FAILURE);                                                    \
+    } while (0);
 
 #endif

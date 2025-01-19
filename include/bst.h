@@ -1,17 +1,17 @@
-/* BSD 2-Clause License
+/*
+ * BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan
- * All rights reserved.
+ * Copyright (c) 2025 Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * * Redistributions of source code must retain the above copyright notice, this
- *   list of conditions and the following disclaimer.
+ * * Redistributions of source code must retain the above copyright notice,
+ * this list of conditions and the following disclaimer.
  *
  * * Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -26,28 +26,25 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MEMORYPOOL_H
-#define MEMORYPOOL_H
+#ifndef BST_H
+#define BST_H
 
-#include <stdlib.h>
-
-/*
- * Simple memory object-pool, the purpose is to allow for fixed size objects to
- * be pre-allocated and re-use of memory blocks, so no size have to be
- * specified like in a normal malloc but only alloc and free of a pointer is
- * possible.
- */
-struct memorypool {
-    void *memory;
-    void *free;
-    int block_used;
-    size_t blocks_nr;
-    size_t blocksize;
+struct bst_node {
+    unsigned char key;
+    int height;
+    struct bst_node *left;
+    struct bst_node *right;
+    void *data;
 };
 
-struct memorypool *memorypool_new(size_t, size_t);
-void memorypool_destroy(struct memorypool *);
-void *memorypool_alloc(struct memorypool *);
-void memorypool_free(struct memorypool *, void *);
+struct bst_node *bst_new(unsigned char, const void *);
+
+struct bst_node *bst_insert(struct bst_node *, unsigned char, const void *);
+
+struct bst_node *bst_search(const struct bst_node *, unsigned char);
+
+struct bst_node *bst_delete(struct bst_node *, unsigned char);
+
+void bst_free(struct bst_node *, void (*free_fn)(struct bst_node *));
 
 #endif

@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan
+ * Copyright (c) 2025, Andrea Giacomo Baldan
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -49,7 +49,7 @@ List *list_new(int (*destructor)(struct list_node *))
 /*
  * Destroy a list, releasing all allocated memory
  */
-void list_destroy(List *l, int deep)
+void list_free(List *l, int deep)
 {
     if (!l)
         return;

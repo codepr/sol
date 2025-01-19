@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -24,29 +24,28 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef TYPES_H
-#define TYPES_H
 
+#ifndef UTIL_H
+#define UTIL_H
+
+#include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 
-// Unsigned integer types
-typedef uint8_t u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-typedef size_t usize;
+bool is_integer(const char *);
+int parse_int(const char *);
+int number_len(size_t);
+void generate_random_id(char *);
+char *remove_occur(char *, char);
+char *append_string(const char *, char *, size_t);
+bool check_passwd(const char *, const char *);
 
-// Signed integer types
-typedef int8_t i8;
-typedef int16_t i16;
-typedef int32_t i32;
-typedef int64_t i64;
-typedef ssize_t isize;
+long get_fh_soft_limit(void);
 
-// Floating types
-typedef float f32;
-typedef double f64;
+#define STREQ(s1, s2, len) strncasecmp(s1, s2, len) == 0 ? true : false
+
+#define container_of(ptr, type, field)                                         \
+    ((type *)((char *)(ptr) - offsetof(type, field)))
 
 #endif

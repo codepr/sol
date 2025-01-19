@@ -1,7 +1,6 @@
-/*
- * BSD 2-Clause License
+/* BSD 2-Clause License
  *
- * Copyright (c) 2023 Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -26,25 +25,16 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef BST_H
-#define BST_H
+#ifndef HANDLERS_H
+#define HANDLERS_H
 
-struct bst_node {
-    unsigned char key;
-    int height;
-    struct bst_node *left;
-    struct bst_node *right;
-    void *data;
-};
+typedef struct topic Topic;
+struct mqtt_packet;
+typedef struct connection_context Connection_Context;
+typedef struct arena_allocator Arena_Allocator;
 
-struct bst_node *bst_new(unsigned char, const void *);
+void publish_message(struct mqtt_packet *, const Topic *, Arena_Allocator *);
 
-struct bst_node *bst_insert(struct bst_node *, unsigned char, const void *);
-
-struct bst_node *bst_search(const struct bst_node *, unsigned char);
-
-struct bst_node *bst_delete(struct bst_node *, unsigned char);
-
-void bst_destroy(struct bst_node *, void (*free_fn)(struct bst_node *));
+int handle_command(Connection_Context *);
 
 #endif

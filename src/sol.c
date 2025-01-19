@@ -1,6 +1,6 @@
 /* BSD 2-Clause License
  *
- * Copyright (c) 2023, Andrea Giacomo Baldan All rights reserved.
+ * Copyright (c) 2025, Andrea Giacomo Baldan All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -32,21 +32,18 @@
 #include "config.h"
 #include "logging.h"
 #include "server.h"
-#include "util.h"
 #include <unistd.h>
 
 // Stops epoll_wait loops by sending an event
 static void sigint_handler(int signum)
 {
     (void)signum;
-    for (int i = 0; i < THREADSNR + 1; ++i) {
 #ifdef __linux__
-        eventfd_write(conf->run, 1);
+    eventfd_write(conf->run, 1);
 #else
-        (void)write(conf->run[0], &(unsigned long){1}, sizeof(unsigned long));
+    (void)write(conf->run[0], &(unsigned long){1}, sizeof(unsigned long));
 #endif
-        usleep(1500);
-    }
+    usleep(1500);
 }
 
 static const char *flag_description[] = {

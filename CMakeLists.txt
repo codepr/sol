@@ -10,6 +10,10 @@ add_definitions("-D_DEFAULT_SOURCE")
 find_package(OpenSSL REQUIRED)
 
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
+set(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/lib)
+
+# Add include directories for headers
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/lib)
 
 file(GLOB SOURCES src/*.c)
 file(GLOB TEST src/hashtable.c src/bst.c src/config.c src/list.c src/trie.c
@@ -44,8 +48,11 @@ else (APPLE)
     TARGET_LINK_LIBRARIES(sol pthread ssl crypto crypt)
     TARGET_LINK_LIBRARIES(sol_test pthread ssl crypto crypt)
 endif (APPLE)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wunused -Werror -pedantic \
-    -Wno-unused-result -std=c11 -O3")
+    # set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wunused -Werror -pedantic \
+    # -Wno-unused-result -std=c11 -O3")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wunused -Werror -pedantic \
+    -Wno-unused-result -std=c11 -ggdb -fsanitize=address \
+    -fsanitize=undefined -fno-omit-frame-pointer -pg")
 
 endif (DEBUG)
 
